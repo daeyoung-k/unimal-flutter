@@ -1,0 +1,24 @@
+{
+  "name": "CustomIcon",
+  "css_prefix_text": "",
+  "css_use_suffix": false,
+  "hinting": true,
+  "units_per_em": 1000,
+  "ascent": 850,
+  "glyphs": [
+    {
+      "uid": "a942c8d03fdf57bf8bc7ba64be25bec6",
+      "css": "kakao_icon",
+      "code": 59392,
+      "src": "custom_icons",
+      "selected": true,
+      "svg": {
+        "path": "M522.8 166.7C326.3 166.7 166.7 295.8 166.7 454.2 166.7 554.2 232.2 641.7 326.3 695.8L301.8 833.3 453.2 733.3C473.7 737.5 498.3 737.5 518.7 737.5 715.3 737.5 874.9 608.3 874.9 450 879 295.8 719.3 166.7 522.8 166.7Z",
+        "width": 1000
+      },
+      "search": [
+        "kakao_icon"
+      ]
+    }
+  ]
+}

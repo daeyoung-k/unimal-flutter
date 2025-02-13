@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/home/home.dart';
+import 'package:unimal/screens/home.dart';
+import 'package:unimal/screens/login.dart';
 
 void main() {
   runApp(const MyApp());
@@ -12,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: HomeScreen(),
+      home: LoginScreens(),
     );
   }
 }
