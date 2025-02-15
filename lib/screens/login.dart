@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/icon/custom_icon_icons.dart';
+import 'package:unimal/widget/login/google_button.dart';
 import 'package:unimal/widget/login/kakao_button.dart';
+import 'package:unimal/widget/login/naver_button.dart';
 
 class LoginScreens extends StatelessWidget {
   const LoginScreens({super.key});
@@ -40,8 +41,8 @@ class LoginScreens extends StatelessWidget {
                       ),
                     ),
                     Container(margin: EdgeInsets.only(bottom: 15), child: KakaoButtonWidget(),),
-                    Container(margin: EdgeInsets.only(bottom: 15), child: KakaoButtonWidget(),),
-                    Container(margin: EdgeInsets.only(bottom: 15), child: KakaoButtonWidget(),)                   
+                    Container(margin: EdgeInsets.only(bottom: 15), child: NaverButtonWidget(),),
+                    Container(margin: EdgeInsets.only(bottom: 15), child: GoogleButtonWidget(),)                   
 
                   ],
                 )

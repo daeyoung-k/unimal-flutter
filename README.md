@@ -8,7 +8,8 @@ Unimal 이름의 탄생 비화 - `우리 주변의 동물들` 을 줄여서 `우
 <hr/>
 
 ### library
-`flutter_native_splash: ^2.4.4` : 스플래쉬 화면 적용
+`flutter_native_splash` : 스플래쉬 화면 적용
+`flutter_svg` : svg 파일 사용
  
 
 

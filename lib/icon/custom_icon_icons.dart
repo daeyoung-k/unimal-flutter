@@ -22,4 +22,6 @@ class CustomIcon {
   static const String? _kFontPkg = null;
 
   static const IconData kakao_icon = IconData(0xe800, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData naver_icon = IconData(0xe801, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData google_icon = IconData(0xe802, fontFamily: _kFontFam, fontPackage: _kFontPkg);
 }
