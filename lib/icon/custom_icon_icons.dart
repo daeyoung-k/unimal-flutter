@@ -24,4 +24,8 @@ class CustomIcon {
   static const IconData kakao_icon = IconData(0xe800, fontFamily: _kFontFam, fontPackage: _kFontPkg);
   static const IconData naver_icon = IconData(0xe801, fontFamily: _kFontFam, fontPackage: _kFontPkg);
   static const IconData google_icon = IconData(0xe802, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData map_icon = IconData(0xe803, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData additem_icon = IconData(0xe804, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData clipboard_text_icon = IconData(0xe805, fontFamily: _kFontFam, fontPackage: _kFontPkg);
+  static const IconData user_icon = IconData(0xe806, fontFamily: _kFontFam, fontPackage: _kFontPkg);
 }

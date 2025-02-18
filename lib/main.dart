@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/home.dart';
 import 'package:unimal/screens/login.dart';
+import 'package:unimal/screens/Map.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,7 +14,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: LoginScreens(),
+      home: MapScreens(),
     );
   }
 }

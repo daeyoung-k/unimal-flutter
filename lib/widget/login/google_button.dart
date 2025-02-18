@@ -25,7 +25,7 @@ class GoogleButtonWidget extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: SvgPicture.asset(
-              'assets/img/google_icon.svg',
+              'assets/icon/svg/google_icon.svg',
               width: 40,
               height: 40,
             )
