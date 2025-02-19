@@ -1,0 +1,2 @@
+/Users/marketdesignrs/myprivate/unimal-flutter/android/app/.cxx/Debug/6i3o4b6m/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/marketdesignrs/myprivate/unimal-flutter/android/app/.cxx/Debug/6i3o4b6m/armeabi-v7a/CMakeFiles/rebuild_cache.dir
