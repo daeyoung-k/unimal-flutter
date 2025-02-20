@@ -3,6 +3,7 @@ import 'package:flutter_svg/svg.dart';
 import 'package:unimal/screens/add_item.dart';
 import 'package:unimal/screens/board.dart';
 import 'package:unimal/screens/map.dart';
+import 'package:unimal/screens/map_sample.dart';
 import 'package:unimal/screens/profile.dart';
 
 class RootScreen extends StatefulWidget {
@@ -18,7 +19,7 @@ class _RootScreen extends State<RootScreen> {
 
   final List<Widget> _pages = [
     MapScreens(),                   // 지도 페이지
-    AddItemScreens(),               // 아이템 추가 페이지
+    MapSample(),               // 아이템 추가 페이지
     BoardScreens(),                 // 게시판 페이지
     ProfileScreens(),               // 프로필 페이지
   ];
