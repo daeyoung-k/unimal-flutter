@@ -10,7 +10,8 @@ Unimal 이름의 탄생 비화 - `우리 주변의 동물들` 을 줄여서 `우
 ### library
 `flutter_native_splash` : 스플래쉬 화면 적용 <br>
 `flutter_svg` : svg 파일 사용 <br>
-`google_maps_flutter` : 구글맵
+`google_maps_flutter` : 구글맵 <br>
+`flutter_dotenv`: 환경변수 파일 사용 (.env) <br>
  
 
 

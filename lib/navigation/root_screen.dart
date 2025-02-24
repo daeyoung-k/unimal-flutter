@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
-import 'package:unimal/screens/add_item.dart';
 import 'package:unimal/screens/board.dart';
 import 'package:unimal/screens/map.dart';
-import 'package:unimal/screens/map_sample.dart';
 import 'package:unimal/screens/profile.dart';
+import 'package:unimal/screens/search.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key});
@@ -19,7 +18,7 @@ class _RootScreen extends State<RootScreen> {
 
   final List<Widget> _pages = [
     MapScreens(),                   // 지도 페이지
-    MapSample(),               // 아이템 추가 페이지
+    SearchScreens(),                // 검색 페이지
     BoardScreens(),                 // 게시판 페이지
     ProfileScreens(),               // 프로필 페이지
   ];
@@ -28,19 +27,19 @@ class _RootScreen extends State<RootScreen> {
     BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/map_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/map_bold_icon.svg'),
-        label: 'Map'),
+        label: '지도'),
     BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
-        label: 'Add'),
+        icon: SvgPicture.asset('assets/icon/svg/search_icon.svg'),
+        activeIcon: SvgPicture.asset('assets/icon/svg/search_bold_icon.svg'),
+        label: '검색'),
     BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/clipboard_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/clipboard_bold_icon.svg'),
-        label: 'Board'),
+        label: '게시판'),
     BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/user_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/user_bold_icon.svg'),
-        label: 'Profile'),
+        label: 'My'),
   ];
 
 
