@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:unimal/screens/board.dart';
+import 'package:unimal/screens/login.dart';
 import 'package:unimal/screens/map.dart';
 import 'package:unimal/screens/profile.dart';
 import 'package:unimal/screens/search.dart';
@@ -20,7 +21,8 @@ class _RootScreen extends State<RootScreen> {
     MapScreens(),                   // 지도 페이지
     SearchScreens(),                // 검색 페이지
     BoardScreens(),                 // 게시판 페이지
-    ProfileScreens(),               // 프로필 페이지
+    LoginScreens(),                 // 로그인 페이지    
+    // ProfileScreens(),               // 프로필 페이지
   ];
 
   final List<BottomNavigationBarItem> _icons = [

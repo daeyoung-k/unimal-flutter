@@ -47,3 +47,5 @@ app.*.map.json
 
 #custom
 .env
+pubspec.lock
+ios/Podfile.lock
