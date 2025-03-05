@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kakao_flutter_sdk/kakao_flutter_sdk_talk.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
 
 class KakaoButtonWidget extends StatelessWidget {
@@ -7,8 +8,13 @@ class KakaoButtonWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: () {
-        print("카카오 로그인 버튼 클릭됨");
+      onPressed: () async {
+        try {
+          OAuthToken token = await UserApi.instance.loginWithKakaoTalk();
+          print('카카오톡으로 로그인 성공 ${token.accessToken}');
+        } catch (error) {
+          print('카카오톡으로 로그인 실패 $error');
+        }
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Color(0xFFFBE750), // 카카오 옐로우
