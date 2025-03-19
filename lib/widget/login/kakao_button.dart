@@ -10,7 +10,7 @@ class KakaoButtonWidget extends StatelessWidget {
     return ElevatedButton(
       onPressed: () async {
         try {
-          OAuthToken token = await UserApi.instance.loginWithKakaoTalk();
+          OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
           print('카카오톡으로 로그인 성공 ${token.accessToken}');
         } catch (error) {
           print('카카오톡으로 로그인 실패 $error');
