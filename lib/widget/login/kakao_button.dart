@@ -13,7 +13,7 @@ class KakaoButtonWidget extends StatelessWidget {
         try {
           OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
           print('카카오톡으로 로그인 성공 ${token.accessToken}');
-          var url = Uri.http('localhost:8080', 'user/login/oauth2/kakao');
+          var url = Uri.http('localhost:8080', 'user/login/kakao/mobile');
           print(url);
           var response = await http.get(url, headers: {"Authorization": token.accessToken});
           print('로그인 통신 ${response}');
