@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk_talk.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
 import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class KakaoButtonWidget extends StatelessWidget {
   const KakaoButtonWidget({super.key});
@@ -12,11 +13,20 @@ class KakaoButtonWidget extends StatelessWidget {
       onPressed: () async {
         try {
           OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-          print('카카오톡으로 로그인 성공 ${token.accessToken}');
           var url = Uri.http('localhost:8080', 'user/login/mobile/kakao');
+          var headers = {"Authorization": token.accessToken};
+          var response = await http.get(url, headers: headers);
+          var body = jsonDecode(response.body);
+
           print(url);
-          var response = await http.get(url, headers: {"Authorization": token.accessToken});
-          print('로그인 통신 ${response}');
+
+          if (body['code'] == 200) {
+            print("카카오 로그인 성공");
+            print(response.headers);
+            print(body);
+          } else {
+            print("카카오 로그인 실패 ${body['message']}");
+          }
         } catch (error) {
           print('카카오톡으로 로그인 실패 $error');
         }
