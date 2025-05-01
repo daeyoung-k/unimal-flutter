@@ -13,8 +13,8 @@ class KakaoButtonWidget extends StatelessWidget {
       onPressed: () async {
         try {
           OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-          var url = Uri.http('localhost:8080', 'user/login/mobile/kakao');
-          var headers = {"Authorization": token.accessToken};
+          var url = Uri.http('localhost:8080', 'user/auth/login/mobile/kakao');
+          var headers = {"Authorization": "Bearer ${token.accessToken}"};
           var response = await http.get(url, headers: headers);
           var body = jsonDecode(response.body);
 
