@@ -7,10 +7,13 @@ import 'package:unimal/navigation/root_screen.dart';
 
 Future<void> main() async {
   await dotenv.load(fileName: ".env");
+
+  final kakaoAppKey = dotenv.env['KAKAO_APP_KEY'];
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   KakaoSdk.init(
-        nativeAppKey: '38e49da0d145db38623516e1167106d6',
+        nativeAppKey: kakaoAppKey,
     );
   runApp(const MyApp());
 }
