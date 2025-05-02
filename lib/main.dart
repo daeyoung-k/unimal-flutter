@@ -9,10 +9,11 @@ Future<void> main() async {
   await dotenv.load(fileName: ".env");
 
   final kakaoAppKey = dotenv.env['KAKAO_APP_KEY'];
+  KakaoSdk.init(nativeAppKey: kakaoAppKey,);
+  
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  KakaoSdk.init(nativeAppKey: kakaoAppKey,);
   runApp(const MyApp());
 }
 

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk_talk.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
@@ -13,12 +15,11 @@ class KakaoButtonWidget extends StatelessWidget {
       onPressed: () async {
         try {
           OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-          var url = Uri.http('localhost:8080', 'user/auth/login/mobile/kakao');
+          var host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
+          var url = Uri.http('${host}:8080', 'user/auth/login/mobile/kakao');
           var headers = {"Authorization": "Bearer ${token.accessToken}"};
           var response = await http.get(url, headers: headers);
           var body = jsonDecode(response.body);
-
-          print(url);
 
           if (body['code'] == 200) {
             print("카카오 로그인 성공");
