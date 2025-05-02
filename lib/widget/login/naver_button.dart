@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
+import 'package:flutter_naver_login/flutter_naver_login.dart';
 
 class NaverButtonWidget extends StatelessWidget {
   const NaverButtonWidget({super.key});
@@ -7,8 +8,16 @@ class NaverButtonWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ElevatedButton(
-      onPressed: () {
-        print("네이버 로그인 버튼 클릭됨");
+      onPressed: () async {
+        final res = await FlutterNaverLogin.logIn();
+        // final NaverLoginResult result = await FlutterNaverLogin.logIn();
+        print(res);
+        print(res.errorMessage);
+        // NaverAccessToken res = await FlutterNaverLogin.currentAccessToken;
+        // setState(() {
+        //   accesToken = res.accessToken;
+        //   tokenType = res.tokenType;
+        // });
       },
       style: ElevatedButton.styleFrom(
         backgroundColor: Color(0xFF5BC467),

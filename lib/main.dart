@@ -12,9 +12,7 @@ Future<void> main() async {
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  KakaoSdk.init(
-        nativeAppKey: kakaoAppKey,
-    );
+  KakaoSdk.init(nativeAppKey: kakaoAppKey,);
   runApp(const MyApp());
 }
 
