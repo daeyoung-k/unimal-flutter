@@ -30,7 +30,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>kakao$(KAKAO_LOGIN_APP_KEY)</string>
-				<string>$(NAVER_LOGIN_URL_SCHEMA)</string>
+				<string>$(NAVER_LOGIN_IOS_URL_SCHEMA)</string>
 			</array>
 		</dict>
 	</array>
@@ -47,38 +47,6 @@
         <string>naversearchapp</string>
         <string>naversearchthirdlogin</string>
 	</array>
-
-    <key>naverServiceAppUrlScheme</key>
-    <string>$(NAVER_LOGIN_URL_SCHEMA)</string>
-    <key>naverConsumerKey</key>
-    <string>$(NAVER_LOGIN_CLIENT_ID)</string>
-    <key>naverConsumerSecret</key>
-    <string>$(NAVER_LOGIN_CLIENT_SECRET)</string>
-    <key>naverServiceAppName</key>
-    <string>Unimal</string>
-
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <true/>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>naver.com</key>
-            <dict>
-                <key>NSExceptionRequiresForwardSecrecy</key>
-                <false/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-            <key>naver.net</key>
-            <dict>
-                <key>NSExceptionRequiresForwardSecrecy</key>
-                <false/>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-            </dict>
-        </dict>
-    </dict>
 
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

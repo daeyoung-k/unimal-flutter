@@ -1,24 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
-import 'package:flutter_naver_login/flutter_naver_login.dart';
+import 'package:unimal/service/login/naver_login_service.dart';
 
 class NaverButtonWidget extends StatelessWidget {
   const NaverButtonWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final naverLoginService = NaverLoginService();
     return ElevatedButton(
-      onPressed: () async {
-        final res = await FlutterNaverLogin.logIn();
-        // final NaverLoginResult result = await FlutterNaverLogin.logIn();
-        print(res);
-        print(res.errorMessage);
-        // NaverAccessToken res = await FlutterNaverLogin.currentAccessToken;
-        // setState(() {
-        //   accesToken = res.accessToken;
-        //   tokenType = res.tokenType;
-        // });
-      },
+      onPressed: () => naverLoginService.login(),
       style: ElevatedButton.styleFrom(
         backgroundColor: Color(0xFF5BC467),
         maximumSize: Size(320, 60),

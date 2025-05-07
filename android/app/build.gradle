@@ -41,9 +41,6 @@ android {
         // 추가 변수
         manifestPlaceholders["googleMapsApiKey"] = localProperties.getProperty('google.maps.apiKey')
         manifestPlaceholders["kakaoLoginAppKey"] = localProperties.getProperty('kakao.login.appKey')
-
-        // resValue "string", "client_id", localProperties.getProperty('naver.login.client_id') ?: ""
-        // resValue "string", "client_secret", localProperties.getProperty('naver.login.client_secret') ?: ""
     }
 
     buildTypes {
