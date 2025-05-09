@@ -29,8 +29,20 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+                <!-- 카카오 -->
 				<string>kakao$(KAKAO_LOGIN_APP_KEY)</string>
+                <!-- 네이버 -->
 				<string>$(NAVER_LOGIN_IOS_URL_SCHEMA)</string>
+                <!-- 구글 -->
+				<string>com.googleusercontent.apps.$(GOOGLE_LOGIN_IOS_CLIENT_ID)</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.$(GOOGLE_LOGIN_IOS_REVERSED_CLIENT_ID)</string>
 			</array>
 		</dict>
 	</array>
@@ -38,16 +50,13 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
-        <!-- 카카오 -->
 		<string>kakaokompassauth</string>
 		<string>kakaolink</string>
 		<string>kakaoplus</string>
 		<string>kakaotalk</string>
-        <!-- 네이버 -->
-        <string>naversearchapp</string>
-        <string>naversearchthirdlogin</string>
+		<string>naversearchapp</string>
+		<string>naversearchthirdlogin</string>
 	</array>
-
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
