@@ -80,5 +80,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+    <key>GIDClientID</key>
+    <string>$(GOOGLE_LOGIN_IOS_CLIENT_ID)</string>
 </dict>
 </plist>

@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
 
+import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:unimal/state/secure_storage.dart';
 
 class GoogleLoginService {  
   Future<void> login() async {
@@ -18,9 +20,19 @@ class GoogleLoginService {
       var headers = {"Content-Type": "application/json;charset=utf-8"};
       var url = Uri.http('${host}:8080', 'user/auth/login/mobile/google');
       var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(res.body);
       
-      print(res.body);
-      
+      if (bodyData['code'] == 200) {
+          final secureStorage = Get.find<SecureStorage>();
+          secureStorage.write(
+              "accessToken", res.headers['x-unimal-access-token'].toString());
+          secureStorage.write(
+              "refreshToken", res.headers['x-unimal-refresh-token'].toString());
+
+          Get.offAllNamed("/map");
+        } else {
+          print("구글 로그인 실패! ${bodyData['message']}");
+        }      
       
     } catch (error) {
       print("구글 로그인 오류 - ${error.toString()}");

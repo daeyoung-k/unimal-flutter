@@ -7,21 +7,28 @@ import 'package:unimal/screens/profile.dart';
 import 'package:unimal/screens/search.dart';
 
 class RootScreen extends StatefulWidget {
-  const RootScreen({super.key});
+  const RootScreen({super.key, this.selectedIndex = 0});
+
+  final int selectedIndex;
 
   @override
   State<StatefulWidget> createState() => _RootScreen();
 }
 
 class _RootScreen extends State<RootScreen> {
+  late int _selectedIndex;
 
-  int _selectedIndex = 0;
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = widget.selectedIndex;
+  }
 
   final List<Widget> _pages = [
-    MapScreens(),                   // 지도 페이지
-    SearchScreens(),                // 검색 페이지
-    BoardScreens(),                 // 게시판 페이지
-    LoginScreens(),                 // 로그인 페이지    
+    MapScreens(), // 지도 페이지
+    SearchScreens(), // 검색 페이지
+    BoardScreens(), // 게시판 페이지
+    LoginScreens(), // 로그인 페이지
     // ProfileScreens(),               // 프로필 페이지
   ];
 
@@ -43,7 +50,6 @@ class _RootScreen extends State<RootScreen> {
         activeIcon: SvgPicture.asset('assets/icon/svg/user_bold_icon.svg'),
         label: 'My'),
   ];
-
 
   void _onItemTapped(int index) {
     setState(() {
@@ -67,6 +73,5 @@ class _RootScreen extends State<RootScreen> {
         onTap: _onItemTapped,
       ),
     );
-    
   }
 }
