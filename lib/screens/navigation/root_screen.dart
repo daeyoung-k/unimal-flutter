@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:unimal/screens/board.dart';
-import 'package:unimal/screens/login.dart';
 import 'package:unimal/screens/map.dart';
 import 'package:unimal/screens/profile.dart';
 import 'package:unimal/screens/search.dart';

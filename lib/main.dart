@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/login.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
+import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/state_init.dart';
@@ -16,12 +17,12 @@ Future<void> main() async {
   StateInit().stateInit();
 
   final authState = Get.find<AuthState>();
-  final loginChecked = authState.isLoginChecked;
+  final provider = authState.provider;
 
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  runApp(MyApp(loginChecked: loginChecked));
+  runApp(MyApp(loginChecked: provider.value != LoginType.none));
 }
 
 class MyApp extends StatelessWidget {

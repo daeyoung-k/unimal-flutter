@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/secure_storage.dart';
 
 class AuthState extends GetxController {
@@ -6,28 +7,28 @@ class AuthState extends GetxController {
 
     AuthState({required this.secureStorage});
 
-    var provider = ''.obs;
+    var provider = LoginType.none.obs;
     var accessToken = ''.obs;
     var refreshToken = ''.obs;
 
     Future<void> loadTokens() async {
       final access = await secureStorage.getAccessToken();
       final refresh = await secureStorage.getRefreshToken();
-      final providerType = await secureStorage.getProvider();
+      final loginTypeString = await secureStorage.getProvider();
 
       accessToken.value = access ?? '';
       refreshToken.value = refresh ?? '';
-      provider.value = providerType ?? '';
+      provider.value = LoginType.from(loginTypeString ?? "");
     }
 
-    Future<void> setTokens(String access, String refresh, String providerType) async {
+    Future<void> setTokens(String access, String refresh, LoginType loginType) async {
       accessToken.value = access;
       refreshToken.value = refresh;
-      provider.value = providerType;
+      provider.value = loginType;
 
       await secureStorage.saveAccessToken(access);
       await secureStorage.saveRefreshToken(refresh);
-      await secureStorage.saveProvider(providerType);
+      await secureStorage.saveProvider(loginType.name);
     }
 
     Future<void> clearTokens() async {
@@ -37,8 +38,6 @@ class AuthState extends GetxController {
 
       accessToken.value = '';
       refreshToken.value = '';
-      provider.value = '';
+      provider.value = LoginType.none;
     }
-
-    bool get isLoginChecked => accessToken.value.isNotEmpty;
 }

@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk_talk.dart';
 import 'package:http/http.dart' as http;
+import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
 
 class KakaoLoginService {
@@ -29,7 +30,7 @@ class KakaoLoginService {
         authState.setTokens(            
           res.headers['x-unimal-access-token'].toString(),
           res.headers['x-unimal-refresh-token'].toString(),
-          "KAKAO"
+          LoginType.kakao
         );
         Get.offAllNamed("/map");
       } else {

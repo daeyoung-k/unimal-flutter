@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:http/http.dart' as http;
+import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
 
 class NaverLoginService {
@@ -43,7 +44,7 @@ class NaverLoginService {
           authState.setTokens(            
             res.headers['x-unimal-access-token'].toString(),
             res.headers['x-unimal-refresh-token'].toString(),
-            "NAVER"
+            LoginType.naver
           );
           Get.offAllNamed("/map");
         } else {
