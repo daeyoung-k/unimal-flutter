@@ -30,5 +30,15 @@ class AuthState extends GetxController {
       await secureStorage.saveProvider(providerType);
     }
 
+    Future<void> clearTokens() async {
+      await secureStorage.deleteAccessToken();
+      await secureStorage.deleteRefreshToken();
+      await secureStorage.deleteProvider();
+
+      accessToken.value = '';
+      refreshToken.value = '';
+      provider.value = '';
+    }
+
     bool get isLoginChecked => accessToken.value.isNotEmpty;
 }

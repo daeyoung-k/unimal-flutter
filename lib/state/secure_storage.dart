@@ -31,6 +31,10 @@ class SecureStorage {
     return await read('accessToken');
   }
 
+  Future<void> deleteAccessToken() async {
+    await _storage.delete(key: 'accessToken');
+  }
+
   Future<void> saveRefreshToken(String token) async {
     await write('refreshToken', token);
   }
@@ -39,12 +43,20 @@ class SecureStorage {
     return await read('refreshToken');
   }
 
+  Future<void> deleteRefreshToken() async {
+    await _storage.delete(key: 'refreshToken');
+  }
+
   Future<void> saveProvider(String provider) async {
     await write('provider', provider);
   }
 
   Future<String?> getProvider() async {
     return await read('provider');
+  }
+
+  Future<void> deleteProvider() async {
+    await _storage.delete(key: 'provider');
   }
 
 }

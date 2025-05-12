@@ -16,12 +16,12 @@ Future<void> main() async {
   StateInit().stateInit();
 
   final authState = Get.find<AuthState>();
-  authState.isLoginChecked;
+  final loginChecked = authState.isLoginChecked;
 
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  runApp(MyApp(loginChecked: authState.isLoginChecked));
+  runApp(MyApp(loginChecked: loginChecked));
 }
 
 class MyApp extends StatelessWidget {

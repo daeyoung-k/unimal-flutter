@@ -25,11 +25,10 @@ class _RootScreen extends State<RootScreen> {
   }
 
   final List<Widget> _pages = [
-    MapScreens(), // 지도 페이지
-    SearchScreens(), // 검색 페이지
-    BoardScreens(), // 게시판 페이지
-    LoginScreens(), // 로그인 페이지
-    // ProfileScreens(),               // 프로필 페이지
+    MapScreens(),                   // 지도 페이지
+    SearchScreens(),                // 검색 페이지
+    BoardScreens(),                 // 게시판 페이지
+    ProfileScreens(),               // 프로필 페이지
   ];
 
   final List<BottomNavigationBarItem> _icons = [
