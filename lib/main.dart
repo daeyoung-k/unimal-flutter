@@ -33,14 +33,14 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-        getPages: [
-            GetPage(name: '/login', page: () => LoginScreens()),
-            GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
-            GetPage(name: '/search', page: () => RootScreen(selectedIndex: 1)),
-            GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
-            GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
-        ],
-        home: loginChecked ? RootScreen() : LoginScreens(),
+      getPages: [
+        GetPage(name: '/login', page: () => LoginScreens()),
+        GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
+        GetPage(name: '/search', page: () => RootScreen(selectedIndex: 1)),
+        GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
+        GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
+      ],
+      home: loginChecked ? RootScreen() : LoginScreens(),
     );
   }
 }

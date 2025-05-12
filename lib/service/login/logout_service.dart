@@ -35,7 +35,7 @@ class LogoutService {
         break;
     }
 
-    _authState.clearTokens();
+    await _authState.clearTokens();
 
     Get.offAllNamed("/login");
   }

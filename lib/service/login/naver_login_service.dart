@@ -41,7 +41,7 @@ class NaverLoginService {
 
         if (bodyData['code'] == 200) {
           final authState = Get.find<AuthState>();
-          authState.setTokens(            
+          await authState.setTokens(            
             res.headers['x-unimal-access-token'].toString(),
             res.headers['x-unimal-refresh-token'].toString(),
             LoginType.naver
