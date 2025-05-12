@@ -39,4 +39,12 @@ class SecureStorage {
     return await read('refreshToken');
   }
 
+  Future<void> saveProvider(String provider) async {
+    await write('provider', provider);
+  }
+
+  Future<String?> getProvider() async {
+    return await read('provider');
+  }
+
 }

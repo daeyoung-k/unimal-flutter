@@ -1,42 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:kakao_flutter_sdk/kakao_flutter_sdk_common.dart';
-import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/login.dart';
-import 'package:unimal/screens/map.dart';
-import 'package:unimal/state/secure_storage.dart';
+import 'package:unimal/service/login/kakao_login_service.dart';
+import 'package:unimal/service/login/naver_login_service.dart';
+import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
-  await dotenv.load(fileName: ".env");
+  // 카카오 로그인 SDK 초기화
+  KakaoLoginService().kakaoInit();
+  // 네이버 로그인 SDK 초기화
+  NaverLoginService().naverInit();
+  // 상태관리 초기화
+  StateInit().stateInit();
 
-  final kakaoAppKey = dotenv.env['KAKAO_APP_KEY'];
-  KakaoSdk.init(
-    nativeAppKey: kakaoAppKey,
-  );
-
-  final naverLoginIosUrlscheme = dotenv.env['NAVER_LOGIN_IOS_URL_SCHEME']!;
-  final naverLoginClientId = dotenv.env['NAVER_LOGIN_CLIENT_ID']!;
-  final naverLoginClientSecret = dotenv.env['NAVER_LOGIN_CLIENT_SECRET']!;
-  final naverLoginClientName = dotenv.env['NAVER_LOGIN_CLIENT_NAME']!;
-  NaverLoginSDK.initialize(
-      urlScheme: naverLoginIosUrlscheme,
-      clientId: naverLoginClientId,
-      clientSecret: naverLoginClientSecret,
-      clientName: naverLoginClientName);
+  final authState = Get.find<AuthState>();
+  authState.isLoginChecked;
 
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  Get.put(SecureStorage());
-
-  runApp(const MyApp());
+  runApp(MyApp(loginChecked: authState.isLoginChecked));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool loginChecked;
+  const MyApp({super.key, this.loginChecked = false});
 
   // This widget is the root of your application.
   @override
@@ -49,7 +39,7 @@ class MyApp extends StatelessWidget {
             GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
             GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
         ],
-        home: RootScreen(),
+        home: loginChecked ? RootScreen() : LoginScreens(),
     );
   }
 }
