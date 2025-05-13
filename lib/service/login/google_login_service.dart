@@ -4,11 +4,16 @@ import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
+import 'package:logger/logger.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/widget/alert/custom_alert.dart';
 
 class GoogleLoginService {  
+  var logger = Logger();  
+
   Future<void> login() async {
+    final customAlert = CustomAlert(); 
     try {
       var response = await _googleSignIn.signIn();
       var body = jsonEncode({
@@ -32,12 +37,13 @@ class GoogleLoginService {
         );
         Get.offAllNamed("/map");
       } else {
-        print("구글 로그인 실패! ${bodyData['message']}");
+        logger.e("구글 로그인 실패.. code: ${bodyData['code']} message: ${bodyData['message']}");
+        customAlert.showTextAlert("로그인 오류", "구글 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
       }      
       
     } catch (error) {
-      print("구글 로그인 오류 - ${error.toString()}");
-      
+      logger.e("구글 로그인 오류 - ${error.toString()}");
+      customAlert.showTextAlert("로그인 오류", "구글 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");      
     }
   }
 }

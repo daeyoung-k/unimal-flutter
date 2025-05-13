@@ -42,6 +42,7 @@ dependencies:
   http: ^1.3.0                        # http 통신
   get: ^4.7.2                         # 상태관리
   flutter_secure_storage: ^9.2.4      # 로컬저장
+  logger: ^2.5.0                      # 로거
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
