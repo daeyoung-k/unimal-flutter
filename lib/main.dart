@@ -40,7 +40,8 @@ class MyApp extends StatelessWidget {
         GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
         GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
       ],
-      home: loginChecked ? RootScreen() : LoginScreens(),
+    //   home: loginChecked ? RootScreen() : LoginScreens(),
+      home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
     );
   }
 }
