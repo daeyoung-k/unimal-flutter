@@ -14,7 +14,6 @@ class NaverLoginService {
   var logger = Logger();
 
   Future<void> naverInit() async {
-    await dotenv.load(fileName: ".env");
     NaverLoginSDK.initialize(
       urlScheme: dotenv.env['NAVER_LOGIN_IOS_URL_SCHEME']!,
       clientId: dotenv.env['NAVER_LOGIN_CLIENT_ID']!,

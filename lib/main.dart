@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/login.dart';
@@ -9,6 +10,8 @@ import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
+  // 환경변수 로드
+  await dotenv.load(fileName: ".env");
   // 카카오 로그인 SDK 초기화
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화

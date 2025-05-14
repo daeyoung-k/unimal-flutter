@@ -14,7 +14,6 @@ class KakaoLoginService {
   var logger = Logger();  
 
   Future<void> kakaoInit() async {
-    await dotenv.load(fileName: ".env");
     KakaoSdk.init(
       nativeAppKey: dotenv.env['KAKAO_APP_KEY'],
     );
