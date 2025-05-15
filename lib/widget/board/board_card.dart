@@ -11,6 +11,11 @@ class BoardCard extends StatefulWidget {
 }
 
 class _BoardCardState extends State<BoardCard> {
+      final List<String> imageUrls = [
+            "https://play-lh.googleusercontent.com/rKTBYD8ykwgfHN_nFSwUErjQRPGjSEkStsjNQSUvgYGaEURpC2DMR7_1OdPu_dzysErv=w480-h960-rw",
+            "https://placekitten.com/400/300",
+            "https://placekitten.com/410/300"
+        ];
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
@@ -19,31 +24,29 @@ class _BoardCardState extends State<BoardCard> {
       width: screenWidth,      
       child: Column(
         children: [
-          Container(
+          SizedBox(
             height: screenHeight * 0.25,
-            decoration: BoxDecoration(
-              border:  Border.all(color: const Color(0xFFB8BFC8)),
-              image: DecorationImage(
-                
-                image: NetworkImage("https://play-lh.googleusercontent.com/rKTBYD8ykwgfHN_nFSwUErjQRPGjSEkStsjNQSUvgYGaEURpC2DMR7_1OdPu_dzysErv=w480-h960-rw"),
-                fit: BoxFit.fill,
-              ),
-            ),
-          ),
-          Container(
-            height: screenHeight * 0.1,            
-            color: Colors.white,
-          ),
-          Container(
-            height: screenHeight * 0.05,            
-            color: Colors.white,
-            decoration: ShapeDecoration(
-              shape: RoundedRectangleBorder(
-                side: BorderSide(
-                  width: 2,
+            child: PageView.builder(
+                itemCount: imageUrls.length,
+                itemBuilder: (context, index) {
+                    return Container(
+                        decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFFB8BFC8)),
+                            image: DecorationImage(
+                                image: NetworkImage(imageUrls[index]),
+                                fit: BoxFit.fill
+                            ),
+                        ),
+                    );
+                    
+                }
                 ),
-                borderRadius: BorderRadius.circular(16),
-              ),
+            
+          ),
+          SizedBox(
+            height: screenHeight * 0.1,            
+            child: Container(
+                color: Colors.white
             ),
           )
         ],
