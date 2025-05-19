@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/widget/board/indicator.dart';
-import 'package:unimal/widget/board/page_view_image.dart';
 import 'package:unimal/widget/board/photo_arrow.dart';
 
 class BoardCard extends StatefulWidget {
