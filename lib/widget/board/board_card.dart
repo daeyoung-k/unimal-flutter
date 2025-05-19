@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:unimal/widget/arrow/photo_arrow.dart';
 
 class BoardCard extends StatefulWidget {
   const BoardCard({super.key});
@@ -11,36 +12,63 @@ class BoardCard extends StatefulWidget {
 }
 
 class _BoardCardState extends State<BoardCard> {
-      final List<String> imageUrls = [
-            "https://play-lh.googleusercontent.com/rKTBYD8ykwgfHN_nFSwUErjQRPGjSEkStsjNQSUvgYGaEURpC2DMR7_1OdPu_dzysErv=w480-h960-rw",
-            "https://placekitten.com/400/300",
-            "https://placekitten.com/410/300"
-        ];
+  final List<String> imageUrls = [
+      "https://play-lh.googleusercontent.com/rKTBYD8ykwgfHN_nFSwUErjQRPGjSEkStsjNQSUvgYGaEURpC2DMR7_1OdPu_dzysErv=w480-h960-rw",
+      "https://search.pstatic.net/common/?src=http%3A%2F%2Fblogfiles.naver.net%2FMjAyNTAxMDFfMTgz%2FMDAxNzM1NzQyODU3NDUy.aVNDa7g0PLGGmPc4kVSIXWlagMUEqVzSiengkZa78g4g._PD32APBUvDV75GSx3mXowmrIjIqaGWxGvm4sOvy3ngg.JPEG%2FIMG_1553.JPG&type=sc960_832",
+      "https://search.pstatic.net/common/?src=http%3A%2F%2Fblogfiles.naver.net%2FMjAyMTA1MjBfMjcy%2FMDAxNjIxNTIwNjQ3NjQy.aOBFYTd9GLD_C5KXLVN4EGRUrUKhQIl8Rg46oo15RGgg.RH2tVY4NMuR9l90ucuyGx3kh5_KOQROzHze9akTGIG0g.JPEG.hjincity%2FIMG_0478.JPG&type=sc960_832"
+  ];
+  final PageController _pageController = PageController();
+  int _currentPage = 0;
+
+  @override 
+  void dispose() {
+      _pageController.dispose();
+      super.dispose();
+  }
+
+        
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
+
+
+
     return SizedBox(
-      width: screenWidth,      
+      width: screenWidth * 0.98,      
       child: Column(
         children: [
           SizedBox(
             height: screenHeight * 0.25,
-            child: PageView.builder(
-                itemCount: imageUrls.length,
-                itemBuilder: (context, index) {
-                    return Container(
-                        decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFFB8BFC8)),
-                            image: DecorationImage(
-                                image: NetworkImage(imageUrls[index]),
-                                fit: BoxFit.fill
-                            ),
-                        ),
-                    );
-                    
-                }
+            child: Stack(
+              children: [
+                PageView.builder(
+                  controller: _pageController,
+                  itemCount: imageUrls.length,
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentPage = index;
+                    });
+                  },
+                  itemBuilder: (context, index) {
+                      return ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                              decoration: BoxDecoration(
+                                  border: Border.all(color: const Color(0xFFB8BFC8)),
+                                  image: DecorationImage(
+                                      image: NetworkImage(imageUrls[index]),
+                                      fit: BoxFit.fill
+                                  ),
+                              ),
+                          ),
+                      );
+                  }
                 ),
+                if (_currentPage > 0) PhotoArrow(pageController: _pageController, direction: "previous"),
+                if (_currentPage < imageUrls.length - 1) PhotoArrow(pageController: _pageController, direction: "next"),              
+              ],
+            ),
             
           ),
           SizedBox(
@@ -51,162 +79,7 @@ class _BoardCardState extends State<BoardCard> {
           )
         ],
       )
-    )
-    
-    
-    // Center(
-    //     child: Column(
-    //     children: [
-    //       Container(
-    //         width: screenWidth,
-    //         decoration: BoxDecoration(
-    //           // boxShadow: [
-    //           //   BoxShadow(
-    //           //     color: Color(0x3F000000),
-    //           //     blurRadius: 4,
-    //           //     offset: Offset(0, 4),
-    //           //     spreadRadius: 0,
-    //           //   )
-    //           // ],
-    //         ),
-    //         child: Column(
-    //           mainAxisSize: MainAxisSize.min,
-    //           mainAxisAlignment: MainAxisAlignment.start,
-    //           crossAxisAlignment: CrossAxisAlignment.start,
-    //           children: [
-                
-    //             Container(
-    //               width: screenWidth * 0.9,
-    //               height: 348,
-    //               decoration: BoxDecoration(
-    //                 image: DecorationImage(
-    //                   image: NetworkImage("https://play-lh.googleusercontent.com/rKTBYD8ykwgfHN_nFSwUErjQRPGjSEkStsjNQSUvgYGaEURpC2DMR7_1OdPu_dzysErv=w480-h960-rw"),
-    //                   fit: BoxFit.cover,
-    //                 ),
-    //               ),
-    //             ),
-    //             Container(
-    //               width: double.infinity,
-    //               height: 96,
-    //               decoration: ShapeDecoration(
-    //                 color: Colors.white,
-    //                 shape: RoundedRectangleBorder(
-    //                   borderRadius: BorderRadius.only(
-    //                     bottomLeft: Radius.circular(15),
-    //                     bottomRight: Radius.circular(15),
-    //                   ),
-    //                 ),
-    //               ),
-    //               child: Stack(
-    //                 children: [
-    //                   Positioned(
-    //                     left: 62,
-    //                     top: 70,
-    //                     child: SizedBox(
-    //                       width: 236.89,
-    //                       child: Row(
-    //                         mainAxisSize: MainAxisSize.min,
-    //                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    //                         crossAxisAlignment: CrossAxisAlignment.center,
-    //                         spacing: 124,
-    //                         children: [
-    //                           SizedBox(
-    //                             width: 39.16,
-    //                             child: Text(
-    //                               '좋아요',
-    //                               style: TextStyle(
-    //                                 color: Colors.black,
-    //                                 fontSize: 12,
-    //                                 fontFamily: 'Poppins',
-    //                                 fontWeight: FontWeight.w500,
-    //                               ),
-    //                             ),
-    //                           ),
-    //                           SizedBox(width: 20, height: 20, child: Stack()),
-    //                           SizedBox(
-    //                             width: 26.11,
-    //                             child: Text(
-    //                               '댓글',
-    //                               style: TextStyle(
-    //                                 color: Colors.black,
-    //                                 fontSize: 12,
-    //                                 fontFamily: 'Poppins',
-    //                                 fontWeight: FontWeight.w500,
-    //                               ),
-    //                             ),
-    //                           ),
-    //                           Container(width: 20, height: 20, child: Stack()),
-    //                         ],
-    //                       ),
-    //                     ),
-    //                   ),
-    //                   Positioned(
-    //                     left: 20,
-    //                     top: 5,
-    //                     child: Container(
-    //                       width: 125,
-    //                       child: Column(
-    //                         mainAxisSize: MainAxisSize.min,
-    //                         mainAxisAlignment: MainAxisAlignment.start,
-    //                         crossAxisAlignment: CrossAxisAlignment.start,
-    //                         children: [
-    //                           SizedBox(
-    //                             width: 125,
-    //                             child: Text(
-    //                               '식빵굽는다',
-    //                               style: TextStyle(
-    //                                 color: Colors.black,
-    //                                 fontSize: 17,
-    //                                 fontFamily: 'Poppins',
-    //                                 fontWeight: FontWeight.w800,
-    //                               ),
-    //                             ),
-    //                           ),
-    //                           Text(
-    //                             '#고양이',
-    //                             style: TextStyle(
-    //                               color: const Color(0xFFB8BFC8),
-    //                               fontSize: 10,
-    //                               fontFamily: 'Poppins',
-    //                               fontWeight: FontWeight.w400,
-    //                             ),
-    //                           ),
-    //                           Text(
-    //                             '#미세',
-    //                             style: TextStyle(
-    //                               color: const Color(0xFFB8BFC8),
-    //                               fontSize: 10,
-    //                               fontFamily: 'Poppins',
-    //                               fontWeight: FontWeight.w400,
-    //                             ),
-    //                           ),
-    //                           SizedBox(
-    //                             width: 125,
-    //                             child: Text(
-    //                               '서울 광진구 아차산로 55길 81',
-    //                               style: TextStyle(
-    //                                 color: const Color(0xFF757575),
-    //                                 fontSize: 10,
-    //                                 fontFamily: 'Poppins',
-    //                                 fontWeight: FontWeight.w400,
-    //                                 height: 1.60,
-    //                               ),
-    //                             ),
-    //                           ),
-    //                         ],
-    //                       ),
-    //                     ),
-    //                   ),
-    //                 ],
-    //               ),
-    //             ),
-    //           ],
-    //         ),
-    //       ),
-    //     ],
-    //   ),
-    // )
-    ;
+    );
   }
 
 }

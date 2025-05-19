@@ -3,6 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/login.dart';
+import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -36,13 +37,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
-      getPages: [
-        GetPage(name: '/login', page: () => LoginScreens()),
-        GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
-        GetPage(name: '/search', page: () => RootScreen(selectedIndex: 1)),
-        GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
-        GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
-      ],
+      getPages: AppRoutes().pages(),
     //   home: loginChecked ? RootScreen() : LoginScreens(),
       home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
     );
