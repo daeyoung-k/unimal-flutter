@@ -99,6 +99,21 @@ flutter:
           weight: 300
         - asset: assets/fonts/Gilroy-ExtraBold.otf
           weight: 800
+    - family: Instagram
+      fonts:
+        - asset: assets/fonts/Instagram-Sans.ttf
+          weight: 400
+        - asset: assets/fonts/InstagramSansHeadline-Regular.ttf
+          weight: 500
+        - asset: assets/fonts/InstagramSans-Light.ttf
+          weight: 600
+        - asset: assets/fonts/Instagram-Sans-Medium.ttf
+          weight: 700
+        - asset: assets/fonts/Instagram-Sans-Bold.ttf
+          weight: 800
+    # - family: InstagramSans
+    #   fonts:
+    #     - asset: assets/fonts/InstagramSans-Regular.ttf
   #       - asset: fonts/Schyler-Italic.ttf
   #         style: italic
   #   - family: Trajan Pro

@@ -36,7 +36,7 @@ class _BoardScreensState extends State<BoardScreens> {
             ),
             Padding(padding: EdgeInsets.only(top: 10)),
             if (!_isSearchFocused) ...[
-              BoardCard()
+              BoardCard(),
             ]
           ],
         ))),

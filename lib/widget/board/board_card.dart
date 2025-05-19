@@ -33,12 +33,51 @@ class _BoardCardState extends State<BoardCard> {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
 
+    final String content = 'Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! '
+    '지금 근처에 있는 동물들을 찾아보세요! 🐶🐱 아주 많은 이야기들이 있습니다~!! 🐾';
+
     return SizedBox(
       width: screenWidth * 0.98,      
       child: Column(
         children: [
           SizedBox(
-            height: screenHeight * 0.25,
+            height: screenHeight * 0.06,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundImage: NetworkImage('https://i.pravatar.cc/300'),
+                  ),
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text(
+                        '닉네임',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const Text(
+                        '위치',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  )
+                ],
+              ),
+            ),
+          ),
+          SizedBox(
+            height: screenHeight * 0.4,
             child: Stack(
               children: [
                 PageView.builder(
@@ -71,10 +110,36 @@ class _BoardCardState extends State<BoardCard> {
             ),
             
           ),
-          SizedBox(
-            height: screenHeight * 0.1,            
-            child: Container(
-                color: Colors.white
+          Container(
+            width: double.infinity,
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.favorite_border, size: 22),
+                    SizedBox(width: 2),
+                    Text("19999"),
+                    SizedBox(width: 16),
+                    Icon(Icons.chat_bubble_outline, size: 22),
+                    SizedBox(width: 2),
+                    Text("19999"),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  content,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Instagram',
+                      fontWeight: FontWeight.w500
+                    ),
+                ),
+              ],
             ),
           )
         ],
