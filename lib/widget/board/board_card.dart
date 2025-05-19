@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/widget/arrow/photo_arrow.dart';
+import 'package:unimal/widget/board/indicator.dart';
+import 'package:unimal/widget/board/page_view_image.dart';
+import 'package:unimal/widget/board/photo_arrow.dart';
 
 class BoardCard extends StatefulWidget {
   const BoardCard({super.key});
@@ -31,8 +33,6 @@ class _BoardCardState extends State<BoardCard> {
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
-
-
 
     return SizedBox(
       width: screenWidth * 0.98,      
@@ -66,7 +66,8 @@ class _BoardCardState extends State<BoardCard> {
                   }
                 ),
                 if (_currentPage > 0) PhotoArrow(pageController: _pageController, direction: "previous"),
-                if (_currentPage < imageUrls.length - 1) PhotoArrow(pageController: _pageController, direction: "next"),              
+                if (_currentPage < imageUrls.length - 1) PhotoArrow(pageController: _pageController, direction: "next"),
+                Indicator(images: imageUrls, currentPage: _currentPage,),      
               ],
             ),
             
