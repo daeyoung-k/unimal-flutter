@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:unimal/widget/board/board_card_content.dart';
 import 'package:unimal/widget/board/indicator.dart';
 import 'package:unimal/widget/board/photo_arrow.dart';
 
@@ -110,38 +111,7 @@ class _BoardCardState extends State<BoardCard> {
             ),
             
           ),
-          Container(
-            width: double.infinity,
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.favorite_border, size: 22),
-                    SizedBox(width: 2),
-                    Text("19999"),
-                    SizedBox(width: 16),
-                    Icon(Icons.chat_bubble_outline, size: 22),
-                    SizedBox(width: 2),
-                    Text("19999"),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  content,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 14,
-                      fontFamily: 'Instagram',
-                      fontWeight: FontWeight.w500
-                    ),
-                ),
-              ],
-            ),
-          )
+          BoardCardContent(content: content),
         ],
       )
     );
