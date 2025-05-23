@@ -8,10 +8,10 @@ class MapScreens extends StatefulWidget {
   const MapScreens({super.key});
 
   @override
-  State<MapScreens> createState() => MapSampleState();
+  State<MapScreens> createState() => MapStateScreens();
 }
 
-class MapSampleState extends State<MapScreens> {
+class MapStateScreens extends State<MapScreens> {
   late GoogleMapController mapController;
 
   final LatLng _center = const LatLng(37.540972, 127.086811);
@@ -28,13 +28,14 @@ class MapSampleState extends State<MapScreens> {
           backgroundColor: const Color(0xFFFEF7FF),
         ),
         body: GoogleMap(
-          cloudMapId: Platform.isIOS ? dotenv.env["MAP_STYLE_IOS_ID"] : dotenv.env["MAP_STYLE_ANDROID_ID"],
+          cloudMapId: Platform.isIOS
+              ? dotenv.env["MAP_STYLE_IOS_ID"]
+              : dotenv.env["MAP_STYLE_ANDROID_ID"],
           onMapCreated: _onMapCreated,
           initialCameraPosition: CameraPosition(
             target: _center,
             zoom: 14.0,
           ),
-        )
-      );
+        ));
   }
 }

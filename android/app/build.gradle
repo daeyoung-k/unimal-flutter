@@ -13,8 +13,6 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def googleMapsApiKey = localProperties.getProperty('google.maps.apiKey')
-
 android {
     namespace = "com.unimal.android"
     compileSdk = flutter.compileSdkVersion
@@ -41,7 +39,8 @@ android {
         versionName = flutter.versionName
 
         // 추가 변수
-        manifestPlaceholders["googleMapsApiKey"] = googleMapsApiKey
+        manifestPlaceholders["googleMapsApiKey"] = localProperties.getProperty('google.maps.apiKey')
+        manifestPlaceholders["kakaoLoginAppKey"] = localProperties.getProperty('kakao.login.appKey')
     }
 
     buildTypes {

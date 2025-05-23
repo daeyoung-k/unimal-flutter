@@ -1,36 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:kakao_flutter_sdk/kakao_flutter_sdk_talk.dart';
 import 'package:unimal/icon/custom_icon_icons.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:unimal/service/login/kakao_login_service.dart';
 
 class KakaoButtonWidget extends StatelessWidget {
   const KakaoButtonWidget({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final kakaoLoginService = KakaoLoginService();
     return ElevatedButton(
-      onPressed: () async {
-        try {
-          OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-          var url = Uri.http('localhost:8080', 'user/auth/login/mobile/kakao');
-          var headers = {"Authorization": "Bearer ${token.accessToken}"};
-          var response = await http.get(url, headers: headers);
-          var body = jsonDecode(response.body);
-
-          print(url);
-
-          if (body['code'] == 200) {
-            print("카카오 로그인 성공");
-            print(response.headers);
-            print(body);
-          } else {
-            print("카카오 로그인 실패 ${body['message']}");
-          }
-        } catch (error) {
-          print('카카오톡으로 로그인 실패 $error');
-        }
-      },
+      onPressed: () => kakaoLoginService.login(),
       style: ElevatedButton.styleFrom(
         backgroundColor: Color(0xFFFBE750), // 카카오 옐로우
         maximumSize: Size(320, 60),
