@@ -14,7 +14,7 @@ class AppRoutes {
     return [
       GetPage(name: '/login', page: () => LoginScreens()),
       GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
-      GetPage(name: '/search', page: () => RootScreen(selectedIndex: 1)),
+      GetPage(name: '/add', page: () => RootScreen(selectedIndex: 1)),
       GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
       GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
     ];
@@ -32,9 +32,9 @@ class AppRoutes {
     {
       "page": SearchScreens(),
       "bottomNavigationIcon": BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/search_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/search_bold_icon.svg'),
-        label: '검색')
+        icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
+        activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
+        label: '글쓰기')
     },
     {
       "page": BoardScreens(),

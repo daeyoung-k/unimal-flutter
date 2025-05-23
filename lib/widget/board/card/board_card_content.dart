@@ -6,8 +6,9 @@ class BoardCardContent extends StatelessWidget {
   final String content;
   final String? likeCount;
   final String? commentCount;
+  final int maxLine;
   final VoidCallback? onTap;
-  const BoardCardContent({super.key, required this.content, this.likeCount = "0", this.commentCount = "0", this.onTap});
+  const BoardCardContent({super.key, required this.content, this.likeCount = "0", this.commentCount = "0", required this.maxLine, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +31,7 @@ class BoardCardContent extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             content,
-            maxLines: 2,
+            maxLines: maxLine,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 fontSize: 14,
