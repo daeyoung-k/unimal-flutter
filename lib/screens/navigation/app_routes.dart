@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/add_item.dart';
 import 'package:unimal/screens/board.dart';
 import 'package:unimal/screens/login.dart';
 import 'package:unimal/screens/map.dart';
@@ -30,7 +31,7 @@ class AppRoutes {
         label: '지도')
     },
     {
-      "page": SearchScreens(),
+      "page": AddItemScreens(),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
