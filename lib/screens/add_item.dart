@@ -80,15 +80,17 @@ class _AddItemScreensState extends State<AddItemScreens> {
                         children: [
                           ListTile(
                             leading: const Icon(Icons.photo_library),
-                            title: const Text('갤러리에서 선택'),
+                            title: const Text('사진첩'),
                             onTap: () {
                               Navigator.pop(context);
                               _getImage(ImageSource.gallery);
+                              print(_currentPosition?.latitude);
+                              print(_currentPosition?.longitude);
                             },
                           ),
                           ListTile(
                             leading: const Icon(Icons.camera_alt),
-                            title: const Text('카메라로 촬영'),
+                            title: const Text('카메라'),
                             onTap: () {
                               Navigator.pop(context);
                               _getImage(ImageSource.camera);

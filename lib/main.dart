@@ -39,7 +39,7 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
     //   home: loginChecked ? RootScreen() : LoginScreens(),
-      home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
+      home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 1),
     );
   }
 }
