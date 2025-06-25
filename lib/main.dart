@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
+import 'package:unimal/screens/signup.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -38,7 +39,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-      home: loginChecked ? RootScreen() : LoginScreens(),
+      home: loginChecked ? RootScreen() : SignupScreens(),
     //   home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 1),
     );
   }
