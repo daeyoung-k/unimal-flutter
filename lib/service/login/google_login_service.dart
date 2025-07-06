@@ -33,7 +33,8 @@ class GoogleLoginService {
         await authState.setTokens(            
           res.headers['x-unimal-access-token'].toString(),
           res.headers['x-unimal-refresh-token'].toString(),
-          LoginType.google
+          res.headers['x-unimal-email'].toString(),
+          LoginType.google,
         );
         Get.offAllNamed("/map");
       } else {

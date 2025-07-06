@@ -5,6 +5,8 @@ import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/widget/login/google_button.dart';
 import 'package:unimal/widget/login/kakao_button.dart';
 import 'package:unimal/widget/login/naver_button.dart';
+import 'package:unimal/widget/login/manual_button.dart';
+import 'package:unimal/widget/login/manual_login_form.dart';
 
 class LoginScreens extends StatefulWidget {
   const LoginScreens({super.key});
@@ -15,8 +17,6 @@ class LoginScreens extends StatefulWidget {
 
 class LoginStateScreens extends State<LoginScreens> {
   bool _showEmailLogin = false;
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
 
   _loginCheckAndRedirect() async {
     final authState = Get.find<AuthState>();
@@ -84,112 +84,21 @@ class LoginStateScreens extends State<LoginScreens> {
               ),
               Container(
                 margin: EdgeInsets.only(bottom: 15),
-                child: SizedBox(
-                  width: 300,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _showEmailLogin = true;
-                      });
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF4D91FF),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      '이메일로 로그인',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                child: ManualButtonWidget(
+                  onPressed: () {
+                    setState(() {
+                      _showEmailLogin = true;
+                    });
+                  },
                 ),
               ),
             ] else ...[
-              Container(
-                margin: EdgeInsets.only(bottom: 15),
-                width: 300,
-                child: TextField(
-                  controller: _emailController,
-                  decoration: InputDecoration(
-                    hintText: '이메일',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                ),
-              ),
-              Container(
-                margin: EdgeInsets.only(bottom: 15),
-                width: 300,
-                child: TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: '비밀번호',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                ),
-              ),
-              Container(
-                margin: EdgeInsets.only(bottom: 15),
-                child: SizedBox(
-                  width: 300,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      // 이메일 로그인 로직
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF4D91FF),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      '로그인',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Container(
-                margin: EdgeInsets.only(bottom: 15),
-                child: TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showEmailLogin = false;
-                    });
-                  },
-                  child: const Text(
-                    '소셜 로그인으로 돌아가기',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
+              ManualLoginFormWidget(
+                onBackPressed: () {
+                  setState(() {
+                    _showEmailLogin = false;
+                  });
+                },
               ),
             ],
           ],

@@ -34,7 +34,8 @@ class KakaoLoginService {
         await authState.setTokens(            
           res.headers['x-unimal-access-token'].toString(),
           res.headers['x-unimal-refresh-token'].toString(),
-          LoginType.kakao
+          res.headers['x-unimal-email'].toString(),
+          LoginType.kakao,
         );
         Get.offAllNamed("/map");
       } else {

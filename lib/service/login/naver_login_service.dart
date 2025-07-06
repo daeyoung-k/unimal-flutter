@@ -48,7 +48,8 @@ class NaverLoginService {
           await authState.setTokens(            
             res.headers['x-unimal-access-token'].toString(),
             res.headers['x-unimal-refresh-token'].toString(),
-            LoginType.naver
+            res.headers['x-unimal-email'].toString(),
+            LoginType.naver,
           );
           Get.offAllNamed("/map");
         } else {
