@@ -25,9 +25,12 @@ class KakaoLoginService {
       OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
       var host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
       var url = Uri.http('${host}:8080', 'user/auth/login/mobile/kakao');
-      var headers = {"Authorization": "Bearer ${token.accessToken}"};
+      var headers = {
+        "Authorization": "Bearer ${token.accessToken}",
+        "Content-Type": "application/json; charset=utf-8",
+      };
       var res = await http.get(url, headers: headers);
-      var bodyData = jsonDecode(res.body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
 
       if (bodyData['code'] == 200) {
         final authState = Get.find<AuthState>();
@@ -38,6 +41,13 @@ class KakaoLoginService {
           LoginType.kakao,
         );
         Get.offAllNamed("/map");
+      } else if (bodyData['code'] == 1009) {
+        print(bodyData);
+        // 번호 인증 페이지로 이동
+        Get.toNamed("/phone-verification", arguments: {
+          'loginType': LoginType.kakao,
+          'email': bodyData["data"],
+        });
       } else {
         logger.e("카카오 로그인 실패.. code: ${bodyData['code']} message: ${bodyData['message']}");
         customAlert.showTextAlert("로그인 오류", "카카오 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");

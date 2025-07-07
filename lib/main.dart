@@ -39,9 +39,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-    //   home: loginChecked ? RootScreen() : SignupScreens(),
+      //   home: loginChecked ? RootScreen() : SignupScreens(),
       home: loginChecked ? RootScreen() : LoginScreens(),
-    //   home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 1),
+      //   home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 1),
     );
   }
 }

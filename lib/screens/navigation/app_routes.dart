@@ -7,6 +7,7 @@ import 'package:unimal/screens/board.dart';
 import 'package:unimal/screens/login.dart';
 import 'package:unimal/screens/map.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
+import 'package:unimal/screens/phone_verification.dart';
 import 'package:unimal/screens/profile.dart';
 import 'package:unimal/screens/search.dart';
 
@@ -18,6 +19,7 @@ class AppRoutes {
       GetPage(name: '/add', page: () => RootScreen(selectedIndex: 1)),
       GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
       GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
+      GetPage(name: '/phone-verification', page: () => PhoneVerificationScreen()),
     ];
   }
 
