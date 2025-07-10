@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -17,7 +18,14 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   final CustomAlert _customAlert = CustomAlert();
   
   bool _isVerificationSent = false;
-  bool _isLoading = false;
+  bool _isSendLoading = false;
+  bool _isVerifyLoading = false;
+  String _sendCodeText = "인증번호 전송";
+  
+  // 타이머 관련 변수
+  Timer? _timer;
+  int _remainingSeconds = 300; // 5분 = 300초
+  bool _isTimerRunning = false;
   
   LoginType? _loginType;
   String? _email;
@@ -37,7 +45,38 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   void dispose() {
     _phoneController.dispose();
     _verificationCodeController.dispose();
+    _timer?.cancel();
     super.dispose();
+  }
+
+  // 타이머 시작
+  void _startTimer() {
+    _remainingSeconds = 300; // 5분으로 리셋
+    _isTimerRunning = true;
+    
+    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      setState(() {
+        if (_remainingSeconds > 0) {
+          _remainingSeconds--;
+        } else {
+          _isTimerRunning = false;
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  // 타이머 정지
+  void _stopTimer() {
+    _timer?.cancel();
+    _isTimerRunning = false;
+  }
+
+  // 남은 시간을 MM:SS 형식으로 변환
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   // 전화번호 형식 검증
@@ -53,7 +92,8 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     }
 
     setState(() {
-      _isLoading = true;
+      _sendCodeText = "재전송";
+      _isSendLoading = true;
     });
 
     try {
@@ -62,13 +102,14 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       
       setState(() {
         _isVerificationSent = true;
-        _isLoading = false;
+        _isSendLoading = false;
       });
       
+      _startTimer(); // 타이머 시작
       _customAlert.showTextAlert("인증번호 전송", "인증번호가 전송되었습니다.");
     } catch (error) {
       setState(() {
-        _isLoading = false;
+        _isSendLoading = false;
       });
       _customAlert.showTextAlert("전송 실패", "인증번호 전송에 실패했습니다.\n다시 시도해주세요.");
     }
@@ -81,8 +122,13 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       return;
     }
 
+    if (_verificationCodeController.text.length != 6) {
+      _customAlert.showTextAlert("입력 오류", "인증번호는 6자리로 입력해주세요.");
+      return;
+    }
+
     setState(() {
-      _isLoading = true;
+      _isVerifyLoading = true;
     });
 
     try {
@@ -94,7 +140,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       
     } catch (error) {
       setState(() {
-        _isLoading = false;
+        _isVerifyLoading = false;
       });
       _customAlert.showTextAlert("인증 실패", "인증번호가 올바르지 않습니다.\n다시 확인해주세요.");
     }
@@ -125,11 +171,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
           onPressed: () => Get.back(),
         ),
         title: Text(
-          '전화번호 인증',
+          '회원가입',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
+            fontSize: 20,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
@@ -159,119 +206,136 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
               SizedBox(height: 40),
               
               // 전화번호 입력
-              Container(
-                width: double.infinity,
-                child: TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(11),
-                  ],
-                  decoration: InputDecoration(
-                    hintText: '전화번호 (예: 01012345678)',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                ),
-              ),
-              SizedBox(height: 15),
-              
-              // 인증번호 전송 버튼
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _isLoading ? null : _sendVerificationCode,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF4D91FF),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: _isLoading
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4D91FF)),
-                          ),
-                        )
-                      : Text(
-                          '인증번호 전송',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _phoneController,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(11),
+                      ],
+                      decoration: InputDecoration(
+                        hintText: '전화번호',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
                         ),
-                ),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  SizedBox(
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: _isSendLoading ? null : _sendVerificationCode,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: const Color(0xFF4D91FF),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: _isSendLoading
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4D91FF)),
+                              ),
+                            )
+                          : Text(
+                              _sendCodeText,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
               ),
+              SizedBox(height: 5),
               
               if (_isVerificationSent) ...[
-                SizedBox(height: 30),
-                Container(
-                  width: double.infinity,
-                  child: TextField(
-                    controller: _verificationCodeController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
-                    ],
-                    decoration: InputDecoration(
-                      hintText: '인증번호 6자리',
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
+                SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _verificationCodeController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(6),
+                        ],
+                        decoration: InputDecoration(
+                          hintText: '인증번호 6자리',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          suffixIcon: _isTimerRunning
+                              ? Align(
+                                  child: Text(
+                                    _formatTime(_remainingSeconds),
+                                    style: TextStyle(
+                                      color: Color(0xFF4D91FF),
+                                      fontSize: 14,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
                       ),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),
-                  ),
+                    SizedBox(width: 10),
+                    SizedBox(
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: (_isVerifyLoading || !_isTimerRunning) ? null : _verifyCode,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isTimerRunning ? Colors.white : Colors.grey[300],
+                          foregroundColor: _isTimerRunning ? Color(0xFF4D91FF) : Colors.grey[600],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: _isVerifyLoading
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF4D91FF)),
+                                ),
+                              )
+                            : Text(
+                                '인증하기',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
                 SizedBox(height: 15),
-                
-                // 인증번호 확인 버튼
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _verifyCode,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF4D91FF),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isLoading
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4D91FF)),
-                            ),
-                          )
-                        : Text(
-                            '인증번호 확인',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                  ),
-                ),
               ],
             ],
           ),
