@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
@@ -20,9 +21,9 @@ class ManualLoginService {
     });
 
     try {
-      var host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
+      var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
       var headers = {"Content-Type": "application/json;charset=utf-8"};
-      var url = Uri.http('${host}:8080', 'user/auth/login/manual');
+      var url = Uri.http(host.toString(), 'user/auth/login/manual');
       var res = await http.post(url, headers: headers, body: body);
 
       var bodyData = jsonDecode(res.body);

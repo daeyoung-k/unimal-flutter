@@ -2,20 +2,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:unimal/service/auth/tel_authentication_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/widget/alert/custom_alert.dart';
 
-class PhoneVerificationScreen extends StatefulWidget {
-  const PhoneVerificationScreen({super.key});
+class TelVerificationScreen extends StatefulWidget {
+  const TelVerificationScreen({super.key});
 
   @override
-  State<PhoneVerificationScreen> createState() => _PhoneVerificationScreenState();
+  State<TelVerificationScreen> createState() => _PhoneVerificationScreenState();
 }
 
-class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
-  final TextEditingController _phoneController = TextEditingController();
+class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
+  final TextEditingController _telController = TextEditingController();
   final TextEditingController _verificationCodeController = TextEditingController();
   final CustomAlert _customAlert = CustomAlert();
+  final TelAuthenticationService _telAuthenticationService = TelAuthenticationService();
   
   bool _isVerificationSent = false;
   bool _isSendLoading = false;
@@ -43,7 +45,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _telController.dispose();
     _verificationCodeController.dispose();
     _timer?.cancel();
     super.dispose();
@@ -86,7 +88,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
 
   // 인증번호 전송
   Future<void> _sendVerificationCode() async {
-    if (!_isValidPhoneNumber(_phoneController.text)) {
+    if (!_isValidPhoneNumber(_telController.text)) {
       _customAlert.showTextAlert("입력 오류", "올바른 전화번호 형식을 입력해주세요.\n예: 01012345678");
       return;
     }
@@ -97,21 +99,26 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     });
 
     try {
-      // TODO: 실제 인증번호 전송 API 호출
-      await Future.delayed(Duration(seconds: 2)); // 임시 딜레이
-      
-      setState(() {
-        _isVerificationSent = true;
-        _isSendLoading = false;
-      });
-      
-      _startTimer(); // 타이머 시작
-      _customAlert.showTextAlert("인증번호 전송", "인증번호가 전송되었습니다.");
+      var authCodeSendCheck = await _telAuthenticationService.sendVerificationCode(_telController.text);      
+      if (authCodeSendCheck) {
+        setState(() {
+          _isVerificationSent = true;
+          _isSendLoading = false;
+        });
+        
+        _startTimer(); // 타이머 시작
+        _customAlert.showTextAlert("인증번호 전송", "인증번호가 전송되었습니다.");
+      } else {
+        setState(() {
+          _isSendLoading = false;
+        });
+        _customAlert.showTextAlert("전송 실패", "인증번호 전송에 실패했습니다.\n잠시후 다시 시도해주세요.");
+      }
     } catch (error) {
       setState(() {
         _isSendLoading = false;
       });
-      _customAlert.showTextAlert("전송 실패", "인증번호 전송에 실패했습니다.\n다시 시도해주세요.");
+      _customAlert.showTextAlert("전송 실패", "인증번호 전송에 실패했습니다.\n잠시후 다시 시도해주세요.");
     }
   }
 
@@ -166,6 +173,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Get.back(),
@@ -192,15 +200,18 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 24,
-                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               SizedBox(height: 10),
               Text(
-                '안전한 서비스 이용을 위해\n전화번호 인증을 진행해주세요.',
+                '유니멀 서비스 이용을 위해\n전화번호 인증을 진행해주세요.',
                 style: TextStyle(
-                  color: Colors.white70,
+                  color: Colors.white,
                   fontSize: 16,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w300,
                 ),
               ),
               SizedBox(height: 40),
@@ -210,7 +221,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _phoneController,
+                      controller: _telController,
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
@@ -265,7 +276,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
               SizedBox(height: 5),
               
               if (_isVerificationSent) ...[
-                SizedBox(height: 10),
+                SizedBox(height: 15),
                 Row(
                   children: [
                     Expanded(
@@ -284,19 +295,20 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          suffixIcon: _isTimerRunning
-                              ? Align(
-                                  child: Text(
-                                    _formatTime(_remainingSeconds),
-                                    style: TextStyle(
-                                      color: Color(0xFF4D91FF),
-                                      fontSize: 14,
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                )
+                        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        suffix: _isTimerRunning
+                            ? Padding(
+                                padding: EdgeInsets.only(right: 12),
+                                child: Text(
+                                _formatTime(_remainingSeconds),
+                                style: TextStyle(
+                                    color: Color(0xFF4D91FF),
+                                    fontSize: 14,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w600,
+                                ),
+                                ),
+                            )
                               : null,
                         ),
                       ),

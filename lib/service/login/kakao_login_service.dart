@@ -23,8 +23,8 @@ class KakaoLoginService {
     final customAlert = CustomAlert();  
     try {
       OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-      var host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
-      var url = Uri.http('${host}:8080', 'user/auth/login/mobile/kakao');
+      var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
+      var url = Uri.http(host.toString(), 'user/auth/login/mobile/kakao');
       var headers = {
         "Authorization": "Bearer ${token.accessToken}",
         "Content-Type": "application/json; charset=utf-8",
@@ -42,9 +42,8 @@ class KakaoLoginService {
         );
         Get.offAllNamed("/map");
       } else if (bodyData['code'] == 1009) {
-        print(bodyData);
         // 번호 인증 페이지로 이동
-        Get.toNamed("/phone-verification", arguments: {
+        Get.toNamed("/tel-verification", arguments: {
           'loginType': LoginType.kakao,
           'email': bodyData["data"],
         });

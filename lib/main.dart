@@ -13,7 +13,8 @@ import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
   // 환경변수 로드
-  await dotenv.load(fileName: ".env");
+  const environment = String.fromEnvironment('ENV', defaultValue: 'local');
+  await dotenv.load(fileName: ".env.$environment");
   // 카카오 로그인 SDK 초기화
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화
