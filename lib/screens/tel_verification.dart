@@ -17,7 +17,7 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
   final TextEditingController _telController = TextEditingController();
   final TextEditingController _verificationCodeController = TextEditingController();
   final CustomAlert _customAlert = CustomAlert();
-  final TelAuthenticationService _telAuthenticationService = TelAuthenticationService();
+  final AuthenticationCodeService _telAuthenticationService = AuthenticationCodeService();
   
   bool _isVerificationSent = false;
   bool _isSendLoading = false;
@@ -29,8 +29,9 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
   int _remainingSeconds = 300; // 5분 = 300초
   bool _isTimerRunning = false;
   
-  LoginType? _loginType;
-  String? _email;
+  LoginType _loginType = LoginType.none;
+  String _email = "";
+  String _tel = "";
 
   @override
   void initState() {
@@ -38,8 +39,8 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
     // 전달받은 인자들 저장
     final arguments = Get.arguments as Map<String, dynamic>?;
     if (arguments != null) {
-      _loginType = arguments['loginType'] as LoginType?;
-      _email = arguments['email'] as String?;
+      _loginType = arguments['loginType'] as LoginType;
+      _email = arguments['email'] as String;
     }
   }
 
@@ -99,7 +100,8 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
     });
 
     try {
-      var authCodeSendCheck = await _telAuthenticationService.sendVerificationCode(_telController.text);      
+      _tel = _telController.text;
+      var authCodeSendCheck = await _telAuthenticationService.sendEmailTelVerificationCode(_email, _tel);    
       if (authCodeSendCheck) {
         setState(() {
           _isVerificationSent = true;
@@ -139,8 +141,18 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
     });
 
     try {
-      // TODO: 실제 인증번호 확인 API 호출
-      await Future.delayed(Duration(seconds: 2)); // 임시 딜레이
+      var verifyCheckMessage = await _telAuthenticationService.verifyEmailTelVerificationCode(_email, _tel, _verificationCodeController.text);
+      if (verifyCheckMessage == "ok") {
+        setState(() {
+          _isVerifyLoading = false;
+        });
+        _customAlert.showTextAlert("인증 성공", "인증이 완료되었습니다.");
+      } else {
+        setState(() {
+          _isVerifyLoading = false;
+        });
+        _customAlert.showTextAlert("인증 실패", verifyCheckMessage);
+      }
       
       // 인증 성공 시 로그인 완료 처리
       await _completeLogin();
