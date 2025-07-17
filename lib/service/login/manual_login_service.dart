@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
+import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/widget/alert/custom_alert.dart';
@@ -29,13 +30,12 @@ class ManualLoginService {
       var bodyData = jsonDecode(res.body);
 
       if (bodyData['code'] == 200) {
-        final authState = Get.find<AuthState>();
-        await authState.setTokens(            
-          res.headers['x-unimal-access-token'].toString(),
-          res.headers['x-unimal-refresh-token'].toString(),
-          res.headers['x-unimal-email'].toString(),
-          LoginType.manual,
-        );
+        final accountService = AccountService();
+          var accessToken = res.headers['x-unimal-access-token'].toString();
+          var refreshToken = res.headers['x-unimal-refresh-token'].toString();
+          var email = res.headers['x-unimal-email'].toString();
+          accountService.login(accessToken, refreshToken, email, LoginType.manual);
+
         Get.offAllNamed("/map");
       } else {
         logger.e("이메일 로그인 실패.. code: ${bodyData['code']} message: ${bodyData['message']}");

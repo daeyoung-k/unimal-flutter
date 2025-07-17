@@ -14,6 +14,20 @@ class AccountService {
 
   var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
 
+  Future<void> login(
+    String accessToken,
+    String refreshToken,
+    String email,
+    LoginType loginType,
+  ) async {
+    await _authState.setTokens(            
+          accessToken,
+          refreshToken,
+          email,
+          loginType,
+      );
+  }
+
   Future<void> logout() async {
     var url = Uri.http(host.toString(), 'user/auth/logout');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};

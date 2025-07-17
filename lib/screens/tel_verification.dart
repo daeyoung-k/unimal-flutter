@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/auth/tel_authentication_service.dart';
-import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/widget/alert/custom_alert.dart';
 
 class TelVerificationScreen extends StatefulWidget {
@@ -29,7 +28,6 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
   int _remainingSeconds = 300; // 5분 = 300초
   bool _isTimerRunning = false;
   
-  LoginType _loginType = LoginType.none;
   String _email = "";
   String _tel = "";
 
@@ -38,8 +36,7 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
     super.initState();
     // 전달받은 인자들 저장
     final arguments = Get.arguments as Map<String, dynamic>?;
-    if (arguments != null) {
-      _loginType = arguments['loginType'] as LoginType;
+    if (arguments != null) {      
       _email = arguments['email'] as String;
     }
   }
@@ -67,12 +64,6 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
         }
       });
     });
-  }
-
-  // 타이머 정지
-  void _stopTimer() {
-    _timer?.cancel();
-    _isTimerRunning = false;
   }
 
   // 남은 시간을 MM:SS 형식으로 변환
@@ -141,12 +132,13 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
     });
 
     try {
-      var verifyCheckMessage = await _telAuthenticationService.verifyEmailTelVerificationCode(_email, _tel, _verificationCodeController.text);
+      var verifyCheckMessage = await _telAuthenticationService.verifyEmailTelVerificationCodeAndTelUpdate(_email, _tel, _verificationCodeController.text);
+      // 인증성공 & 로그인 완료 처리
       if (verifyCheckMessage == "ok") {
         setState(() {
           _isVerifyLoading = false;
         });
-        _customAlert.showTextAlert("인증 성공", "인증이 완료되었습니다.");
+        _customAlert.pageMovingWithshowTextAlert("인증 성공", "인증이 완료되었습니다.", "/map");
       } else {
         setState(() {
           _isVerifyLoading = false;
@@ -154,27 +146,12 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
         _customAlert.showTextAlert("인증 실패", verifyCheckMessage);
       }
       
-      // 인증 성공 시 로그인 완료 처리
-      await _completeLogin();
       
     } catch (error) {
       setState(() {
         _isVerifyLoading = false;
       });
       _customAlert.showTextAlert("인증 실패", "인증번호가 올바르지 않습니다.\n다시 확인해주세요.");
-    }
-  }
-
-  // 로그인 완료 처리
-  Future<void> _completeLogin() async {
-    try {
-      // TODO: 백엔드에 인증 완료 요청
-      // await _sendVerificationComplete();
-      
-      // 로그인 성공 시 메인 화면으로 이동
-      Get.offAllNamed("/map");
-    } catch (error) {
-      _customAlert.showTextAlert("로그인 실패", "로그인 처리 중 오류가 발생했습니다.");
     }
   }
 

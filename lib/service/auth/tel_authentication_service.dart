@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
+import 'package:unimal/service/login/account_service.dart';
+import 'package:unimal/service/login/login_type.dart';
 
 class AuthenticationCodeService {
   var logger = Logger();
@@ -34,7 +36,7 @@ class AuthenticationCodeService {
     }
   }
 
-  Future<String> verifyEmailTelVerificationCode(String email, String tel, String code) async {
+  Future<String> verifyEmailTelVerificationCodeAndTelUpdate(String email, String tel, String code) async {
     var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
     var headers = {"Content-Type": "application/json;charset=utf-8"};
     var body = jsonEncode({
@@ -43,11 +45,18 @@ class AuthenticationCodeService {
                 "code": code
             });
 
-    var url = Uri.http(host.toString(), '/user/auth/email-tel/code-verify');
+    var url = Uri.http(host.toString(), '/user/auth/tel/check-update');
     try {
       var res = await http.post(url, headers: headers, body: body);
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));      
       if (bodyData['code'] == 200) {
+        final accountService = AccountService();
+        var loginType = LoginType.from(res.headers['x-unimal-provider'].toString());
+        var accessToken = res.headers['x-unimal-access-token'].toString();
+        var refreshToken = res.headers['x-unimal-refresh-token'].toString();
+        var email = res.headers['x-unimal-email'].toString();
+        accountService.login(accessToken, refreshToken, email, loginType);
+
         return "ok";
       } else {
         logger.e("인증번호 인증 실패.. $bodyData");
