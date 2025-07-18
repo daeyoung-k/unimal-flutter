@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:unimal/service/login/manual_login_service.dart';
 
 class ManualLoginFormWidget extends StatefulWidget {
@@ -96,7 +97,8 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
             children: [
               TextButton(
                 onPressed: () {
-                  // 아이디찾기 로직
+                  // 아이디 찾기 페이지로 이동
+                  Get.toNamed("/id-find");
                 },
                 child: const Text(
                   '아이디찾기',
@@ -114,7 +116,8 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
               ),
               TextButton(
                 onPressed: () {
-                  // 비밀번호찾기 로직
+                  // 비밀번호 찾기 페이지로 이동
+                  Get.toNamed("/password-find");
                 },
                 child: const Text(
                   '비밀번호찾기',

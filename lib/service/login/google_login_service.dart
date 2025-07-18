@@ -8,8 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
-import 'package:unimal/state/auth_state.dart';
-import 'package:unimal/widget/alert/custom_alert.dart';
+import 'package:unimal/screens/widget/alert/custom_alert.dart';
 
 class GoogleLoginService {  
   var logger = Logger();  

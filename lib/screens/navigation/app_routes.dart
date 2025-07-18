@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/add_item.dart';
-import 'package:unimal/screens/board.dart';
-import 'package:unimal/screens/login.dart';
+import 'package:unimal/screens/auth/id_find.dart';
+import 'package:unimal/screens/auth/password_find.dart';
+import 'package:unimal/screens/board/board.dart';
+import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/map.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
-import 'package:unimal/screens/tel_verification.dart';
+import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile.dart';
 import 'package:unimal/screens/search.dart';
 
@@ -20,6 +22,8 @@ class AppRoutes {
       GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
       GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
       GetPage(name: '/tel-verification', page: () => TelVerificationScreen()),
+      GetPage(name: '/id-find', page: () => IdFindScreen()),
+      GetPage(name: '/password-find', page: () => PasswordFindScreen()),
     ];
   }
 

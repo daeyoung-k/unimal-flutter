@@ -1,6 +1,6 @@
 
 import 'package:flutter/material.dart';
-import 'package:unimal/widget/action/action_icon_button.dart';
+import 'package:unimal/screens/widget/action/action_icon_button.dart';
 
 class BoardCardContent extends StatelessWidget {
   final String content;

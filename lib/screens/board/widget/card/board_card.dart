@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/widget/board/card/board_card_content.dart';
-import 'package:unimal/widget/board/card/board_card_image.dart';
-import 'package:unimal/widget/board/card/board_card_profile.dart';
+import 'package:unimal/screens/board/widget/card/board_card_content.dart';
+import 'package:unimal/screens/board/widget/card/board_card_image.dart';
+import 'package:unimal/screens/board/widget/card/board_card_profile.dart';
 
 class BoardCard extends StatefulWidget {
   

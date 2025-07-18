@@ -10,10 +10,10 @@ import 'package:unimal/service/login/login_type.dart';
 
 class AuthenticationCodeService {
   var logger = Logger();
+  final host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
+  final headers = {"Content-Type": "application/json;charset=utf-8"};
 
   Future<bool> sendEmailTelVerificationCode(String email, String tel) async {
-    var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
-    var headers = {"Content-Type": "application/json;charset=utf-8"};
     var body = jsonEncode({
               "email": email,
               "tel": tel
@@ -36,9 +36,7 @@ class AuthenticationCodeService {
     }
   }
 
-  Future<String> verifyEmailTelVerificationCodeAndTelUpdate(String email, String tel, String code) async {
-    var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
-    var headers = {"Content-Type": "application/json;charset=utf-8"};
+  Future<String> verifyEmailTelVerificationCodeAndTelUpdate(String email, String tel, String code) async {    
     var body = jsonEncode({
                 "email": email,
                 "tel": tel,
@@ -66,5 +64,33 @@ class AuthenticationCodeService {
       logger.e("인증번호 인증 실패.. ${error.toString()}");
       return "인증번호 인증에 실패했습니다.";
     }
+  }
+
+  Future<bool> sendTelVerificationCode(String tel) async {
+    var body = jsonEncode({
+                "tel": tel,
+            });
+
+    var url = Uri.http(host.toString(), '/user/auth/tel/code-request');    
+
+    try {
+      var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));      
+      if (bodyData['code'] == 200) {
+        return true;
+      } else {
+        logger.e("인증번호 전송 실패.. $bodyData");
+        return false;
+      }
+    } catch (error) {
+      logger.e("인증번호 전송 실패.. ${error.toString()}");
+      return false;
+    }
+
+  }
+
+  Future<String> verifyTelVerificationCode(String tel, String code) async {
+    // 전화번호 인증
+    return "";
   }
 }

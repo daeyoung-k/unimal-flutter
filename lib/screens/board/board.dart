@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:unimal/models/board_post.dart';
 import 'package:unimal/repositories/board_repository.dart';
-import 'package:unimal/widget/board/card/board_card.dart';
-import 'package:unimal/widget/board/board_search.dart';
+import 'package:unimal/screens/board/widget/card/board_card.dart';
+import 'package:unimal/screens/board/widget/board_search.dart';
 
 class BoardScreens extends StatefulWidget {
   const BoardScreens({super.key});

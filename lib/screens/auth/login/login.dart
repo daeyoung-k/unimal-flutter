@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
-import 'package:unimal/widget/login/google_button.dart';
-import 'package:unimal/widget/login/kakao_button.dart';
-import 'package:unimal/widget/login/naver_button.dart';
-import 'package:unimal/widget/login/manual_button.dart';
-import 'package:unimal/widget/login/manual_login_form.dart';
+import 'package:unimal/screens/auth/login/widget/google_button.dart';
+import 'package:unimal/screens/auth/login/widget/kakao_button.dart';
+import 'package:unimal/screens/auth/login/widget/naver_button.dart';
+import 'package:unimal/screens/auth/login/widget/manual_button.dart';
+import 'package:unimal/screens/auth/login/widget/manual_login_form.dart';
 
 class LoginScreens extends StatefulWidget {
   const LoginScreens({super.key});
