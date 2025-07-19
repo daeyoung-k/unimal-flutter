@@ -22,6 +22,7 @@ class _IdFindScreenState extends State<IdFindScreen> {
   bool _isSendLoading = false;
   bool _isVerifyLoading = false;
   String _sendCodeText = "인증번호 전송";
+  String _findEmail = "";
   
   // 타이머 관련 변수
   Timer? _timer;
@@ -126,18 +127,23 @@ class _IdFindScreenState extends State<IdFindScreen> {
     });
 
     try {
-      var verifyCheckMessage = await _telAuthenticationService.verifyTelVerificationCode(_tel, _verificationCodeController.text);
-      // 인증성공 & 로그인 완료 처리
-      if (verifyCheckMessage == "ok") {
+      var findEmailInfo = await _telAuthenticationService.verifyTelVerificationCodeIdFind(_tel, _verificationCodeController.text);
+
+      setState(() {
+        _isVerifyLoading = false;
+      });
+
+      // 인증성공 & 아이디 찾기 완료
+      if (findEmailInfo.isSuccess) {
         setState(() {
-          _isVerifyLoading = false;
+          _isSendLoading = false;
+          _findEmail = findEmailInfo.email ?? "";
+          // 이메일 찾기 완료 후 타이머 정지
+          _isTimerRunning = false;
+          _timer?.cancel();
         });
-        // 아이디 리스트 보여주기
       } else {
-        setState(() {
-          _isVerifyLoading = false;
-        });
-        _customAlert.showTextAlert("인증 실패", verifyCheckMessage);
+        _customAlert.showTextAlert("인증 실패", findEmailInfo.message ?? "아이디 찾기 실패");
       }
       
       
@@ -226,10 +232,10 @@ class _IdFindScreenState extends State<IdFindScreen> {
                   SizedBox(
                     height: 50,
                     child: ElevatedButton(
-                      onPressed: _isSendLoading ? null : _sendVerificationCode,
+                      onPressed: (_isSendLoading || _findEmail.isNotEmpty) ? null : _sendVerificationCode,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: const Color(0xFF4D91FF),
+                        backgroundColor: _findEmail.isNotEmpty ? Colors.grey[300] : Colors.white,
+                        foregroundColor: _findEmail.isNotEmpty ? Colors.grey[600] : const Color(0xFF4D91FF),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -300,10 +306,10 @@ class _IdFindScreenState extends State<IdFindScreen> {
                     SizedBox(
                       height: 50,
                       child: ElevatedButton(
-                        onPressed: (_isVerifyLoading || !_isTimerRunning) ? null : _verifyCode,
+                        onPressed: (_isVerifyLoading || !_isTimerRunning || _findEmail.isNotEmpty) ? null : _verifyCode,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isTimerRunning ? Colors.white : Colors.grey[300],
-                          foregroundColor: _isTimerRunning ? Color(0xFF4D91FF) : Colors.grey[600],
+                          backgroundColor: (_isTimerRunning && _findEmail.isEmpty) ? Colors.white : Colors.grey[300],
+                          foregroundColor: (_isTimerRunning && _findEmail.isEmpty) ? Color(0xFF4D91FF) : Colors.grey[600],
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -330,7 +336,42 @@ class _IdFindScreenState extends State<IdFindScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 15),
+                SizedBox(height: 50),   
+              ],
+              if (_findEmail.isNotEmpty) ...[
+                SizedBox(height: 30),
+                Container(
+                  width: double.infinity,
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        '찾은 아이디',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        _findEmail,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ],
           ),
