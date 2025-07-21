@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:unimal/service/auth/tel_authentication_service.dart';
+import 'package:unimal/service/auth/authentication_service.dart';
 import 'package:unimal/screens/widget/alert/custom_alert.dart';
 
 class TelVerificationScreen extends StatefulWidget {
