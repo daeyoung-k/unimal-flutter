@@ -1,18 +1,55 @@
-# Unimal
+# Unimal (우니멀)
 
-### 우니멀 프로젝트
-우리 주변의 동물들을 지도 기능을 활용하여 공유하자!
+## 📱 프로젝트 소개
+우니멀은 우리 주변의 동물들을 지도 기반으로 공유하고 소통할 수 있는 모바일 애플리케이션입니다. 
+반려동물과 야생동물의 위치 정보를 공유하고, 동물 관련 정보를 실시간으로 확인할 수 있는 커뮤니티 플랫폼입니다.
 
-Unimal 이름의 탄생 비화 - `우리 주변의 동물들` 을 줄여서 `우주동`! 우주동을 영어로 `universe animal` 또 줄여서 `Unimal`
+### 프로젝트 이름의 유래
+`우리 주변의 동물들` → `우주동` → `universe animal` → `Unimal`
 
-<hr/>
+## 🛠 기술 스택
+- **프레임워크**: Flutter
+- **언어**: Dart
+- **상태관리**: GetX
+- **데이터베이스**: Firebase
+- **지도 API**: Google Maps
+- **인증**: Firebase Authentication
 
-### library
-`flutter_native_splash` : 스플래쉬 화면 적용 <br>
-`flutter_svg` : svg 파일 사용 <br>
-`google_maps_flutter` : 구글맵 <br>
-`flutter_dotenv`: 환경변수 파일 사용 (.env) <br>
- 
+## ✨ 주요 기능
+- 🗺️ 지도 기반 동물 위치 공유
+- 🔍 실시간 검색 및 필터링
+- 📸 이미지 및 텍스트 포스팅
+- 💬 커뮤니티 기능 (좋아요, 댓글)
+- 📍 위치 기반 서비스
+- 🔔 실시간 알림
+
+## 📚 사용된 주요 라이브러리
+- `flutter_native_splash`: 스플래시 화면 구현
+- `flutter_svg`: SVG 이미지 처리
+- `google_maps_flutter`: 구글 맵스 통합
+- `flutter_dotenv`: 환경 변수 관리
+- `get`: 상태 관리
+- `firebase_core`: Firebase 연동
+- `firebase_auth`: 사용자 인증
+- `cloud_firestore`: 데이터베이스
+
+## 🎯 프로젝트 목표
+1. 사용자 친화적인 UI/UX 제공
+2. 실시간 위치 기반 서비스 구현
+3. 안정적인 커뮤니티 플랫폼 구축
+4. 확장 가능한 아키텍처 설계
+
+## 🔄 개발 현황
+- [x] 기본 UI/UX 구현
+- [x] 지도 기능 통합
+- [x] 검색 및 필터링 기능
+- [x] 커뮤니티 기능
+- [ ] 실시간 알림 시스템
+- [ ] 사용자 프로필 관리
+
+## 📱 스크린샷
+(스크린샷 추가 예정)
+
 
 
 

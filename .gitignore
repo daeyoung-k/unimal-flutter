@@ -46,7 +46,7 @@ app.*.map.json
 
 
 #custom
-.env
+.env*
 /pubspec.lock
 /ios/Podfile.lock
 /ios/*.xcconfig

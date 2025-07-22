@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -8,15 +9,46 @@ import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/state/auth_state.dart';
 
-class LogoutService {
+class AccountService {
   final _authState = Get.find<AuthState>();
 
+  var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
+
+  Future<void> login(
+    String accessToken,
+    String refreshToken,
+    String email,
+    LoginType loginType,
+  ) async {
+    await _authState.setTokens(            
+          accessToken,
+          refreshToken,
+          email,
+          loginType,
+      );
+  }
+
   Future<void> logout() async {
-    var host = Platform.isAndroid ? '10.0.2.2' : 'localhost';
-    var url = Uri.http('${host}:8080', 'user/auth/logout');
+    var url = Uri.http(host.toString(), 'user/auth/logout');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
     await http.get(url, headers: headers);
 
+    await _authStateClear();
+
+    Get.offAllNamed("/login");
+  }
+
+  Future<void> withdrawal() async {
+    var url = Uri.http(host.toString(), 'user/auth/withdrawal');
+    var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
+    await http.get(url, headers: headers);
+
+    await _authStateClear();
+
+    Get.offAllNamed("/login");
+  }
+
+  _authStateClear() async {
     switch (_authState.provider.value) {
       case LoginType.naver:
         await _naverLogout();
@@ -36,8 +68,6 @@ class LogoutService {
     }
 
     await _authState.clearTokens();
-
-    Get.offAllNamed("/login");
   }
 
   _naverLogout() async {

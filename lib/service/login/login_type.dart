@@ -9,7 +9,7 @@ enum LoginType {
   final String description;
 
   factory LoginType.from(String code) {
-    return LoginType.values.firstWhere((value) => value.name == code,
+    return LoginType.values.firstWhere((value) => value.name == code.toLowerCase(),
         orElse: () => LoginType.none);
   }
 }

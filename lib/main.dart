@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
-import 'package:unimal/screens/login.dart';
+import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
+import 'package:unimal/screens/auth/signup.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -12,7 +13,8 @@ import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
   // 환경변수 로드
-  await dotenv.load(fileName: ".env");
+  const environment = String.fromEnvironment('ENV', defaultValue: 'local');
+  await dotenv.load(fileName: ".env.$environment");
   // 카카오 로그인 SDK 초기화
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화
@@ -38,8 +40,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-    //   home: loginChecked ? RootScreen() : LoginScreens(),
-      home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
+      //   home: loginChecked ? RootScreen() : SignupScreens(),
+      home: loginChecked ? RootScreen() : LoginScreens(),
+      //   home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 1),
     );
   }
 }

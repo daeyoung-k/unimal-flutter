@@ -59,4 +59,15 @@ class SecureStorage {
     await _storage.delete(key: 'provider');
   }
 
+  Future<void> saveEmail(String email) async {
+    await write('email', email);
+  }
+
+  Future<String?> getEmail() async {
+    return await read('email');
+  }
+
+  Future<void> deleteEmail() async {
+    await _storage.delete(key: 'email');
+  }
 }
