@@ -135,7 +135,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
               ),
               TextButton(
                 onPressed: () {
-                  // 회원가입 로직
+                  Get.toNamed("/signup");
                 },
                 child: const Text(
                   '회원가입',
