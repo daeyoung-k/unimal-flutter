@@ -122,9 +122,9 @@ class _PasswordFindScreenState extends State<PasswordFindScreen> {
     });
 
     try {
-      var authCodeSendCheck = await _telAuthenticationService
-          .sendEmailTelVerificationCode(_email, _tel);
-      if (authCodeSendCheck) {
+      var authCodeSendCheckMessage = await _telAuthenticationService
+          .sendEmailTelCheckVerificationCode(_email, _tel);
+      if (authCodeSendCheckMessage == "ok") {
         setState(() {
           _isVerificationSent = true;
           _isSendLoading = false;
@@ -136,7 +136,7 @@ class _PasswordFindScreenState extends State<PasswordFindScreen> {
         setState(() {
           _isSendLoading = false;
         });
-        _customAlert.showTextAlert("전송 실패", "인증번호 전송에 실패했습니다.\n잠시후 다시 시도해주세요.");
+        _customAlert.showTextAlert("전송 실패", authCodeSendCheckMessage);
       }
     } catch (error) {
       setState(() {
@@ -217,12 +217,11 @@ class _PasswordFindScreenState extends State<PasswordFindScreen> {
     var changePasswordMessage =
         await userInfoService.changePassword(_email, password, confirmPassword);
 
-    if (changePasswordMessage == "ok") {
-      _customAlert.showTextAlert("비밀번호 변경", "비밀번호가 성공적으로 변경되었습니다.");
-      Get.back(); // 로그인 화면으로 돌아가기
-    } else {
-      _customAlert.showTextAlert("비밀번호 변경 실패", changePasswordMessage);
-    }
+      if (changePasswordMessage == "ok") {
+        _customAlert.pageMovingWithshowTextAlert("비밀번호 변경", "비밀번호가 성공적으로 변경되었습니다.", "/login");      
+      } else {
+        _customAlert.showTextAlert("비밀번호 변경 실패", changePasswordMessage);
+      }
   }
 
   @override

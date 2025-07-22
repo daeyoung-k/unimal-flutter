@@ -35,6 +35,26 @@ class AuthenticationCodeService {
     }
   }
 
+  Future<String> sendEmailTelCheckVerificationCode(String email, String tel) async {
+    var body = jsonEncode({"email": email, "tel": tel});
+
+    var url = Uri.http(host.toString(), '/user/member/find/email-tel/check/request');
+
+    try {
+      var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return "ok";
+      } else {
+        logger.e("인증번호 전송 실패.. $bodyData");
+        return bodyData['message'];
+      }
+    } catch (error) {
+      logger.e("인증번호 전송 실패.. ${error.toString()}");
+      return "인증번호 전송에 실패했습니다.";
+    }
+  }
+
   Future<String> verifyEmailTelVerificationCode(String email, String tel, String code) async {
     var body = jsonEncode({"email": email, "tel": tel, "code": code});
 
