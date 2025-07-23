@@ -20,7 +20,9 @@ class GoogleLoginService {
       var body = jsonEncode({
               "provider": "GOOGLE",
               "email": response!.email,
-              "name": response.displayName
+              "name": response.displayName,
+              "nickname": response.displayName,
+              "profileImage": response.photoUrl
             });
       
       var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
