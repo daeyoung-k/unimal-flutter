@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
+import 'package:unimal/models/signup_models.dart';
 
 class UserInfoService {
   var logger = Logger();
@@ -97,6 +98,25 @@ class UserInfoService {
       logger.e("전화번호 인증요청 실패.. ${error.toString()}");
       return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
     }
+  }
+  
+  Future<String> signup(
+    SignupModel signupModel
+    ) async {
+    var url = Uri.http(host.toString(), '/user/auth/signup/manual');
+    var body = jsonEncode(signupModel.toJson());
 
+    try {
+      var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return "ok";
+      } else {
+        return bodyData['message'];
+      }
+    } catch (error) {
+      logger.e("전화번호 인증요청 실패.. ${error.toString()}");
+      return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
   }
 }

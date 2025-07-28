@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:unimal/models/signup_models.dart';
 import 'package:unimal/service/auth/authentication_service.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/screens/widget/alert/custom_alert.dart';
@@ -41,6 +43,9 @@ class _SignupScreensState extends State<SignupScreens> {
   String _nickname = '';
   String _password = '';
   String _passwordCheck = '';
+  
+  // 가입하기 버튼 로딩 상태
+  bool _isSignupLoading = false;
 
   // 닉네임 중복확인 상태
   bool _isNicknameVerified = false;
@@ -419,12 +424,39 @@ class _SignupScreensState extends State<SignupScreens> {
 
   void _signup() async {
     if (_isNicknameVerified && _isEmailVerified && _isPhoneVerified && _isPasswordVerified && _isPasswordCheckVerified) {
-      // final String signupMessage = await _userInfoService.signup(_nickname, _email, _tel, _password);
-      final String signupMessage = "ok";
-      if (signupMessage == "ok") {
-        _customAlert.showSnackBar(context, '회원가입이 완료되었습니다.', isError: false);
-      } else {
-        _customAlert.showSnackBar(context, signupMessage);
+      setState(() {
+        _isSignupLoading = true;
+      });
+      
+      try {
+        final String signupMessage = await _userInfoService.signup(
+          SignupModel(
+            nickname: _nickname,
+            email: _email,
+            tel: _tel,
+            password: _password,
+            checkPassword: _passwordCheck,
+          )
+        );
+        if (signupMessage == "ok") {
+          if (mounted) {
+            _customAlert.pageMovingWithshowTextAlert('회원가입 완료', '회원가입이 완료되었습니다.', '/login');
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _isSignupLoading = false;
+            });
+            _customAlert.showSnackBar(context, signupMessage);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isSignupLoading = false;
+          });
+          _customAlert.showSnackBar(context, '회원가입에 실패했습니다.');
+        }
       }
     }
   }
@@ -1238,26 +1270,29 @@ class _SignupScreensState extends State<SignupScreens> {
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton(
-                    onPressed: (_isNicknameVerified &&
-                            _isEmailVerified &&
-                            _isPhoneVerified &&
-                            _isPasswordVerified &&
-                            _isPasswordCheckVerified)
-                        ? _signup
-                        : null,
+                    onPressed: (_isSignupLoading ||
+                            !(_isNicknameVerified &&
+                                _isEmailVerified &&
+                                _isPhoneVerified &&
+                                _isPasswordVerified &&
+                                _isPasswordCheckVerified))
+                        ? null
+                        : _signup,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: (_isNicknameVerified &&
                               _isEmailVerified &&
                               _isPhoneVerified &&
                               _isPasswordVerified &&
-                              _isPasswordCheckVerified)
+                              _isPasswordCheckVerified &&
+                              !_isSignupLoading)
                           ? Colors.white
                           : Colors.grey[300],
                       foregroundColor: (_isNicknameVerified &&
                               _isEmailVerified &&
                               _isPhoneVerified &&
                               _isPasswordVerified &&
-                              _isPasswordCheckVerified)
+                              _isPasswordCheckVerified &&
+                              !_isSignupLoading)
                           ? const Color(0xFF4D91FF)
                           : Colors.grey[600],
                       shape: RoundedRectangleBorder(
@@ -1265,14 +1300,24 @@ class _SignupScreensState extends State<SignupScreens> {
                       ),
                       elevation: 0,
                     ),
-                    child: Text(
-                      '가입하기',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: _isSignupLoading
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                  const Color(0xFF4D91FF)),
+                            ),
+                          )
+                        : Text(
+                            '가입하기',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                   ),
                 ),
               ],
