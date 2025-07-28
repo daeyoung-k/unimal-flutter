@@ -58,4 +58,45 @@ class UserInfoService {
       return "닉네임 중복 체크 실패\n 잠시 후 다시 시도해주세요.";
     }
   }
+
+  Future<String> checkEmail(String email) async {
+    var url = Uri.http(host.toString(), '/user/member/find/email/duplicate');
+    var body = jsonEncode({
+      "email": email
+    });
+
+    try {
+      var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return "ok";
+      } else {
+        return bodyData['message'];
+      }
+    } catch (error) {
+      logger.e("이메일 인증요청 실패.. ${error.toString()}");
+      return "이메일 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
+  }
+  
+  Future<String> checkTel(String tel) async {
+    var url = Uri.http(host.toString(), '/user/member/find/tel/duplicate');
+    var body = jsonEncode({
+      "tel": tel
+    });
+
+    try {
+      var res = await http.post(url, headers: headers, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return "ok";
+      } else {
+        return bodyData['message'];
+      }
+    } catch (error) {
+      logger.e("전화번호 인증요청 실패.. ${error.toString()}");
+      return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
+
+  }
 }
