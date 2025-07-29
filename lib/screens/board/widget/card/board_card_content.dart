@@ -15,7 +15,7 @@ class BoardCardContent extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -28,7 +28,7 @@ class BoardCardContent extends StatelessWidget {
               SizedBox(width: 16),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             content,
             maxLines: maxLine,
@@ -36,7 +36,8 @@ class BoardCardContent extends StatelessWidget {
             style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'InstagramSans',
-                fontWeight: FontWeight.w400
+                fontWeight: FontWeight.w400,
+                color: Color(0xFF333333),
               ),
           ),
         ],

@@ -37,8 +37,12 @@ class _BoardCardState extends State<BoardCard> {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
 
-    return SizedBox(
+    return Container(
       width: screenWidth * 0.98,      
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Column(
         children: [
           BoardCardProfile(

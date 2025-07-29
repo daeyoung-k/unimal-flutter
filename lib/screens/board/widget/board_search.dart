@@ -107,6 +107,7 @@ class _BoardSearchState extends State<BoardSearch> {
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
+    double screenHeight = MediaQuery.of(context).size.height;
     
     return Column(
       children: [
@@ -153,7 +154,7 @@ class _BoardSearchState extends State<BoardSearch> {
                     ),
                   ),
                 ),
-                if (_searchQuery.isNotEmpty)
+                if (_searchQuery.isNotEmpty)                  
                   IconButton(
                     icon: const Icon(Icons.clear, size: 15,  color: Color(0xFFB8BFC8)),
                     onPressed: () {
@@ -172,7 +173,6 @@ class _BoardSearchState extends State<BoardSearch> {
             width: screenWidth * 0.4,
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            margin: EdgeInsets.only(left: screenWidth * 0.05),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
@@ -236,6 +236,9 @@ class _BoardSearchState extends State<BoardSearch> {
         if (_isSearching)
           Container(
             width: screenWidth * 0.9,
+            constraints: BoxConstraints(
+              maxHeight: screenHeight * 0.65, // 세로 크기 제한 (200px)
+            ),
             margin: const EdgeInsets.only(top: 8),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -248,31 +251,33 @@ class _BoardSearchState extends State<BoardSearch> {
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text(
-                    '추천 검색어',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF666666),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      '추천 검색어',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF666666),
+                      ),
                     ),
                   ),
-                ),
-                ..._suggestions.map((suggestion) => ListTile(
-                  title: Text(
-                    suggestion,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF333333),
+                  ..._suggestions.map((suggestion) => ListTile(
+                    title: Text(
+                      suggestion,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF333333),
+                      ),
                     ),
-                  ),
-                  onTap: () => _onSuggestionSelected(suggestion),
-                )).toList(),
-              ],
+                    onTap: () => _onSuggestionSelected(suggestion),
+                  )),
+                ],
+              ),
             ),
           ),
       ],
