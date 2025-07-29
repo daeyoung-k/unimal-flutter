@@ -129,10 +129,10 @@ class _AddItemScreensState extends State<AddItemScreens> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add, color: const Color(0xFF4D91FF)),
+                            Icon(Icons.add, color: Colors.grey[600]),
                             Text('메인사진\n추가', 
                                 style: TextStyle(
-                                  color: const Color(0xFF4D91FF), 
+                                  color: Colors.grey[600], 
                                   fontSize: 12,
                                   fontFamily: 'Pretendard',
                                   fontWeight: FontWeight.w600,
@@ -182,10 +182,10 @@ class _AddItemScreensState extends State<AddItemScreens> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.add, color: const Color(0xFF4D91FF)),
+                            Icon(Icons.add, color: Colors.grey[600]),
                             Text('사진 추가\n0/15', 
                                 style: TextStyle(
-                                  color: const Color(0xFF4D91FF), 
+                                  color: Colors.grey[600], 
                                   fontSize: 12,
                                   fontFamily: 'Pretendard',
                                   fontWeight: FontWeight.w600,
@@ -232,14 +232,14 @@ class _AddItemScreensState extends State<AddItemScreens> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: ListTile(
-                    leading: Icon(Icons.location_on, color: const Color(0xFF4D91FF)),
+                    leading: Icon(Icons.location_on, color: Colors.grey[600]),
                     title: Text('내 위치 추가', 
                         style: TextStyle(
-                          color: const Color(0xFF4D91FF),
+                          color: Colors.grey[600],
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
                         )),
-                    trailing: Icon(Icons.chevron_right, color: const Color(0xFF4D91FF)),
+                    trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
                   ),
                 ),   
                 const SizedBox(height: 20),
