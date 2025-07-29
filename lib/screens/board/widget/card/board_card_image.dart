@@ -29,8 +29,9 @@ class _BoardCardImageState extends State<BoardCardImage> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return Container(
       height: widget.screenHeight * 0.4,
+      margin: const EdgeInsets.symmetric(vertical: 5),
       child: Stack(
         children: [
           PageView.builder(

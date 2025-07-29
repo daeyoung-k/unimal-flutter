@@ -30,39 +30,100 @@ class BoardCard extends StatefulWidget {
 
 }
 
-class _BoardCardState extends State<BoardCard> {
+class _BoardCardState extends State<BoardCard> 
+    with TickerProviderStateMixin {
+  
+  late AnimationController _cardAnimationController;
+  late Animation<double> _cardFadeAnimation;
+  late Animation<double> _cardScaleAnimation;
+  late Animation<Offset> _cardSlideAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _cardAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
+    
+    _cardFadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _cardAnimationController,
+      curve: const Interval(0.0, 0.6, curve: Curves.easeInOut),
+    ));
+    
+    _cardScaleAnimation = Tween<double>(
+      begin: 0.9,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _cardAnimationController,
+      curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic),
+    ));
+    
+    _cardSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _cardAnimationController,
+      curve: const Interval(0.0, 0.7, curve: Curves.easeOutCubic),
+    ));
+    
+    _cardAnimationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _cardAnimationController.dispose();
+    super.dispose();
+  }
         
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
     double screenHeight = MediaQuery.of(context).size.height;
 
-    return Container(
-      width: screenWidth * 0.98,      
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+    return FadeTransition(
+      opacity: _cardFadeAnimation,
+      child: ScaleTransition(
+        scale: _cardScaleAnimation,
+        child: SlideTransition(
+          position: _cardSlideAnimation,
+          child: Container(
+            width: screenWidth * 0.96,
+            margin: const EdgeInsets.symmetric(vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              children: [
+                // 프로필 영역
+                BoardCardProfile(
+                  screenHeight: screenHeight, 
+                  profileImageUrl: widget.profileImageUrl, 
+                  nickname: widget.nickname, 
+                  location: widget.location
+                ),
+                // 이미지 영역 (있는 경우에만)
+                if (widget.imageUrls.isNotEmpty) 
+                  BoardCardImage(
+                    screenHeight: screenHeight, 
+                    imageUrls: widget.imageUrls,
+                  ),
+                // 콘텐츠 영역
+                BoardCardContent(
+                  content: widget.content,
+                  likeCount: widget.likeCount,
+                  commentCount: widget.commentCount,
+                  maxLine: widget.imageUrls.isNotEmpty ? 2 : 5,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      child: Column(
-        children: [
-          BoardCardProfile(
-            screenHeight: screenHeight, 
-            profileImageUrl: widget.profileImageUrl, 
-            nickname: widget.nickname, 
-            location: widget.location
-          ),
-          if (widget.imageUrls.isNotEmpty) BoardCardImage(
-            screenHeight: screenHeight, 
-            imageUrls: widget.imageUrls,
-          ),
-          BoardCardContent(
-            content: widget.content,
-            likeCount: widget.likeCount,
-            commentCount: widget.commentCount,
-            maxLine: widget.imageUrls.isNotEmpty ? 2 : 5,
-          ),
-        ],
-      )
     );
   }
 

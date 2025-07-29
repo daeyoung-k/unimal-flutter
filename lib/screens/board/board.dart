@@ -85,7 +85,7 @@ class _BoardScreensState extends State<BoardScreens> {
               Padding(padding: EdgeInsets.only(top: topMargin)),
               // 검색 위젯을 흰색 카드로 감싸기
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16),
+                margin: const EdgeInsets.symmetric(horizontal: 10),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
@@ -119,7 +119,7 @@ class _BoardScreensState extends State<BoardScreens> {
                       )
                     : ListView.builder(
                         controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         itemCount: _posts.length + (_hasMore ? 1 : 0),
                         itemBuilder: (context, index) {
                           if (index == _posts.length) {
