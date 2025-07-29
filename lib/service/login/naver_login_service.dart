@@ -34,7 +34,8 @@ class NaverLoginService {
           "provider": "NAVER",
           "email": profile.email,
           "name": profile.name,
-          "nickname": profile.nickName
+          "nickname": profile.nickName,
+          "profileImage": profile.profileImage
         });
 
         var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
