@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/widget/alert/custom_alert.dart';
 import 'package:unimal/service/login/manual_login_service.dart';
 
 class ManualLoginFormWidget extends StatefulWidget {
@@ -15,6 +16,8 @@ class ManualLoginFormWidget extends StatefulWidget {
 }
 
 class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
+  final manualLoginService = ManualLoginService();
+  final CustomAlert customAlert = CustomAlert();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -25,9 +28,28 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
     super.dispose();
   }
 
+  // 이메일 형식 검증 함수
+  bool isValidEmail(String email) {
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    return emailRegex.hasMatch(email);
+  }
+
+  void _manualLogin() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      customAlert.showTextAlert("오류", "이메일과 비밀번호를 입력해주세요.");
+      return;
+    }
+    // 이메일 형식 검증
+    if (!isValidEmail(_emailController.text)) {
+      customAlert.showTextAlert("이메일 형식 오류", "올바른 이메일 형식을 입력해주세요.");
+      return;
+    }
+    // 이메일 형식이 올바르면 로그인 진행
+    await manualLoginService.login(_emailController.text, _passwordController.text);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final manualLoginService = ManualLoginService();
     return Column(
       children: [
         Container(
@@ -43,7 +65,8 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ),
@@ -61,7 +84,8 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
         ),
@@ -71,7 +95,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
             width: 300,
             height: 50,
             child: ElevatedButton(
-              onPressed: () => manualLoginService.login(_emailController.text, _passwordController.text),
+              onPressed: _manualLogin,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: const Color(0xFF4D91FF),

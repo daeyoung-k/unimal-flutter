@@ -57,121 +57,246 @@ class _AddItemScreensState extends State<AddItemScreens> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF4D91FF),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        leading: BackButton(color: Colors.white),
-        title: Text('데이로그 작성', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
+        title: const Text(
+          '공유하기',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 사진 추가 영역
-            Row(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      builder: (context) => Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.photo_library),
-                            title: const Text('사진첩'),
-                            onTap: () {
-                              Navigator.pop(context);
-                              _getImage(ImageSource.gallery);
-                              print(_currentPosition?.latitude);
-                              print(_currentPosition?.longitude);
-                            },
+                // 사진 추가 영역
+                const Text('사진 추가',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Pretendard',
+                    )),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    // 메인사진 추가 영역
+                    GestureDetector(
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.photo_library),
+                                title: const Text('사진첩'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _getImage(ImageSource.gallery);
+                                  print(_currentPosition?.latitude);
+                                  print(_currentPosition?.longitude);
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.camera_alt),
+                                title: const Text('카메라'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _getImage(ImageSource.camera);
+                                },
+                              ),
+                            ],
                           ),
-                          ListTile(
-                            leading: const Icon(Icons.camera_alt),
-                            title: const Text('카메라'),
-                            onTap: () {
-                              Navigator.pop(context);
-                              _getImage(ImageSource.camera);
-                            },
-                          ),
-                        ],
+                        );
+                      },
+                      child: Container(
+                        width: 80, height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add, color: Colors.grey[600]),
+                            Text('메인사진\n추가', 
+                                style: TextStyle(
+                                  color: Colors.grey[600], 
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w600,
+                                ), 
+                                textAlign: TextAlign.center),
+                          ],
+                        ),
                       ),
-                    );
-                  },
-                  child: Container(
-                    width: 80, height: 100,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[900],
-                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add, color: Colors.white),
-                        Text('사진 추가\n0/15', style: TextStyle(color: Colors.white70, fontSize: 12), textAlign: TextAlign.center),
-                      ],
+                    const SizedBox(width: 12),
+                    // 추가 사진 영역
+                    GestureDetector(
+                      onTap: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) => Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.photo_library),
+                                title: const Text('사진첩'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _getImage(ImageSource.gallery);
+                                  print(_currentPosition?.latitude);
+                                  print(_currentPosition?.longitude);
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.camera_alt),
+                                title: const Text('카메라'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _getImage(ImageSource.camera);
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: 80, height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add, color: Colors.grey[600]),
+                            Text('사진 추가\n0/15', 
+                                style: TextStyle(
+                                  color: Colors.grey[600], 
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w600,
+                                ), 
+                                textAlign: TextAlign.center),
+                          ],
+                        ),
+                      ),
                     ),
+                    // ...이미지 썸네일 리스트
+                  ],
+                ),
+                const SizedBox(height: 20),
+
+                // 내용 입력
+                const Text('내용',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Pretendard',
+                    )),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _contentController,
+                  maxLines: 4,
+                  decoration: InputDecoration(
+                    hintText: '우리 주변 친구들의 소식을 공유해주세요.',
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
                   ),
                 ),
-                // ...이미지 썸네일 리스트
+                const SizedBox(height: 20),
+
+                // 위치 추가
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ListTile(
+                    leading: Icon(Icons.location_on, color: Colors.grey[600]),
+                    title: Text('내 위치 추가', 
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        )),
+                    trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
+                  ),
+                ),   
+                const SizedBox(height: 20),
+
+                // 전체 공개 스위치
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SwitchListTile(
+                    title: Text('전체 공개', 
+                        style: TextStyle(
+                          color: Colors.grey[800],
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        )),
+                    subtitle: Text('위치 적용 후 전체 공개 시 지도위에 표시됩니다.', 
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                          fontFamily: 'Pretendard',
+                        )),
+                    value: isPublic,
+                    onChanged: (v) => setState(() => isPublic = v),
+                    activeColor: const Color(0xFF4D91FF),
+                  ),
+                ),
+                
+                const SizedBox(height: 32),
+
+                // 하단 버튼
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: null, // 조건 충족 시 함수로 변경
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.grey[300],
+                      foregroundColor: Colors.grey[600],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Text('소식 업로드', 
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        )),
+                  ),
+                ),
               ],
             ),
-            SizedBox(height: 16),
-            // 안내 문구
-            Text('공간에서의 경험이나 정보를 ...', style: TextStyle(color: Colors.white70)),
-            // ...
-            // 공간 추가, 방문 날짜, 커뮤니티 선택 등
-            ListTile(
-              title: Text('공간 추가', style: TextStyle(color: Colors.white)),
-              trailing: Icon(Icons.chevron_right, color: Colors.white),
-            ),
-            // 방문 날짜
-            ListTile(
-              title: Text('방문한 날짜', style: TextStyle(color: Colors.white)),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('2025년 1월 4일', style: TextStyle(color: Colors.white)),
-                  Icon(Icons.chevron_right, color: Colors.white),
-                ],
-              ),
-            ),
-            // 커뮤니티 선택
-            ListTile(
-              title: Text('커뮤니티 선택', style: TextStyle(color: Colors.white)),
-              trailing: Icon(Icons.chevron_right, color: Colors.white),
-            ),
-            // 전체 공개 스위치
-            SwitchListTile(
-              title: Text('전체 공개', style: TextStyle(color: Colors.white)),
-              value: isPublic,
-              onChanged: (v) => setState(() => isPublic = v),
-              activeColor: Colors.blue,
-            ),
-            // 유료 광고 포함 스위치
-            SwitchListTile(
-              title: Text('유료 광고 포함', style: TextStyle(color: Colors.white)),
-              subtitle: Text('...설명...', style: TextStyle(color: Colors.white54, fontSize: 12)),
-              value: isAd,
-              onChanged: (v) => setState(() => isAd = v),
-              activeColor: Colors.blue,
-            ),
-            // 하단 버튼
-            Container(
-              width: double.infinity,
-              margin: EdgeInsets.symmetric(vertical: 24),
-              child: ElevatedButton(
-                onPressed: null, // 조건 충족 시 함수로 변경
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey[800],
-                  disabledBackgroundColor: Colors.grey[800],
-                ),
-                child: Text('데이로그 업로드', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

@@ -90,8 +90,16 @@ class MapStateScreens extends State<MapScreens> {
 
     return Scaffold(
         appBar: AppBar(
-          title: const Text('Unimal Maps'),
-          backgroundColor: const Color(0xFFFEF7FF),
+          backgroundColor: const Color(0xFF4D91FF),
+          title: const Text(
+            'Unimal',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 25,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
         body: Stack(
           children: [

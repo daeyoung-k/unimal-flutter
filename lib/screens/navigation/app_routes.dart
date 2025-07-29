@@ -17,11 +17,23 @@ import 'package:unimal/screens/search.dart';
 class AppRoutes {
   List<GetPage> pages() {
     return [
-      GetPage(name: '/login', page: () => LoginScreens()),
+      ..._rootRoutes(),
+      ..._authRoutes(),
+    ];
+  }
+
+  List<GetPage> _rootRoutes() {
+    return [
       GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
       GetPage(name: '/add', page: () => RootScreen(selectedIndex: 1)),
       GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
       GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
+    ];
+  }
+  
+  List<GetPage> _authRoutes() {
+    return [
+      GetPage(name: '/login', page: () => LoginScreens()),
       GetPage(name: '/tel-verification', page: () => TelVerificationScreen()),
       GetPage(name: '/id-find', page: () => IdFindScreen()),
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),
@@ -30,6 +42,7 @@ class AppRoutes {
   }
 
 
+  // 하단 네비게이션 바 아이템
   final _bottomNavigationItems = [
     {
       "page": MapScreens(),
@@ -43,7 +56,7 @@ class AppRoutes {
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
-        label: '글쓰기')
+        label: '공유하기')
     },
     {
       "page": BoardScreens(),

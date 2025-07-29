@@ -471,6 +471,7 @@ class _SignupScreensState extends State<SignupScreens> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF4D91FF),
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -492,7 +493,7 @@ class _SignupScreensState extends State<SignupScreens> {
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
