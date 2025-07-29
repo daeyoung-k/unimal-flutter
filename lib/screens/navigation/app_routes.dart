@@ -56,7 +56,7 @@ class AppRoutes {
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
-        label: '글쓰기')
+        label: '공유하기')
     },
     {
       "page": BoardScreens(),
