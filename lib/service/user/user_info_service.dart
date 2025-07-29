@@ -5,6 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/models/signup_models.dart';
+import 'package:unimal/service/login/account_service.dart';
 
 class UserInfoService {
   var logger = Logger();
@@ -110,6 +111,8 @@ class UserInfoService {
       var res = await http.post(url, headers: headers, body: body);
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
       if (bodyData['code'] == 200) {
+        final accountService = AccountService();
+        await accountService.stateClear();
         return "ok";
       } else {
         return bodyData['message'];

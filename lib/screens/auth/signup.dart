@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:unimal/models/signup_models.dart';
 import 'package:unimal/service/auth/authentication_service.dart';
 import 'package:unimal/service/user/user_info_service.dart';

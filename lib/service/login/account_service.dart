@@ -48,7 +48,11 @@ class AccountService {
     Get.offAllNamed("/login");
   }
 
-  _authStateClear() async {
+  Future<void> stateClear() async {
+     await _authStateClear();
+  }
+
+  Future<void> _authStateClear() async {
     switch (_authState.provider.value) {
       case LoginType.naver:
         await _naverLogout();
