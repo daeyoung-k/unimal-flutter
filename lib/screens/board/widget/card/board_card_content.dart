@@ -1,6 +1,5 @@
 
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/widget/action/action_icon_button.dart';
 
 class BoardCardContent extends StatefulWidget {
   final String content;
