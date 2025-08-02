@@ -3,10 +3,15 @@ import 'dart:ui' as ui;
 import 'dart:async'; // Added for Completer
 import 'dart:typed_data';
 
-class TestEtc {
-  static Future<Uint8List> getImageBytes() async {
+class ImageService {
+
+  Future<ImageStream> getImageStream() async {
     final NetworkImage assetImage = NetworkImage("https://i.pravatar.cc/300");
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
+    return stream;
+  }
+
+  Future<Uint8List> createMarkerImage(ImageStream stream) async {
     final Completer<ui.Image> completer = Completer<ui.Image>();
 
     stream.addListener(ImageStreamListener((ImageInfo info, bool _) {

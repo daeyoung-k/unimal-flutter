@@ -1,16 +1,17 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/test_etc.dart';
+import 'package:unimal/service/image/image_service.dart';
 
-class TestEtcPreview extends StatefulWidget {
-  const TestEtcPreview({super.key});
+class MarkerPreview extends StatefulWidget {
+  const MarkerPreview({super.key});
 
   @override
-  State<TestEtcPreview> createState() => _TestEtcPreviewState();
+  State<MarkerPreview> createState() => _MarkerPreviewState();
 }
 
-class _TestEtcPreviewState extends State<TestEtcPreview> {
+class _MarkerPreviewState extends State<MarkerPreview> {
+  final ImageService imageService = ImageService();
   Uint8List? markerBytes;
 
   @override
@@ -20,7 +21,8 @@ class _TestEtcPreviewState extends State<TestEtcPreview> {
   }
 
   Future<void> _loadMarkerImage() async {
-    final Uint8List bytes = await TestEtc.getImageBytes();
+    final ImageStream stream = await imageService.getImageStream();
+    final Uint8List bytes = await imageService.createMarkerImage(stream);
     setState(() {
       markerBytes = bytes;
     });

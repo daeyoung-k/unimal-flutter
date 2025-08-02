@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -7,7 +6,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/services.dart';
-import 'package:unimal/screens/test_etc.dart';
+import 'package:unimal/service/image/image_service.dart';
 
 class MapScreens extends StatefulWidget {
   const MapScreens({super.key});
@@ -17,6 +16,7 @@ class MapScreens extends StatefulWidget {
 }
 
 class MapStateScreens extends State<MapScreens> {
+  final ImageService imageService = ImageService();
   late GoogleMapController mapController;
   Position? _currentPosition;
   bool _isLoading = true;
@@ -77,7 +77,8 @@ class MapStateScreens extends State<MapScreens> {
   }
 
   Future<void> _loadCustomMarkerIcon() async {
-    final Uint8List bytes = await TestEtc.getImageBytes();
+    final ImageStream stream = await imageService.getImageStream();
+    final Uint8List bytes = await imageService.createMarkerImage(stream);
     _customMarkerIcon = BitmapDescriptor.bytes(bytes, width: 50, height: 50);
   }
 
