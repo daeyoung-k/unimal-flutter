@@ -50,7 +50,7 @@ class LoginStateScreens extends State<LoginScreens> {
               height: 260,
               decoration: BoxDecoration(
                 image: DecorationImage(
-                  image: AssetImage("assets/img/universe-mise.png"),
+                  image: AssetImage("assets/img/unimal_mise.png"),
                   fit: BoxFit.cover,
                 ),
                 borderRadius: BorderRadius.circular(60),

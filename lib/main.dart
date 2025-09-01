@@ -40,8 +40,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-      // home: loginChecked ? RootScreen() : LoginScreens(),
-      home: loginChecked ? RootScreen() : RootScreen(),
+      home: loginChecked ? RootScreen() : LoginScreens(),
+      // home: loginChecked ? RootScreen() : RootScreen(),
       // home: MarkerPreview(),
     );
   }
