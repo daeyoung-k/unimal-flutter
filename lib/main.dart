@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/%08map/marker/marker_preview.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
-import 'package:unimal/screens/auth/signup.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -41,6 +41,9 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
       home: loginChecked ? RootScreen() : LoginScreens(),
+      // home: loginChecked ? RootScreen() : RootScreen(),
+      // home: MarkerPreview(),
     );
   }
 }
+// 
