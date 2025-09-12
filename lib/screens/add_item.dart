@@ -126,7 +126,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 사진 추가 영역
-                const Text('첫번째 사진이 대표 사진이 됩니다.',
+                const Text('대표 이미지는 지도에 노출돼요.',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -206,27 +206,49 @@ class _AddItemScreensState extends State<AddItemScreens> {
                                   ),
                                 ),
                               ),
-                              // 순서 번호 표시
-                              Positioned(
-                                top: 4, left: 4,
-                                child: Container(
-                                  width: 20, height: 20,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      '${index + 1}',
-                                      style: const TextStyle(
+                              // 첫 번째 사진에만 "대표" 라벨 표시
+                              if (index == 0)
+                                Positioned(
+                                  top: 4, left: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF4D91FF),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      '대표',
+                                      style: TextStyle(
                                         color: Colors.white,
-                                        fontSize: 12,
+                                        fontSize: 10,
                                         fontWeight: FontWeight.bold,
+                                        fontFamily: 'Pretendard',
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
+                              // 순서 번호 표시 (첫 번째 사진이 아닌 경우에만)
+                              if (index != 0)
+                                Positioned(
+                                  top: 4, left: 4,
+                                  child: Container(
+                                    width: 20, height: 20,
+                                    decoration: BoxDecoration(
+                                      color: Colors.black54,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${index + 1}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               // 삭제 버튼
                               Positioned(
                                 top: 4, right: 4,
