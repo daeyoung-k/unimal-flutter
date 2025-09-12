@@ -13,7 +13,10 @@ class AddItemScreens extends StatefulWidget {
 
 class _AddItemScreensState extends State<AddItemScreens> {
   final TextEditingController _contentController = TextEditingController();
-  File? _image;
+
+  final _maxImageLength = 10; // 최대 사진 개수
+  final List<File> _images = []; // 여러 사진을 순서대로 저장할 리스트
+
   Position? _currentPosition;
   final ImagePicker _picker = ImagePicker();
   bool isPublic = false;
@@ -46,11 +49,53 @@ class _AddItemScreensState extends State<AddItemScreens> {
   }
 
   Future<void> _getImage(ImageSource source) async {
+    if (_images.length >= _maxImageLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('최대 ${_maxImageLength}장까지만 추가할 수 있습니다.')),
+      );
+      return;
+    }
+    
     final XFile? image = await _picker.pickImage(source: source);
     if (image != null) {
       setState(() {
-        _image = File(image.path);
+        _images.add(File(image.path)); // 리스트에 순서대로 추가
       });
+    }
+  }
+
+  Future<void> _getMultipleImages() async {
+    // 현재 추가된 사진 개수 확인
+    int remainingSlots = _maxImageLength - _images.length;
+    if (remainingSlots <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('최대 ${_maxImageLength}장까지만 추가할 수 있습니다.')),
+      );
+      return;
+    }
+
+    // 최대 선택 가능한 개수를 남은 슬롯으로 제한
+    final List<XFile> images = await _picker.pickMultipleMedia(
+      maxWidth: 1920,
+      maxHeight: 1920,
+      imageQuality: 85,
+    );
+
+    if (images.isNotEmpty) {
+      setState(() {
+        // 남은 슬롯만큼만 추가
+        int imagesToAdd = images.length > remainingSlots ? remainingSlots : images.length;
+        for (int i = 0; i < imagesToAdd; i++) {
+          _images.add(File(images[i].path));
+        }
+      });
+
+      // 선택한 사진이 남은 슬롯보다 많을 경우 알림
+      if (images.length > remainingSlots) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${remainingSlots}장만 추가되었습니다. (최대 ${_maxImageLength}장 제한)')),
+        );
+      }
     }
   }
 
@@ -81,31 +126,31 @@ class _AddItemScreensState extends State<AddItemScreens> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 사진 추가 영역
-                const Text('사진 추가',
+                const Text('첫번째 사진이 대표 사진이 됩니다.',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'Pretendard',
                     )),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    // 메인사진 추가 영역
-                    GestureDetector(
-                      onTap: () {
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      // 추가 사진 영역
+                      GestureDetector(
+                        onTap: () {
                         showModalBottomSheet(
                           context: context,
                           builder: (context) => Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: [
+                            children: [                              
                               ListTile(
-                                leading: const Icon(Icons.photo_library),
+                                leading: const Icon(Icons.photo_library_outlined),
                                 title: const Text('사진첩'),
                                 onTap: () {
                                   Navigator.pop(context);
-                                  _getImage(ImageSource.gallery);
-                                  print(_currentPosition?.latitude);
-                                  print(_currentPosition?.longitude);
+                                  _getMultipleImages();
                                 },
                               ),
                               ListTile(
@@ -119,84 +164,98 @@ class _AddItemScreensState extends State<AddItemScreens> {
                             ],
                           ),
                         );
-                      },
-                      child: Container(
-                        width: 80, height: 100,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add, color: Colors.grey[600]),
-                            Text('메인사진\n추가', 
-                                style: TextStyle(
-                                  color: Colors.grey[600], 
-                                  fontSize: 12,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ), 
-                                textAlign: TextAlign.center),
-                          ],
+                        },
+                        child: Container(
+                          width: 70, height: 70,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add, color: Colors.grey[600]),
+                              Text('사진 ${_images.length}/${_maxImageLength}', 
+                                  style: TextStyle(
+                                    color: Colors.grey[600], 
+                                    fontSize: 12,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w600,
+                                  ), 
+                                  textAlign: TextAlign.center),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    // 추가 사진 영역
-                    GestureDetector(
-                      onTap: () {
-                        showModalBottomSheet(
-                          context: context,
-                          builder: (context) => Column(
-                            mainAxisSize: MainAxisSize.min,
+                      const SizedBox(width: 8),
+                      // 추가된 사진들을 순서대로 표시
+                      ..._images.asMap().entries.map((entry) {
+                        int index = entry.key;
+                        File image = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Stack(
                             children: [
-                              ListTile(
-                                leading: const Icon(Icons.photo_library),
-                                title: const Text('사진첩'),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _getImage(ImageSource.gallery);
-                                  print(_currentPosition?.latitude);
-                                  print(_currentPosition?.longitude);
-                                },
+                              Container(
+                                width: 80, height: 100,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  image: DecorationImage(
+                                    image: FileImage(image),
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
                               ),
-                              ListTile(
-                                leading: const Icon(Icons.camera_alt),
-                                title: const Text('카메라'),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _getImage(ImageSource.camera);
-                                },
+                              // 순서 번호 표시
+                              Positioned(
+                                top: 4, left: 4,
+                                child: Container(
+                                  width: 20, height: 20,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // 삭제 버튼
+                              Positioned(
+                                top: 4, right: 4,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _images.removeAt(index);
+                                    });
+                                  },
+                                  child: Container(
+                                    width: 20, height: 20,
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
                         );
-                      },
-                      child: Container(
-                        width: 80, height: 100,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add, color: Colors.grey[600]),
-                            Text('사진 추가\n0/15', 
-                                style: TextStyle(
-                                  color: Colors.grey[600], 
-                                  fontSize: 12,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ), 
-                                textAlign: TextAlign.center),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // ...이미지 썸네일 리스트
-                  ],
+                      }).toList(),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 20),
 
