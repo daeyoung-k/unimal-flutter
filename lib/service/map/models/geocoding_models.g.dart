@@ -14,6 +14,8 @@ GeocodingModel _$GeocodingModelFromJson(Map<String, dynamic> json) =>
       siDo: json['siDo'] as String? ?? '',
       guGun: json['guGun'] as String? ?? '',
       dong: json['dong'] as String? ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
     );
 
 Map<String, dynamic> _$GeocodingModelToJson(GeocodingModel instance) =>
@@ -24,4 +26,6 @@ Map<String, dynamic> _$GeocodingModelToJson(GeocodingModel instance) =>
       'siDo': instance.siDo,
       'guGun': instance.guGun,
       'dong': instance.dong,
+      'latitude': instance.latitude,
+      'longitude': instance.longitude,
     };

@@ -15,21 +15,29 @@ class GeocodingModel {
   final String postalCode;
 
   @JsonKey(defaultValue: '')
-  final String siDo;
+  final String? siDo;
 
   @JsonKey(defaultValue: '')
-  final String guGun;
+  final String? guGun;
   
   @JsonKey(defaultValue: '')
-  final String dong;
+  final String? dong;
+
+  @JsonKey(defaultValue: 0)
+  double? latitude;
+
+  @JsonKey(defaultValue: 0)
+  double? longitude;
 
   GeocodingModel({
       required this.streetName,
       required this.streetNumber,
       required this.postalCode,
-      required this.siDo,
-      required this.guGun,
-      required this.dong,
+      this.siDo,
+      this.guGun,
+      this.dong,
+      this.latitude,
+      this.longitude,
   });
 
   factory GeocodingModel.fromJson(Map<String, dynamic> json) => _$GeocodingModelFromJson(json);

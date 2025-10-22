@@ -24,12 +24,14 @@ class GeocodingApiService {
       return GeocodingModel.fromJson(bodyData['data']);
     } else {
       return GeocodingModel(
-        streetName: '',
+        streetName: '위치 정보를 가져오지 못하였습니다.',
         streetNumber: '',
         postalCode: '',
-        siDo: '',
-        guGun: '',
-        dong: '',
+        siDo: null,
+        guGun: null,
+        dong: null,
+        latitude: null,
+        longitude: null,
       );
     }
   }
