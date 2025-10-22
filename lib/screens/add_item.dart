@@ -4,6 +4,9 @@ import 'package:geolocator/geolocator.dart';
 // import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 
+import 'package:unimal/service/map/geocoding_api_service.dart';
+import 'package:unimal/service/map/models/geocoding_models.dart';
+
 class AddItemScreens extends StatefulWidget {
   const AddItemScreens({super.key});
 
@@ -16,8 +19,8 @@ class _AddItemScreensState extends State<AddItemScreens> {
 
   final _maxImageLength = 10; // 최대 사진 개수
   final List<File> _images = []; // 여러 사진을 순서대로 저장할 리스트
+  GeocodingModel? _myLocation;
 
-  Position? _currentPosition;
   final ImagePicker _picker = ImagePicker();
   bool isPublic = false;
   bool isAd = false;
@@ -42,9 +45,14 @@ class _AddItemScreensState extends State<AddItemScreens> {
       }
     }
 
+    await _getMyLocation();
+  }
+
+  Future<void> _getMyLocation() async {
     Position position = await Geolocator.getCurrentPosition();
+    GeocodingModel geocoding = await GeocodingApiService().getGeocoding(position.latitude.toString(), position.longitude.toString());
     setState(() {
-      _currentPosition = position;
+      _myLocation = geocoding;
     });
   }
 
@@ -314,13 +322,17 @@ class _AddItemScreensState extends State<AddItemScreens> {
                   ),
                   child: ListTile(
                     leading: Icon(Icons.location_on, color: Colors.grey[600]),
-                    title: Text('내 위치 추가', 
+                    title: Text(_myLocation?.streetName ?? '내 위치 추가', 
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
+                          fontSize: 13,
                         )),
                     trailing: Icon(Icons.chevron_right, color: Colors.grey[600]),
+                    onTap: () async {
+                      await _getMyLocation();
+                    },
                   ),
                 ),   
                 const SizedBox(height: 20),
@@ -332,7 +344,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: SwitchListTile(
-                    title: Text('전체 공개', 
+                    title: Text('지도 노출', 
                         style: TextStyle(
                           color: Colors.grey[800],
                           fontFamily: 'Pretendard',
