@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:unimal/screens/board/detail_board.dart';
 import 'package:unimal/screens/board/widget/card/board_card_content.dart';
 import 'package:unimal/screens/board/widget/card/board_card_image.dart';
 import 'package:unimal/screens/board/widget/card/board_card_profile.dart';
@@ -6,6 +8,7 @@ import 'package:unimal/screens/board/widget/card/board_card_profile.dart';
 class BoardCard extends StatefulWidget {
   
   // backend 데이터 받아오는 영역
+  final int boardId;
   final String profileImageUrl;
   final String nickname;
   final String location;
@@ -16,6 +19,7 @@ class BoardCard extends StatefulWidget {
 
   const BoardCard({
     super.key, 
+    required this.boardId,
     required this.profileImageUrl,
     required this.nickname,
     required this.location,
@@ -37,6 +41,19 @@ class _BoardCardState extends State<BoardCard>
   late Animation<double> _cardFadeAnimation;
   late Animation<double> _cardScaleAnimation;
   late Animation<Offset> _cardSlideAnimation;
+
+  void _goToDetail() {
+    Get.to(() => const DetailBoardScreen(), arguments: {
+      'boardId': widget.boardId,
+      'profileImageUrl': widget.profileImageUrl,
+      'author': widget.nickname,
+      'streetName': widget.location,
+      'imageUrls': widget.imageUrls,
+      'content': widget.content,
+      'likeCount': widget.likeCount,
+      'commentCount': widget.commentCount,
+    });
+  }
 
   @override
   void initState() {
@@ -100,11 +117,15 @@ class _BoardCardState extends State<BoardCard>
             child: Column(
               children: [
                 // 프로필 영역
-                BoardCardProfile(
-                  screenHeight: screenHeight, 
-                  profileImageUrl: widget.profileImageUrl, 
-                  nickname: widget.nickname, 
-                  location: widget.location
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _goToDetail,
+                  child: BoardCardProfile(
+                    screenHeight: screenHeight, 
+                    profileImageUrl: widget.profileImageUrl, 
+                    nickname: widget.nickname, 
+                    location: widget.location
+                  ),
                 ),
                 // 이미지 영역 (있는 경우에만)
                 if (widget.imageUrls.isNotEmpty) 
@@ -118,6 +139,7 @@ class _BoardCardState extends State<BoardCard>
                   likeCount: widget.likeCount,
                   commentCount: widget.commentCount,
                   maxLine: widget.imageUrls.isNotEmpty ? 2 : 5,
+                  onTap: _goToDetail,
                 ),
               ],
             ),
