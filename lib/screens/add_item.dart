@@ -434,7 +434,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       elevation: _canUpload() ? 4 : 0,
-                      shadowColor: _canUpload() ? Colors.black.withOpacity(0.1) : Colors.transparent,
+                      shadowColor: _canUpload() ? Colors.black.withValues(alpha: 0.1) : Colors.transparent,
                     ),
                     child: _canUpload() 
                         ? Row(
