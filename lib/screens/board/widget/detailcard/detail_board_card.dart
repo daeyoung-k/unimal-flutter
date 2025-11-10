@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:unimal/screens/board/widget/photo_arrow.dart';
 
 class DetailBoardCard extends StatelessWidget {
   final String profileImageUrl;
@@ -79,7 +80,7 @@ class _DetailProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -175,7 +176,7 @@ class _DetailImages extends StatefulWidget {
 
 class _DetailImagesState extends State<_DetailImages> {
   final PageController _pageController = PageController();
-  int _current = 0;
+  int _currentPage = 0;
 
   @override
   void dispose() {
@@ -192,7 +193,11 @@ class _DetailImagesState extends State<_DetailImages> {
           PageView.builder(
             controller: _pageController,
             itemCount: widget.imageUrls.length,
-            onPageChanged: (i) => setState(() => _current = i),
+            onPageChanged: (index) {
+              setState(() {
+                _currentPage = index;
+              });
+            },
             itemBuilder: (context, index) {
               final url = widget.imageUrls[index];
               return Padding(
@@ -221,6 +226,8 @@ class _DetailImagesState extends State<_DetailImages> {
               );
             },
           ),
+          if (_currentPage > 0) PhotoArrow(pageController: _pageController, direction: "previous"),
+          if (_currentPage < widget.imageUrls.length - 1) PhotoArrow(pageController: _pageController, direction: "next"),
           if (widget.imageUrls.length > 1)
             Positioned(
               bottom: 10,
@@ -229,7 +236,7 @@ class _DetailImagesState extends State<_DetailImages> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(widget.imageUrls.length, (i) {
-                  final bool active = i == _current;
+                  final bool active = i == _currentPage;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 200),
                     width: active ? 18 : 6,
