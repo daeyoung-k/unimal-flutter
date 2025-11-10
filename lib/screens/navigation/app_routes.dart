@@ -6,6 +6,7 @@ import 'package:unimal/screens/add_item.dart';
 import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
 import 'package:unimal/screens/auth/signup.dart';
+import 'package:unimal/screens/board/detail_board.dart';
 import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/%08map/map.dart';
@@ -38,6 +39,7 @@ class AppRoutes {
       GetPage(name: '/id-find', page: () => IdFindScreen()),
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),
       GetPage(name: '/signup', page: () => SignupScreens()),
+      GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
     ];
   }
 

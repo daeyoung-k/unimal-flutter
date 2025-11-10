@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/%08map/marker/marker_preview.dart';
+import 'package:unimal/screens/board/detail_board.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
@@ -12,14 +13,14 @@ import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
-  // í™˜ê²½ë³€ìˆ˜ ë¡œë“œ
+  // ?™˜ê²½ë???ˆ˜ ë¡œë“œ
   const environment = String.fromEnvironment('ENV', defaultValue: 'local');
   await dotenv.load(fileName: ".env.$environment");
-  // ì¹´ì¹´ì˜¤ ë¡œê·¸ì¸ SDK ì´ˆê¸°í™”
+  // ì¹´ì¹´?˜¤ ë¡œê·¸?¸ SDK ì´ˆê¸°?™”
   KakaoLoginService().kakaoInit();
-  // ë„¤ì´ë²„ ë¡œê·¸ì¸ SDK ì´ˆê¸°í™”
+  // ?„¤?´ë²? ë¡œê·¸?¸ SDK ì´ˆê¸°?™”
   NaverLoginService().naverInit();
-  // ìƒíƒœê´€ë¦¬ ì´ˆê¸°í™”
+  // ?ƒ?ƒœê´?ë¦? ì´ˆê¸°?™”
   StateInit().stateInit();
 
   final authState = Get.find<AuthState>();
@@ -40,8 +41,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-    //   home: loginChecked ? RootScreen() : LoginScreens(),
-      home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
+      // home: loginChecked ? RootScreen() : DetailBoardScreen(),
+      // home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
       // home: MarkerPreview(),
     );
   }
