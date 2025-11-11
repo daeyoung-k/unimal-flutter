@@ -415,7 +415,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
                         )),
                     value: isPublic,
                     onChanged: (v) => setState(() => isPublic = v),
-                    activeThumbColor: const Color(0xFF4D91FF),
+                    activeColor: const Color(0xFF4D91FF),
                   ),
                 ),
                 

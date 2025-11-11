@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
-import 'package:unimal/screens/%08map/marker/marker_preview.dart';
-import 'package:unimal/screens/board/detail_board.dart';
+import 'package:unimal/screens/map/marker/marker_preview.dart';
+import 'package:unimal/screens/detail_board/detail_board.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';

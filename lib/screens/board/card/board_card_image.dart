@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/board/widget/indicator.dart';
-import 'package:unimal/screens/board/widget/photo_arrow.dart';
+import 'package:unimal/screens/widget/board/indicator.dart';
+import 'package:unimal/screens/widget/board/photo_arrow.dart';
 
 class BoardCardImage extends StatefulWidget {
   final double screenHeight;
