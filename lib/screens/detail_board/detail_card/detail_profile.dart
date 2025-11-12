@@ -16,7 +16,7 @@ class DetailProfile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
@@ -32,7 +32,7 @@ class DetailProfile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
-            radius: 22,
+            radius: 15,
             backgroundColor: Colors.grey[200],
             backgroundImage: NetworkImage(profileImageUrl),
             onBackgroundImageError: (e, s) {},
@@ -53,6 +53,7 @@ class DetailProfile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     Icon(
                       Icons.location_on_outlined,
@@ -60,15 +61,13 @@ class DetailProfile extends StatelessWidget {
                       color: Colors.grey[600],
                     ),
                     const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        location,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey[600],
-                          fontFamily: 'Pretendard',
-                        ),
+                    Text(
+                      location,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                        fontFamily: 'Pretendard',
                       ),
                     ),
                   ],
@@ -76,20 +75,21 @@ class DetailProfile extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            onPressed: () {},
-            icon: Icon(
-              Icons.more_horiz,
-              color: Colors.grey[600],
-              size: 20,
-            ),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.grey[100],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
+          
+          // IconButton(
+          //   onPressed: () {},
+          //   icon: Icon(
+          //     Icons.more_horiz,
+          //     color: Colors.grey[600],
+          //     size: 20,
+          //   ),
+          //   style: IconButton.styleFrom(
+          //     backgroundColor: Colors.grey[100],
+          //     shape: RoundedRectangleBorder(
+          //       borderRadius: BorderRadius.circular(12),
+          //     ),
+          //   ),
+          // ),
         ],
       ),
     );

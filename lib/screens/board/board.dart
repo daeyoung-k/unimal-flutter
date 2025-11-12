@@ -155,6 +155,7 @@ class _BoardScreensState extends State<BoardScreens> {
                                 nickname: post.nickname,
                                 location: post.location,
                                 imageUrls: post.imageUrls,
+                                title: post.title,
                                 content: post.content,
                                 likeCount: post.likeCount,
                                 commentCount: post.commentCount,

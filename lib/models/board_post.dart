@@ -3,6 +3,7 @@ class BoardPost {
   final String nickname;
   final String location;
   final List<String> imageUrls;
+  final String? title;
   final String content;
   final String likeCount;
   final String commentCount;
@@ -12,6 +13,7 @@ class BoardPost {
     required this.nickname,
     required this.location,
     required this.imageUrls,
+    this.title = '',
     required this.content,
     required this.likeCount,
     required this.commentCount,
@@ -23,6 +25,7 @@ class BoardPost {
       nickname: json['nickname'] as String,
       location: json['location'] as String,
       imageUrls: List<String>.from(json['imageUrls']),
+      title: json['title'] as String,
       content: json['content'] as String,
       likeCount: json['likeCount'] as String,
       commentCount: json['commentCount'] as String,
@@ -35,6 +38,7 @@ class BoardPost {
       'nickname': nickname,
       'location': location,
       'imageUrls': imageUrls,
+      'title': title,
       'content': content,
       'likeCount': likeCount,
       'commentCount': commentCount,

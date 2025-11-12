@@ -13,6 +13,7 @@ class BoardCard extends StatefulWidget {
   final String nickname;
   final String location;
   final List<String> imageUrls;
+  final String? title;
   final String content;
   final String likeCount;
   final String commentCount;
@@ -24,6 +25,7 @@ class BoardCard extends StatefulWidget {
     required this.nickname,
     required this.location,
     required this.imageUrls, 
+    this.title = '',
     required this.content, 
     required this.likeCount, 
     required this.commentCount

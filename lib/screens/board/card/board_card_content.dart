@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 class BoardCardContent extends StatefulWidget {
+  final String? title;
   final String content;
   final String? likeCount;
   final String? commentCount;
@@ -11,6 +12,7 @@ class BoardCardContent extends StatefulWidget {
   const BoardCardContent({
     super.key, 
     required this.content, 
+    this.title = '',
     this.likeCount = "0", 
     this.commentCount = "0", 
     required this.maxLine, 
@@ -79,7 +81,7 @@ class _BoardCardContentState extends State<BoardCardContent>
           onTap: widget.onTap,
           child: Container(
             width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -95,9 +97,57 @@ class _BoardCardContentState extends State<BoardCardContent>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 액션 버튼들
+                // 제목 표시
+                if (widget.title != null && widget.title!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      widget.title!,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2C3E50),
+                      ),
+                    ),
+                  ),
+                // 콘텐츠 텍스트
+                Text(
+                  widget.content,
+                  maxLines: widget.maxLine,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFF2C3E50),
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // 시간 표시와 액션 버튼들
                 Row(
                   children: [
+                    // 시간 표시
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '방금 전',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
                     // 좋아요 버튼
                     GestureDetector(
                       onTap: _toggleLike,
@@ -112,7 +162,7 @@ class _BoardCardContentState extends State<BoardCardContent>
                                 _isLiked ? Icons.favorite : Icons.favorite_border,
                                 key: ValueKey(_isLiked),
                                 color: _isLiked ? Colors.red : Colors.grey[600],
-                                size: 18,
+                                size: 16,
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -130,13 +180,14 @@ class _BoardCardContentState extends State<BoardCardContent>
                       ),
                     ),
                     const SizedBox(width: 15), 
+                    // 댓글 버튼
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
                           Icons.chat_bubble_outline,
                           color: Colors.grey[600],
-                          size: 18,
+                          size: 16,
                         ),
                         const SizedBox(width: 6),
                         Text(
@@ -149,55 +200,7 @@ class _BoardCardContentState extends State<BoardCardContent>
                           ),
                         ),
                       ],
-                    ),                  
-                    const Spacer(),
-                    // 공유 버튼
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Icon(
-                        Icons.share_outlined,
-                        color: Colors.grey[600],
-                        size: 15,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // 콘텐츠 텍스트
-                Text(
-                  widget.content,
-                  maxLines: widget.maxLine,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w400,
-                    color: Color(0xFF2C3E50),
-                    height: 1.4,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // 시간 표시
-                Row(
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 14,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '방금 전',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                        fontFamily: 'Pretendard',
-                      ),
-                    ),
+                    ),                           
                   ],
                 ),
               ],

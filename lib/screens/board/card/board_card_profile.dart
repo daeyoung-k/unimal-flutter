@@ -65,8 +65,8 @@ class _BoardCardProfileState extends State<BoardCardProfile>
       child: SlideTransition(
         position: _slideAnimation,
         child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
@@ -94,7 +94,7 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                   ],
                 ),
                 child: CircleAvatar(
-                  radius: 22,
+                  radius: 15,
                   backgroundColor: Colors.grey[200],
                   backgroundImage: NetworkImage(widget.profileImageUrl),
                   onBackgroundImageError: (exception, stackTrace) {
@@ -102,7 +102,7 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                   },
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               // 사용자 정보
               Expanded(
                 child: Column(
@@ -113,7 +113,7 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                       widget.nickname,
                       style: const TextStyle(
                         fontWeight: FontWeight.w600,
-                        fontSize: 16,
+                        fontSize: 14,
                         color: Color(0xFF2C3E50),
                         fontFamily: 'Pretendard',
                       ),
@@ -123,16 +123,19 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                       children: [
                         Icon(
                           Icons.location_on_outlined,
-                          size: 14,
+                          size: 12,
                           color: Colors.grey[600],
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          widget.location,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey[600],
-                            fontFamily: 'Pretendard',
+                        Expanded(
+                          child: Text(
+                            widget.location,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontFamily: 'Pretendard',
+                            ),
                           ),
                         ),
                       ],
@@ -148,12 +151,14 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                 icon: Icon(
                   Icons.more_horiz,
                   color: Colors.grey[600],
-                  size: 20,
+                  size: 16,
                 ),
                 style: IconButton.styleFrom(
+                  padding: const EdgeInsets.all(4),
+                  minimumSize: const Size(28, 28),
                   backgroundColor: Colors.grey[100],
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
               ),
