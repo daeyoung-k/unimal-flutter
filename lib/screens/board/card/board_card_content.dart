@@ -82,7 +82,7 @@ class _BoardCardContentState extends State<BoardCardContent>
           child: Container(
             width: double.infinity,
             margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(20),
@@ -127,27 +127,7 @@ class _BoardCardContentState extends State<BoardCardContent>
                 const SizedBox(height: 12),
                 // 시간 표시와 액션 버튼들
                 Row(
-                  children: [
-                    // 시간 표시
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 14,
-                          color: Colors.grey[500],
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '방금 전',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[500],
-                            fontFamily: 'Pretendard',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
+                  children: [                    
                     // 좋아요 버튼
                     GestureDetector(
                       onTap: _toggleLike,
@@ -200,7 +180,27 @@ class _BoardCardContentState extends State<BoardCardContent>
                           ),
                         ),
                       ],
-                    ),                           
+                    ),    
+                    const Spacer(),
+                    // 시간 표시
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: Colors.grey[500],
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '방금 전',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ],
+                    ),                       
                   ],
                 ),
               ],

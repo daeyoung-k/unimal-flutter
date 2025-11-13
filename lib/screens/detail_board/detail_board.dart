@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/models/board_post.dart';
 import 'package:unimal/screens/detail_board/comment/comment_input.dart';
 import 'package:unimal/screens/detail_board/comment/comment_section.dart';
 import 'package:unimal/screens/detail_board/detail_card/detail_board_card.dart';
@@ -56,19 +57,21 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
   Widget build(BuildContext context) {
     final Map<String, dynamic> args = (Get.arguments as Map<String, dynamic>?) ?? {};
 
-    // TODO: API 연동 시 댓글 조회에 사용
-    // ignore: unused_local_variable
-    final int boardId = (args['boardId'] as int?) ?? 0;
-    final String content = (args['content'] as String?)?.trim() ?? '';
-    final List<dynamic> imageUrlsDynamic = (args['imageUrls'] as List<dynamic>?) ?? const [];
-    final List<String> imageUrls = imageUrlsDynamic.map((e) => e.toString()).toList();
-    final String streetName = (args['streetName'] as String?) ?? '';
-    final String author = (args['author'] as String?) ?? '익명';
-    final String likeCount = (args['likeCount'] as String?) ?? '0';
-    final String commentCount = (args['commentCount'] as String?) ?? '0';
-    final String profileImageUrl = (args['profileImageUrl'] as String?)?.trim().isNotEmpty == true
-        ? (args['profileImageUrl'] as String)
-        : 'https://via.placeholder.com/150';
+    BoardPost? boardPost = (args['boardPost'] as BoardPost?);
+
+    if (boardPost == null) {
+      //TODO: API 연동 시 데이터 조회
+      boardPost = BoardPost(
+        boardId: 0,
+        profileImageUrl: '',
+        nickname: '',
+        location: '',
+        imageUrls: [],
+        content: '',
+        likeCount: '0',
+        commentCount: '0',
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFF4D91FF),
@@ -94,15 +97,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
                   padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
                   child: Column(
                     children: [
-                      DetailBoardCard(
-                        profileImageUrl: profileImageUrl,
-                        nickname: author,
-                        location: streetName.isNotEmpty ? streetName : '위치 정보 없음',
-                        imageUrls: imageUrls,
-                        content: content,
-                        likeCount: likeCount,
-                        commentCount: commentCount,
-                      ),
+                      DetailBoardCard(boardPost: boardPost),
                       const SizedBox(height: 10),
                       // 댓글 영역
                       CommentSection(

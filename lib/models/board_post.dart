@@ -1,4 +1,5 @@
 class BoardPost {
+  final int boardId;
   final String profileImageUrl;
   final String nickname;
   final String location;
@@ -9,6 +10,7 @@ class BoardPost {
   final String commentCount;
 
   BoardPost({
+    required this.boardId,
     required this.profileImageUrl,
     required this.nickname,
     required this.location,
@@ -21,6 +23,7 @@ class BoardPost {
 
   factory BoardPost.fromJson(Map<String, dynamic> json) {
     return BoardPost(
+      boardId: json['boardId'] as int,
       profileImageUrl: json['profileImageUrl'] as String,
       nickname: json['nickname'] as String,
       location: json['location'] as String,
@@ -34,6 +37,7 @@ class BoardPost {
 
   Map<String, dynamic> toJson() {
     return {
+      'boardId': boardId,
       'profileImageUrl': profileImageUrl,
       'nickname': nickname,
       'location': location,

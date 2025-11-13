@@ -149,17 +149,7 @@ class _BoardScreensState extends State<BoardScreens> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: BoardCard(
-                                boardId: index,
-                                profileImageUrl: post.profileImageUrl,
-                                nickname: post.nickname,
-                                location: post.location,
-                                imageUrls: post.imageUrls,
-                                title: post.title,
-                                content: post.content,
-                                likeCount: post.likeCount,
-                                commentCount: post.commentCount,
-                              ),
+                              child: BoardCard(boardPost: post),
                             ),
                           );
                         },

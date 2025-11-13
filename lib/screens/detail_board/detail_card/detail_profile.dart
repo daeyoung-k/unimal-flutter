@@ -37,16 +37,17 @@ class DetailProfile extends StatelessWidget {
             backgroundImage: NetworkImage(profileImageUrl),
             onBackgroundImageError: (e, s) {},
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   nickname,
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
-                    fontSize: 16,
+                    fontSize: 14,
                     color: Color(0xFF2C3E50),
                     fontFamily: 'Pretendard',
                   ),
@@ -57,39 +58,26 @@ class DetailProfile extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.location_on_outlined,
-                      size: 14,
+                      size: 12,
                       color: Colors.grey[600],
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      location,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey[600],
-                        fontFamily: 'Pretendard',
+                    Expanded(
+                      child: Text(
+                        location,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey[600],
+                          fontFamily: 'Pretendard',
+                        ),
                       ),
                     ),
                   ],
                 ),
               ],
             ),
-          ),
-          
-          // IconButton(
-          //   onPressed: () {},
-          //   icon: Icon(
-          //     Icons.more_horiz,
-          //     color: Colors.grey[600],
-          //     size: 20,
-          //   ),
-          //   style: IconButton.styleFrom(
-          //     backgroundColor: Colors.grey[100],
-          //     shape: RoundedRectangleBorder(
-          //       borderRadius: BorderRadius.circular(12),
-          //     ),
-          //   ),
-          // ),
+          ),      
         ],
       ),
     );

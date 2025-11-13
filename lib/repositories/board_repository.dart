@@ -21,6 +21,7 @@ class BoardRepository {
 
   BoardPost _createImagePost(int page, int limit, int index) {
     return BoardPost(
+      boardId: index,
       profileImageUrl: 'https://i.pravatar.cc/300',
       nickname: '닉네임 ${(page - 1) * limit + index + 1}', // 페이지 번호를 닉네임에 추가 실제 적용시 삭제 예정
       location: '서울특별시 강남구 역삼동',
@@ -39,11 +40,12 @@ class BoardRepository {
 
   BoardPost _createTextPost(int page, int limit, int index) {
     return BoardPost(
+      boardId: index,
       profileImageUrl: 'https://i.pravatar.cc/300',
       nickname: '닉네임 ${(page - 1) * limit + index + 1}', // 페이지 번호를 닉네임에 추가 실제 적용시 삭제 예정
-      location: '세종특별자치시 세종시 세종동 ㅁㄴㅇㅁㄴㅇㅁㄴㅇㅁㄴㅇ',
+      location: '세종특별자치시 세종시 세종동 ㅁㄴㅇㅁㄴㅇㅁㄴㅇㅁㄴㅇㅋㅌㅊㅊㅊㅌㅊㅌㅍㅍㅍㅋㅌㅊ',
       imageUrls: [],
-      title: 'Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! ',
+      title: 'Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! ',
       content: 'Instagram 소라고둥님에게 소원을 빌어봐요! 귀여운 고양이와 강아지를 만날 수 있어요! '
         '지금 근처에 있는 동물들을 찾아보세요! 🐶🐱 아주 많은 이야기들이 있습니다~!! 🐾'
         '지금 근처에 있는 동물들을 찾아보세요! 🐶🐱 아주 많은 이야기들이 있습니다~!! 🐾',

@@ -1,26 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:unimal/models/board_post.dart';
 import 'package:unimal/screens/detail_board/detail_card/datail_content.dart';
 import 'package:unimal/screens/detail_board/detail_card/detail_images.dart';
 import 'package:unimal/screens/detail_board/detail_card/detail_profile.dart';
 
 class DetailBoardCard extends StatelessWidget {
-  final String profileImageUrl;
-  final String nickname;
-  final String location;
-  final List<String> imageUrls;
-  final String content;
-  final String likeCount;
-  final String commentCount;
+  final BoardPost boardPost;
 
   const DetailBoardCard({
     super.key,
-    required this.profileImageUrl,
-    required this.nickname,
-    required this.location,
-    required this.imageUrls,
-    required this.content,
-    required this.likeCount,
-    required this.commentCount,
+    required this.boardPost,
   });
 
   @override
@@ -45,21 +34,21 @@ class DetailBoardCard extends StatelessWidget {
           children: [
             // 프로필 영역
             DetailProfile(
-              profileImageUrl: profileImageUrl,
-              nickname: nickname,
-              location: location,
+              profileImageUrl: boardPost.profileImageUrl,
+              nickname: boardPost.nickname,
+              location: boardPost.location,
             ),
-            if (imageUrls.isNotEmpty)
+            if (boardPost.imageUrls.isNotEmpty)
               // 이미지 영역
               DetailImages(
-                imageUrls: imageUrls,
+                imageUrls: boardPost.imageUrls,
                 screenHeight: screenHeight,
               ),
             // 콘텐츠 영역
             DetailContent(
-              content: content,
-              likeCount: likeCount,
-              commentCount: commentCount,
+              content: boardPost.content,
+              likeCount: boardPost.likeCount,
+              commentCount: boardPost.commentCount,
             ),
           ],
         ),
