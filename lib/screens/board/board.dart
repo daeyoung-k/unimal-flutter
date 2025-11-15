@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:unimal/models/board_post.dart';
 import 'package:unimal/repositories/board_repository.dart';
-import 'package:unimal/screens/board/widget/card/board_card.dart';
-import 'package:unimal/screens/board/widget/board_search.dart';
+import 'package:unimal/screens/board/card/board_card.dart';
+import 'package:unimal/screens/board/card/board_search.dart';
 
 class BoardScreens extends StatefulWidget {
   const BoardScreens({super.key});
@@ -149,15 +149,7 @@ class _BoardScreensState extends State<BoardScreens> {
                             ),
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(16),
-                              child: BoardCard(
-                                profileImageUrl: post.profileImageUrl,
-                                nickname: post.nickname,
-                                location: post.location,
-                                imageUrls: post.imageUrls,
-                                content: post.content,
-                                likeCount: post.likeCount,
-                                commentCount: post.commentCount,
-                              ),
+                              child: BoardCard(boardPost: post),
                             ),
                           );
                         },
