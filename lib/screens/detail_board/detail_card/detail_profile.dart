@@ -15,15 +15,15 @@ class DetailProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
+      padding: const EdgeInsets.only(left: 12, right: 0, top: 5, bottom: 5),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
             offset: const Offset(0, 2),
           ),
         ],
@@ -32,7 +32,7 @@ class DetailProfile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           CircleAvatar(
-            radius: 15,
+            radius: 18,
             backgroundColor: Colors.grey[200],
             backgroundImage: NetworkImage(profileImageUrl),
             onBackgroundImageError: (e, s) {},

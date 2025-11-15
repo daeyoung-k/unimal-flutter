@@ -46,6 +46,7 @@ class DetailBoardCard extends StatelessWidget {
               ),
             // 콘텐츠 영역
             DetailContent(
+              title: boardPost.title,
               content: boardPost.content,
               likeCount: boardPost.likeCount,
               commentCount: boardPost.commentCount,

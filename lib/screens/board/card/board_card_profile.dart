@@ -66,7 +66,7 @@ class _BoardCardProfileState extends State<BoardCardProfile>
         position: _slideAnimation,
         child: Container(
           margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
+          padding: const EdgeInsets.only(left: 12, right: 0, top: 2, bottom: 2),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
@@ -94,7 +94,7 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                   ],
                 ),
                 child: CircleAvatar(
-                  radius: 15,
+                  radius: 18,
                   backgroundColor: Colors.grey[200],
                   backgroundImage: NetworkImage(widget.profileImageUrl),
                   onBackgroundImageError: (exception, stackTrace) {
