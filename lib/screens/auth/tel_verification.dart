@@ -51,16 +51,27 @@ class _PhoneVerificationScreenState extends State<TelVerificationScreen> {
 
   // 타이머 시작
   void _startTimer() {
+    // 기존 타이머가 있으면 취소 후 참조 해제
+    _timer?.cancel();
+    _timer = null;
+    
     _remainingSeconds = 300; // 5분으로 리셋
     _isTimerRunning = true;
     
     _timer = Timer.periodic(Duration(seconds: 1), (timer) {
+      // 다른 타이머가 이미 시작되어 이 타이머가 취소된 경우 즉시 종료
+      if (_timer != timer) {
+        timer.cancel();
+        return;
+      }
+
       setState(() {
         if (_remainingSeconds > 0) {
           _remainingSeconds--;
         } else {
           _isTimerRunning = false;
-          timer.cancel();
+          _timer?.cancel();
+          _timer = null;
         }
       });
     });
