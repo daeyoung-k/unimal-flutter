@@ -55,14 +55,19 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Get.parameters로 URL 파라미터에서 id 받기
+    final String? id = Get.parameters['id'];
+    
     final Map<String, dynamic> args = (Get.arguments as Map<String, dynamic>?) ?? {};
 
     BoardPost? boardPost = (args['boardPost'] as BoardPost?);
 
     if (boardPost == null) {
-      //TODO: API 연동 시 데이터 조회
+      //TODO: API 연동 시 id를 사용하여 데이터 조회
+      // 예: await BoardApiService().getBoardDetail(id ?? '');
+      // id가 있으면 해당 게시물을 조회하고, 없으면 기본값 사용
       boardPost = BoardPost(
-        boardId: 0,
+        boardId: id != null ? int.tryParse(id) ?? 0 : 0,
         profileImageUrl: '',
         nickname: '',
         location: '',

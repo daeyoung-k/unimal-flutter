@@ -27,7 +27,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
   bool _isLoadingLocation = false; // 위치 로딩 상태
 
   final ImagePicker _picker = ImagePicker();
-  bool isPublic = false;
+  bool isShow = true;
   bool isAd = false;
 
   @override
@@ -413,8 +413,8 @@ class _AddItemScreensState extends State<AddItemScreens> {
                           fontSize: 12,
                           fontFamily: 'Pretendard',
                         )),
-                    value: isPublic,
-                    onChanged: (v) => setState(() => isPublic = v),
+                    value: isShow,
+                    onChanged: (v) => setState(() => isShow = v),
                     activeColor: const Color(0xFF4D91FF),
                   ),
                 ),
@@ -502,7 +502,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
       _titleController.text,
       _contentController.text,
       _images,
-      isPublic,
+      isShow,
       _myLocation?.latitude ?? 0,
       _myLocation?.longitude ?? 0,
       _myLocation?.postalCode ?? '',
