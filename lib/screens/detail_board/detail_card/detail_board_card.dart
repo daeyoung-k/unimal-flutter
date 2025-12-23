@@ -34,22 +34,22 @@ class DetailBoardCard extends StatelessWidget {
           children: [
             // 프로필 영역
             DetailProfile(
-              profileImageUrl: boardPost.profileImageUrl,
+              profileImageUrl: boardPost.profileImage,
               nickname: boardPost.nickname,
-              location: boardPost.location,
+              location: boardPost.streetName,
             ),
-            if (boardPost.imageUrls.isNotEmpty)
+            if (boardPost.fileInfoList.isNotEmpty)
               // 이미지 영역
               DetailImages(
-                imageUrls: boardPost.imageUrls,
+                imageUrls: boardPost.fileInfoList,
                 screenHeight: screenHeight,
               ),
             // 콘텐츠 영역
             DetailContent(
               title: boardPost.title,
               content: boardPost.content,
-              likeCount: boardPost.likeCount,
-              commentCount: boardPost.commentCount,
+              likeCount: boardPost.likeCount.toString(),
+              replyCount: boardPost.replyCount.toString(),
             ),
           ],
         ),

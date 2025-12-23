@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/models/board_post.dart';
-import 'package:unimal/screens/detail_board/detail_board.dart';
 import 'package:unimal/screens/board/card/board_card_content.dart';
 import 'package:unimal/screens/board/card/board_card_image.dart';
 import 'package:unimal/screens/board/card/board_card_profile.dart';
@@ -28,9 +27,17 @@ class _BoardCardState extends State<BoardCard>
   late Animation<Offset> _cardSlideAnimation;
 
   void _goToDetail() {
-    Get.to(() => const DetailBoardScreen(), arguments: {
-      'boardPost': widget.boardPost,
-    });
+    // Get.toNamed를 사용하여 parameters에 id를 명시적으로 전달
+    // 이렇게 하면 이전 파라미터가 초기화되고 새로운 id로 설정됨
+    Get.toNamed(
+      '/detail-board',
+      parameters: {
+        'id': widget.boardPost.boardId.toString(),
+      },
+      arguments: {
+        'boardPost': widget.boardPost,
+      },
+    );
   }
 
   @override
@@ -100,24 +107,24 @@ class _BoardCardState extends State<BoardCard>
                   onTap: _goToDetail,
                   child: BoardCardProfile(
                     screenHeight: screenHeight, 
-                    profileImageUrl: widget.boardPost.profileImageUrl, 
+                    profileImageUrl: widget.boardPost.profileImage, 
                     nickname: widget.boardPost.nickname, 
-                    location: widget.boardPost.location
+                    location: widget.boardPost.streetName
                   ),
                 ),
                 // 이미지 영역 (있는 경우에만)
-                if (widget.boardPost.imageUrls.isNotEmpty) 
+                if (widget.boardPost.fileInfoList.isNotEmpty) 
                   BoardCardImage(
                     screenHeight: screenHeight, 
-                    imageUrls: widget.boardPost.imageUrls,
+                    imageUrls: widget.boardPost.fileInfoList,
                   ),
                 // 콘텐츠 영역
                 BoardCardContent(
                   title: widget.boardPost.title,
                   content: widget.boardPost.content,
-                  likeCount: widget.boardPost.likeCount,
-                  commentCount: widget.boardPost.commentCount,
-                  maxLine: widget.boardPost.imageUrls.isNotEmpty ? 2 : 5,
+                  likeCount: widget.boardPost.likeCount.toString(),
+                  commentCount: widget.boardPost.replyCount.toString(),
+                  maxLine: widget.boardPost.fileInfoList.isNotEmpty ? 2 : 5,
                   onTap: _goToDetail,
                 ),
               ],

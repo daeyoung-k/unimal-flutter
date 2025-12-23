@@ -4,14 +4,14 @@ class DetailContent extends StatelessWidget {
   final String? title;
   final String content;
   final String likeCount;
-  final String commentCount;
+  final String replyCount;
 
   const DetailContent({
     super.key, 
     this.title = '',
     required this.content,
     required this.likeCount,
-    required this.commentCount,
+    required this.replyCount,
   });
 
   @override
@@ -77,7 +77,7 @@ class DetailContent extends StatelessWidget {
               Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey[600]),
               const SizedBox(width: 6),
               Text(
-                commentCount,
+                replyCount,
                 style: TextStyle(
                   fontSize: 14,
                   color: Colors.grey[600],

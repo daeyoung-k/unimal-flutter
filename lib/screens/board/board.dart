@@ -17,7 +17,7 @@ class _BoardScreensState extends State<BoardScreens> {
   bool _isSearchFocused = false;
   bool _isLoading = false;
   bool _hasMore = true;
-  int _currentPage = 1;
+  int _currentPage = 0;
 
   final List<BoardPost> _posts = [];
   final BoardRepository _repository = BoardRepository();
