@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
-import 'package:unimal/models/board_post.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/detail_board/comment/comment_input.dart';
 import 'package:unimal/screens/detail_board/comment/comment_section.dart';
 import 'package:unimal/screens/detail_board/detail_card/detail_board_card.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:unimal/models/board_post.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/board/card/board_card_content.dart';
 import 'package:unimal/screens/board/card/board_card_image.dart';
 import 'package:unimal/screens/board/card/board_card_profile.dart';
@@ -116,7 +116,7 @@ class _BoardCardState extends State<BoardCard>
                 if (widget.boardPost.fileInfoList.isNotEmpty) 
                   BoardCardImage(
                     screenHeight: screenHeight, 
-                    imageUrls: widget.boardPost.fileInfoList,
+                    imageUrls: widget.boardPost.fileInfoList.map((e) => e.fileUrl).toList(),
                   ),
                 // 콘텐츠 영역
                 BoardCardContent(

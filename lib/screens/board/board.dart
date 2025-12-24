@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:unimal/models/board_post.dart';
-import 'package:unimal/repositories/board_repository.dart';
+import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/board/card/board_card.dart';
 import 'package:unimal/screens/board/card/board_search.dart';
 
@@ -20,7 +20,7 @@ class _BoardScreensState extends State<BoardScreens> {
   int _currentPage = 0;
 
   final List<BoardPost> _posts = [];
-  final BoardRepository _repository = BoardRepository();
+  final BoardApiService _boardApiService = BoardApiService();
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -50,14 +50,13 @@ class _BoardScreensState extends State<BoardScreens> {
     });
 
     try {
-      final posts = await _repository.getBoardPosts(page: _currentPage);
+      final posts = await _boardApiService.getBoardPostList(page: _currentPage);
       setState(() {
         _posts.addAll(posts);
         _isLoading = false;
         _hasMore = posts.isNotEmpty;
       });
     } catch (e) {
-      // TODO: 에러 처리
       setState(() {
         _isLoading = false;
       });

@@ -5,7 +5,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
-import 'package:unimal/models/board_post.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/widget/alert/custom_alert.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
@@ -95,12 +95,14 @@ class BoardApiService {
 
   Future<BoardPost> getBoardDetail(String id) async {
     var url = Uri.http(host.toString(), 'board/post/$id');
-    var request = http.Request('GET', url);
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+    
     String? accessToken = await _secureStorage.getAccessToken();
     if (accessToken != null) {
-      request.headers['Authorization'] = 'Bearer $accessToken';
+      headers['Authorization'] = 'Bearer $accessToken';
     }
-    var response = await http.get(url, headers: request.headers);
+
+    var response = await http.get(url, headers: headers);
     
     // HTTP 응답 상태 코드 확인
     if (response.statusCode != 200) {
@@ -123,23 +125,34 @@ class BoardApiService {
     return result;
   }
 
-  Future<List<BoardPost>> getBoardPostList(int page) async {
+  Future<List<BoardPost>> getBoardPostList({int page = 0}) async {
     var url = Uri.http(host.toString(), 'board/post/list', {
       'page': page.toString(),
     });
-    var request = http.Request('GET', url);
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
     String? accessToken = await _secureStorage.getAccessToken();
     if (accessToken != null) {
-      request.headers['Authorization'] = 'Bearer $accessToken';
+      headers['Authorization'] = 'Bearer $accessToken';
     }
-    var response = await http.get(url, headers: request.headers);
+    
+    var response = await http.get(url, headers: headers);
     if (response.statusCode != 200) {
       logger.e('게시글 목록 조회 실패: ${response.statusCode}');
       logger.e('에러 메시지: ${response.body}');
       _customAlert.showTextAlert("게시글 목록 조회 실패", "게시글 목록 조회 실패 입니다.\n잠시후에 다시 시도 해주세요.");
     }
     var bodyData = jsonDecode(utf8.decode(response.bodyBytes));
-    var result = bodyData['data'].map((e) => BoardPost.fromJson(e)).toList() as List<BoardPost>;
+    
+    // bodyData['data']는 List<dynamic> 타입
+    // map()으로 각 요소를 BoardPost.fromJson()으로 변환
+    // toList()로 List<BoardPost> 타입으로 변환
+    // as List<BoardPost>는 타입 안전성을 위한 명시적 캐스팅 (실제로는 불필요할 수 있음)
+    var result = (bodyData['data'] as List)
+        .map((e) => BoardPost.fromJson(e as Map<String, dynamic>))
+        .toList()
+        .cast<BoardPost>();
+    
     return result;
   }
 }
