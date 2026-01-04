@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 class BoardCardContent extends StatefulWidget {
   final String? title;
   final String content;
+  final bool? isLike;
   final String? likeCount;
   final String? commentCount;
   final int maxLine;
@@ -13,6 +14,7 @@ class BoardCardContent extends StatefulWidget {
     super.key, 
     required this.content, 
     this.title = '',
+    this.isLike,
     this.likeCount = "0", 
     this.commentCount = "0", 
     required this.maxLine, 
@@ -34,6 +36,9 @@ class _BoardCardContentState extends State<BoardCardContent>
   @override
   void initState() {
     super.initState();
+    // widget.isLike 값을 초기값으로 설정
+    _isLiked = widget.isLike ?? false;
+    
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -56,6 +61,17 @@ class _BoardCardContentState extends State<BoardCardContent>
     ));
     
     _animationController.forward();
+  }
+
+  @override
+  void didUpdateWidget(BoardCardContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // widget.isLike 값이 변경되면 _isLiked도 업데이트
+    if (oldWidget.isLike != widget.isLike) {
+      setState(() {
+        _isLiked = widget.isLike ?? false;
+      });
+    }
   }
 
   @override

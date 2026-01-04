@@ -122,6 +122,7 @@ class _BoardCardState extends State<BoardCard>
                 BoardCardContent(
                   title: widget.boardPost.title,
                   content: widget.boardPost.content,
+                  isLike: widget.boardPost.isLike,
                   likeCount: widget.boardPost.likeCount.toString(),
                   commentCount: widget.boardPost.replyCount.toString(),
                   maxLine: widget.boardPost.fileInfoList.isNotEmpty ? 2 : 5,

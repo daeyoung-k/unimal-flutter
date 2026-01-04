@@ -11,6 +11,13 @@ class BoardScreens extends StatefulWidget {
 
   @override
   State<BoardScreens> createState() => _BoardScreensState();
+  
+  // GlobalKey를 통해 State에 접근하기 위한 static 메서드
+  static _BoardScreensState? of(BuildContext? context) {
+    if (context == null) return null;
+    final state = context.findAncestorStateOfType<_BoardScreensState>();
+    return state;
+  }
 }
 
 class _BoardScreensState extends State<BoardScreens> {
@@ -70,6 +77,19 @@ class _BoardScreensState extends State<BoardScreens> {
     await _loadPosts();
   }
 
+  // 새로고침 메서드: 리스트 초기화 후 첫 페이지부터 다시 로드
+  Future<void> refreshPosts() async {
+    setState(() {
+      _posts.clear();
+      _currentPage = 0;
+      _hasMore = true;
+    });
+    
+    // RefreshIndicator를 사용할 때는 스크롤 이동 불필요 (자동 처리됨)
+    // 네비게이션 탭에서 호출될 때만 스크롤 이동
+    await _loadPosts();
+  }
+
   @override
   Widget build(BuildContext context) {
     double topMargin = Platform.isAndroid ? 20 : 0;
@@ -116,42 +136,47 @@ class _BoardScreensState extends State<BoardScreens> {
                           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        itemCount: _posts.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          if (index == _posts.length) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    : RefreshIndicator(
+                        onRefresh: refreshPosts,
+                        color: Colors.white,
+                        backgroundColor: const Color(0xFF4D91FF),
+                        child: ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          itemCount: _posts.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (index == _posts.length) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
                                 ),
+                              );
+                            }
+                            
+                            final post = _posts[index];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.08),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: BoardCard(boardPost: post),
                               ),
                             );
-                          }
-                          
-                          final post = _posts[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: BoardCard(boardPost: post),
-                            ),
-                          );
-                        },
+                          },
+                        ),
                       ),
                 ),
             ],

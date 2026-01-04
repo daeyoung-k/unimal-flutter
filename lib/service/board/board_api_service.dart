@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/auth/authentication_service.dart';
 import 'package:unimal/screens/widget/alert/custom_alert.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
@@ -18,6 +19,7 @@ class BoardApiService {
 
   final SecureStorage _secureStorage = SecureStorage();
   final CustomAlert _customAlert = CustomAlert();
+  final AuthenticationCodeService _authService = AuthenticationCodeService();
 
   Future<void> createBoard(
     String title,
@@ -137,11 +139,48 @@ class BoardApiService {
     }
     
     var response = await http.get(url, headers: headers);
+    
+    // 401 에러 발생 시 토큰 재발급 후 재시도
+    if (response.statusCode == 401) {
+      try {
+        // 토큰 재발급
+        await _authService.tokenReIssue();
+        
+        // 새로운 accessToken으로 재시도
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) {
+          headers['Authorization'] = 'Bearer $newAccessToken';
+        }
+        
+        var retryResponse = await http.get(url, headers: headers);
+        if (retryResponse.statusCode != 200) {
+          logger.e('게시글 목록 조회 실패 (재시도 후): ${retryResponse.statusCode}');
+          logger.e('에러 메시지: ${retryResponse.body}');
+          _customAlert.showTextAlert("게시글 목록 조회 실패", "게시글 목록 조회 실패 입니다.\n잠시후에 다시 시도 해주세요.");
+          throw Exception('게시글 목록 조회 실패: ${retryResponse.statusCode}');
+        }
+        
+        var bodyData = jsonDecode(utf8.decode(retryResponse.bodyBytes));
+        var result = (bodyData['data'] as List)
+            .map((e) => BoardPost.fromJson(e as Map<String, dynamic>))
+            .toList()
+            .cast<BoardPost>();
+        
+        return result;
+      } catch (e) {
+        logger.e('토큰 재발급 실패 또는 재시도 실패: $e');
+        _customAlert.showTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.");
+        throw Exception('토큰 재발급 실패: $e');
+      }
+    }
+    
     if (response.statusCode != 200) {
       logger.e('게시글 목록 조회 실패: ${response.statusCode}');
       logger.e('에러 메시지: ${response.body}');
       _customAlert.showTextAlert("게시글 목록 조회 실패", "게시글 목록 조회 실패 입니다.\n잠시후에 다시 시도 해주세요.");
+      throw Exception('게시글 목록 조회 실패: ${response.statusCode}');
     }
+    
     var bodyData = jsonDecode(utf8.decode(response.bodyBytes));
     
     // bodyData['data']는 List<dynamic> 타입

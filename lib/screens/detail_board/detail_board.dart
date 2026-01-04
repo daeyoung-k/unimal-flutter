@@ -172,7 +172,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
                   padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
                   child: Column(
                     children: [
-                      DetailBoardCard(boardPost: _boardPost ?? BoardPost(boardId: '', profileImage: '', email: '', nickname: '', title: '', content: '', streetName: '', show: '', mapShow: '', fileInfoList: [], createdAt: '', likeCount: 0, replyCount: 0, reply: [], isOwner: false)),
+                      DetailBoardCard(boardPost: _boardPost ?? BoardPost(boardId: '', profileImage: '', email: '', nickname: '', title: '', content: '', streetName: '', show: '', mapShow: '', fileInfoList: [], createdAt: '', likeCount: 0, replyCount: 0, reply: [], isLike: false, isOwner: false)),
                       
                     ],
                   ),

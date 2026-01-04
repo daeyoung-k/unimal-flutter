@@ -15,6 +15,7 @@ class BoardPost {
   final int replyCount;
   final String createdAt;
   final List<String> reply;
+  final bool isLike;  
   final bool isOwner;  
 
   BoardPost({
@@ -32,6 +33,7 @@ class BoardPost {
     required this.likeCount,
     required this.replyCount,
     required this.reply,
+    required this.isLike,
     required this.isOwner,
   });
 
@@ -59,6 +61,7 @@ class BoardPost {
       replyCount: json['replyCount'] as int? ?? 0,
       // reply는 리스트이므로 null 체크 후 빈 리스트로 기본값 설정
       reply: [],
+      isLike: json['isLike'] as bool? ?? false,
       isOwner: json['isOwner'] as bool? ?? false,
     );
   }
@@ -81,6 +84,7 @@ class BoardPost {
       'likeCount': likeCount,
       'replyCount': replyCount,
       'reply': reply,
+      'isLike': isLike,
       'isOwner': isOwner,
     };
   }

@@ -48,6 +48,7 @@ class DetailBoardCard extends StatelessWidget {
             DetailContent(
               title: boardPost.title,
               content: boardPost.content,
+              isLike: boardPost.isLike,
               likeCount: boardPost.likeCount.toString(),
               replyCount: boardPost.replyCount.toString(),
             ),

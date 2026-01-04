@@ -13,9 +13,13 @@ import 'package:unimal/screens/map/map.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile.dart';
-import 'package:unimal/screens/search.dart';
-
 class AppRoutes {
+  // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
+  // State 타입을 명시적으로 지정하기 위해 dynamic 사용
+  final GlobalKey boardScreenKey = GlobalKey();
+  // 지도 화면의 GlobalKey (새로고침을 위해 사용)
+  final GlobalKey mapScreenKey = GlobalKey();
+
   List<GetPage> pages() {
     return [
       ..._rootRoutes(),
@@ -43,11 +47,10 @@ class AppRoutes {
     ];
   }
 
-
-  // 하단 네비게이션 바 아이템
-  final _bottomNavigationItems = [
+  // 하단 네비게이션 바 아이템 (getter로 변경하여 boardScreenKey 사용 가능)
+  List<Map<String, dynamic>> get _bottomNavigationItems => [
     {
-      "page": MapScreens(),
+      "page": MapScreens(key: mapScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/map_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/map_bold_icon.svg'),
@@ -61,7 +64,7 @@ class AppRoutes {
         label: '공유하기')
     },
     {
-      "page": BoardScreens(),
+      "page": BoardScreens(key: boardScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/clipboard_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/clipboard_bold_icon.svg'),
@@ -74,7 +77,6 @@ class AppRoutes {
         activeIcon: SvgPicture.asset('assets/icon/svg/user_bold_icon.svg'),
         label: 'My')
     },
-
   ];
 
   List<Widget> bottomNavigationPages() {

@@ -3,15 +3,17 @@ import 'package:flutter/material.dart';
 class DetailContent extends StatelessWidget {
   final String? title;
   final String content;
-  final String likeCount;
-  final String replyCount;
-
+  final bool? isLike;
+  final String? likeCount;
+  final String? replyCount;
+  
   const DetailContent({
     super.key, 
     this.title = '',
     required this.content,
-    required this.likeCount,
-    required this.replyCount,
+    this.isLike,
+    this.likeCount,
+    this.replyCount,
   });
 
   @override
@@ -62,28 +64,44 @@ class DetailContent extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              Icon(Icons.favorite, size: 16, color: Colors.red[400]),
-              const SizedBox(width: 6),
-              Text(
-                likeCount,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.red[400],
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w600,
-                ),
+              // 좋아요 버튼
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    (isLike ?? false) ? Icons.favorite : Icons.favorite_border,
+                    size: 16,
+                    color: (isLike ?? false) ? Colors.red[400] : Colors.grey[600],
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    likeCount ?? "0",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: (isLike ?? false) ? Colors.red[400] : Colors.grey[600],
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(width: 14),
-              Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey[600]),
-              const SizedBox(width: 6),
-              Text(
-                replyCount,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[600],
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w600,
-                ),
+              // 댓글 버튼
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 6),
+                  Text(
+                    replyCount ?? "0",
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
               const Spacer(),
               Icon(
