@@ -8,7 +8,7 @@ import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
 import 'package:unimal/service/login/account_service.dart';
-import 'package:unimal/screens/widget/alert/custom_alert.dart';
+import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
 

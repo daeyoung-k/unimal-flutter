@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
-import 'package:unimal/screens/detail_board/comment/comment_input.dart';
-import 'package:unimal/screens/detail_board/comment/comment_section.dart';
-import 'package:unimal/screens/detail_board/detail_card/detail_board_card.dart';
-import 'package:unimal/screens/widget/alert/custom_alert.dart';
+import 'package:unimal/screens/board/detail_board/comment/comment_input.dart';
+import 'package:unimal/screens/board/detail_board/comment/comment_section.dart';
+import 'package:unimal/screens/board/detail_board/detail_card/detail_board_card.dart';
+import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 
 class DetailBoardScreen extends StatefulWidget {

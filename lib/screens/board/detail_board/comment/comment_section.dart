@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/detail_board/comment/comment_item.dart';
+import 'package:unimal/screens/board/detail_board/comment/comment_item.dart';
 
 class CommentSection extends StatelessWidget {
   final List<Map<String, dynamic>> comments;

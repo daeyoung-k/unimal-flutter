@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/auth/authentication_service.dart';
-import 'package:unimal/screens/widget/alert/custom_alert.dart';
+import 'package:unimal/utils/custom_alert.dart';
 
 class IdFindScreen extends StatefulWidget {
   const IdFindScreen({super.key});

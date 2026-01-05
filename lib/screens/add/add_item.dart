@@ -25,6 +25,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
   final List<File> _images = []; // 여러 사진을 순서대로 저장할 리스트
   GeocodingModel? _myLocation;
   bool _isLoadingLocation = false; // 위치 로딩 상태
+  bool _isUploading = false; // 업로드 중 상태
 
   final ImagePicker _picker = ImagePicker();
   bool isShow = true;
@@ -426,28 +427,31 @@ class _AddItemScreensState extends State<AddItemScreens> {
                   width: double.infinity,
                   height: 56,
                   child: ElevatedButton(
-                    onPressed: _canUpload() ? _uploadPost : null,
+                    onPressed: (_canUpload() && !_isUploading) ? _uploadPost : null,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _canUpload() ? Colors.white : Colors.grey[300],
-                      foregroundColor: _canUpload() ? const Color(0xFF4D91FF) : Colors.grey[600],
+                      backgroundColor: (_canUpload() && !_isUploading) ? Colors.white : Colors.grey[300],
+                      foregroundColor: (_canUpload() && !_isUploading) ? const Color(0xFF4D91FF) : Colors.grey[600],
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      elevation: _canUpload() ? 4 : 0,
-                      shadowColor: _canUpload() ? Colors.black.withValues(alpha: 0.1) : Colors.transparent,
+                      elevation: (_canUpload() && !_isUploading) ? 4 : 0,
+                      shadowColor: (_canUpload() && !_isUploading) ? Colors.black.withValues(alpha: 0.1) : Colors.transparent,
                     ),
-                    child: _canUpload() 
+                    child: _isUploading
                         ? Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.upload_rounded,
-                                size: 20,
-                                color: const Color(0xFF4D91FF),
+                              SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF4D91FF)),
+                                ),
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                '소식 업로드',
+                                '업로드 중...',
                                 style: TextStyle(
                                   color: const Color(0xFF4D91FF),
                                   fontSize: 16,
@@ -457,26 +461,47 @@ class _AddItemScreensState extends State<AddItemScreens> {
                               ),
                             ],
                           )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.upload_rounded,
-                                size: 20,
-                                color: Colors.grey[600],
+                        : _canUpload() 
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.upload_rounded,
+                                    size: 20,
+                                    color: const Color(0xFF4D91FF),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '소식 업로드',
+                                    style: TextStyle(
+                                      color: const Color(0xFF4D91FF),
+                                      fontSize: 16,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.upload_rounded,
+                                    size: 20,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '소식 업로드',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 16,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '소식 업로드',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 16,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
                   ),
                 ),
               ],
@@ -498,19 +523,33 @@ class _AddItemScreensState extends State<AddItemScreens> {
 
   // 소식 업로드 함수
   void _uploadPost() async {
-    await _boardApiService.createBoard(
-      _titleController.text,
-      _contentController.text,
-      _images,
-      isShow,
-      _myLocation?.latitude ?? 0,
-      _myLocation?.longitude ?? 0,
-      _myLocation?.postalCode ?? '',
-      _myLocation?.streetName ?? '',
-      _myLocation?.siDo ?? '',
-      _myLocation?.guGun ?? '',
-      _myLocation?.dong ?? '',
-    );
+    setState(() {
+      _isUploading = true;
+    });
+
+    try {
+      await _boardApiService.createBoard(
+        _titleController.text,
+        _contentController.text,
+        _images,
+        isShow,
+        _myLocation?.latitude ?? 0,
+        _myLocation?.longitude ?? 0,
+        _myLocation?.postalCode ?? '',
+        _myLocation?.streetName ?? '',
+        _myLocation?.siDo ?? '',
+        _myLocation?.guGun ?? '',
+        _myLocation?.dong ?? '',
+      );
+    } catch (e) {
+      // 에러 발생 시 처리 (필요시 에러 메시지 표시)
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+        });
+      }
+    }
   }
 
   @override

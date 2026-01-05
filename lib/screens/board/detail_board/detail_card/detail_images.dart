@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/widget/board/photo_arrow.dart';
+import 'package:unimal/screens/board/widget/photo_arrow.dart';
 
 class DetailImages extends StatefulWidget {
   final List<String> imageUrls;

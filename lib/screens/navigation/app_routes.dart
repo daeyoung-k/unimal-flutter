@@ -2,17 +2,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
-import 'package:unimal/screens/add_item.dart';
+import 'package:unimal/screens/add/add_item.dart';
 import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
 import 'package:unimal/screens/auth/signup.dart';
-import 'package:unimal/screens/detail_board/detail_board.dart';
+import 'package:unimal/screens/board/detail_board/detail_board.dart';
 import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/map/map.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
-import 'package:unimal/screens/profile.dart';
+import 'package:unimal/screens/profile/profile.dart';
 class AppRoutes {
   // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
   // State 타입을 명시적으로 지정하기 위해 dynamic 사용

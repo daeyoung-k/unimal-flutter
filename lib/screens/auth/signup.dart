@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:unimal/service/user/model/signup_models.dart';
 import 'package:unimal/service/auth/authentication_service.dart';
 import 'package:unimal/service/user/user_info_service.dart';
-import 'package:unimal/screens/widget/alert/custom_alert.dart';
+import 'package:unimal/utils/custom_alert.dart';
 import 'dart:async'; // Timer 사용을 위한 임포트
 import 'package:flutter/services.dart'; // TextInputFormatter 사용을 위한 임포트
 

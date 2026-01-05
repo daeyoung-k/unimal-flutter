@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/service/board/model/board_post.dart';
-import 'package:unimal/screens/detail_board/detail_card/datail_content.dart';
-import 'package:unimal/screens/detail_board/detail_card/detail_images.dart';
-import 'package:unimal/screens/detail_board/detail_card/detail_profile.dart';
+import 'package:unimal/screens/board/detail_board/detail_card/datail_content.dart';
+import 'package:unimal/screens/board/detail_board/detail_card/detail_images.dart';
+import 'package:unimal/screens/board/detail_board/detail_card/detail_profile.dart';
 
 class DetailBoardCard extends StatelessWidget {
   final BoardPost boardPost;
