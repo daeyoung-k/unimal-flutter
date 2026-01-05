@@ -2,41 +2,19 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/screens/auth/dto/find_email.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
-import 'package:unimal/state/auth_state.dart';
 
 class AuthenticationCodeService {
   var logger = Logger();
-  
-  final _authState = Get.find<AuthState>();
   
   final host = Platform.isAndroid
       ? dotenv.env['ANDORID_SERVER']
       : dotenv.env['IOS_SERVER'];
   final headers = {"Content-Type": "application/json;charset=utf-8"};
-
-  Future<void> tokenReIssue() async {
-    var url = Uri.http(host.toString(), '/user/auth/token-reissue');
-    headers.addAll({"Authorization": "Bearer ${_authState.refreshToken}"});
-    try {
-      var res = await http.get(url, headers: headers);
-      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
-      if (bodyData['code'] == 200) {
-        _authState.accessToken = bodyData['data']['accessToken'];
-        _authState.refreshToken = bodyData['data']['refreshToken'];
-      } else {
-        throw Exception(bodyData['message']);
-      }
-    } catch (error) {
-      logger.e("토큰 재발급 실패.. ${error.toString()}");
-      throw Exception(error.toString());
-    }
-  }
 
   Future<bool> sendEmailTelVerificationCode(String email, String tel) async {
     var body = jsonEncode({"email": email, "tel": tel});
@@ -108,8 +86,7 @@ class AuthenticationCodeService {
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
       if (bodyData['code'] == 200) {
         final accountService = AccountService();
-        var loginType =
-            LoginType.from(res.headers['x-unimal-provider'].toString());
+        var loginType = LoginType.from(res.headers['x-unimal-provider'].toString());
         var accessToken = res.headers['x-unimal-access-token'].toString();
         var refreshToken = res.headers['x-unimal-refresh-token'].toString();
         var email = res.headers['x-unimal-email'].toString();

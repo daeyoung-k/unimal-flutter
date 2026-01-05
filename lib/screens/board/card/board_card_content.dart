@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:unimal/service/board/board_api_service.dart';
 
 class BoardCardContent extends StatefulWidget {
   final String? title;
@@ -9,6 +10,7 @@ class BoardCardContent extends StatefulWidget {
   final String? commentCount;
   final int maxLine;
   final VoidCallback? onTap;
+  final String? boardId;
   
   const BoardCardContent({
     super.key, 
@@ -18,7 +20,8 @@ class BoardCardContent extends StatefulWidget {
     this.likeCount = "0", 
     this.commentCount = "0", 
     required this.maxLine, 
-    this.onTap
+    this.onTap,
+    this.boardId,
   });
 
   @override
@@ -26,18 +29,23 @@ class BoardCardContent extends StatefulWidget {
 }
 
 class _BoardCardContentState extends State<BoardCardContent> 
-    with SingleTickerProviderStateMixin {
+  with SingleTickerProviderStateMixin {
   
+  final BoardApiService _boardApiService = BoardApiService();
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
   bool _isLiked = false;
+  int _likeCount = 0;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
     // widget.isLike 값을 초기값으로 설정
     _isLiked = widget.isLike ?? false;
+    // widget.likeCount 값을 초기값으로 설정
+    _likeCount = int.tryParse(widget.likeCount ?? "0") ?? 0;
     
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 600),
@@ -72,6 +80,12 @@ class _BoardCardContentState extends State<BoardCardContent>
         _isLiked = widget.isLike ?? false;
       });
     }
+    // widget.likeCount 값이 변경되면 _likeCount도 업데이트
+    if (oldWidget.likeCount != widget.likeCount) {
+      setState(() {
+        _likeCount = int.tryParse(widget.likeCount ?? "0") ?? 0;
+      });
+    }
   }
 
   @override
@@ -80,10 +94,54 @@ class _BoardCardContentState extends State<BoardCardContent>
     super.dispose();
   }
 
-  void _toggleLike() {
+  Future<void> _toggleLike() async {
+    // boardId가 없으면 로컬 상태만 변경
+    if (widget.boardId == null || widget.boardId!.isEmpty) {
+      setState(() {
+        _isLiked = !_isLiked;
+      });
+      return;
+    }
+
+    // 이미 로딩 중이면 중복 요청 방지
+    if (_isLoading) return;
+
+    // 즉시 UI 업데이트 (optimistic update)
+    final previousIsLiked = _isLiked;
+    final previousLikeCount = _likeCount;
+    
     setState(() {
       _isLiked = !_isLiked;
+      _likeCount = _isLiked ? _likeCount + 1 : _likeCount - 1;
+      _isLoading = true;
     });
+
+    try {
+      // requestLike 호출하여 서버에서 최신 좋아요 상태 가져오기
+      final likeInfo = await _boardApiService.requestLike(widget.boardId!);
+      
+      // 서버 응답으로 받은 isLike 값으로 UI 상태 업데이트
+      if (likeInfo != null && mounted) {
+        setState(() {
+          // 서버에서 받아온 isLike 값으로 좋아요 아이콘 상태 반영
+          _isLiked = likeInfo.isLike;
+          // 서버에서 받아온 likeCount 값으로 좋아요 개수 반영
+          if (likeInfo.likeCount != null) {
+            _likeCount = likeInfo.likeCount!;
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // 에러 발생 시 이전 상태로 롤백
+      if (mounted) {
+        setState(() {
+          _isLiked = previousIsLiked;
+          _likeCount = previousLikeCount;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -147,23 +205,27 @@ class _BoardCardContentState extends State<BoardCardContent>
                     // 좋아요 버튼
                     GestureDetector(
                       onTap: _toggleLike,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),                      
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 200),
-                              child: Icon(
-                                _isLiked ? Icons.favorite : Icons.favorite_border,
-                                key: ValueKey(_isLiked),
-                                color: _isLiked ? Colors.red : Colors.grey[600],
-                                size: 16,
-                              ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            child: Icon(
+                              _isLiked ? Icons.favorite : Icons.favorite_border,
+                              key: ValueKey('${_isLiked ? 'filled' : 'outlined'}_${_isLiked ? 'red' : 'grey'}'),
+                              color: _isLiked ? Colors.red : Colors.grey[600],
+                              size: 16,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              widget.likeCount!,
+                          ),
+                          const SizedBox(width: 6),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (Widget child, Animation<double> animation) {
+                              return ScaleTransition(scale: animation, child: child);
+                            },
+                            child: Text(
+                              _likeCount.toString(),
+                              key: ValueKey(_likeCount),
                               style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
@@ -171,8 +233,8 @@ class _BoardCardContentState extends State<BoardCardContent>
                                 fontFamily: 'Pretendard',
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(width: 15), 

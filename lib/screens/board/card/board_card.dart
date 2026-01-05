@@ -127,6 +127,7 @@ class _BoardCardState extends State<BoardCard>
                   commentCount: widget.boardPost.replyCount.toString(),
                   maxLine: widget.boardPost.fileInfoList.isNotEmpty ? 2 : 5,
                   onTap: _goToDetail,
+                  boardId: widget.boardPost.boardId,
                 ),
               ],
             ),
