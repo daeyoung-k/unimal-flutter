@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/utils/time_utils.dart';
 
 class BoardCardContent extends StatefulWidget {
   final String? title;
@@ -11,17 +12,19 @@ class BoardCardContent extends StatefulWidget {
   final int maxLine;
   final VoidCallback? onTap;
   final String? boardId;
+  final String? createdAt;
   
   const BoardCardContent({
     super.key, 
+    required this.maxLine, 
     required this.content, 
     this.title = '',
     this.isLike,
     this.likeCount = "0", 
     this.commentCount = "0", 
-    required this.maxLine, 
     this.onTap,
     this.boardId,
+    this.createdAt,
   });
 
   @override
@@ -270,7 +273,7 @@ class _BoardCardContentState extends State<BoardCardContent>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '방금 전',
+                          TimeUtils.getRelativeTime(widget.createdAt ?? ''),
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey[500],

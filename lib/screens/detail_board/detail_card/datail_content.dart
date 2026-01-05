@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/utils/time_utils.dart';
 
 class DetailContent extends StatefulWidget {
   final String? title;
@@ -8,6 +9,7 @@ class DetailContent extends StatefulWidget {
   final String? likeCount;
   final String? replyCount;
   final String? boardId;
+  final String? createdAt;
   
   const DetailContent({
     super.key, 
@@ -17,6 +19,7 @@ class DetailContent extends StatefulWidget {
     this.likeCount,
     this.replyCount,
     this.boardId,
+    this.createdAt,
   });
 
   @override
@@ -214,7 +217,7 @@ class _DetailContentState extends State<DetailContent> {
               ),
               const SizedBox(width: 4),
               Text(
-                '방금 전',
+                TimeUtils.getRelativeTime(widget.createdAt ?? ''),
                 style: TextStyle(
                   fontSize: 12,
                   color: Colors.grey[500],
