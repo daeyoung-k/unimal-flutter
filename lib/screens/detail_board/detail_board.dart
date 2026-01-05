@@ -38,7 +38,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
     try {
       // Get.parameters에서 현재 파라미터 가져오기 (항상 최신 값)
       final String? id = Get.parameters['id'];
-      
+
       // 파라미터가 없거나 비어있으면 에러 처리 및 경고창 표시
       if (id == null || id.isEmpty) {
         if (mounted) {
@@ -49,18 +49,18 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               _customAlert.showTextAlertAndNavigate(
-                "게시글 없음", 
+                "게시글 없음",
                 "게시글이 존재하지 않습니다.",
-                "/board"
+                "/board",
               );
             }
           });
         }
         return;
       }
-      
+
       // 매번 새로 로드하므로 중복 체크 없이 바로 로드
-      final boardPost = await _boardApiService.getBoardDetail(id);      
+      final boardPost = await _boardApiService.getBoardDetail(id);
       // UI 업데이트를 위해 setState 호출
       if (mounted) {
         setState(() {
@@ -79,9 +79,9 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _customAlert.showTextAlertAndNavigate(
-              "오류", 
+              "오류",
               "게시글을 불러오는데 실패했습니다.\n잠시 후 다시 시도해주세요.",
-              "/board"
+              "/board",
             );
           }
         });
@@ -141,9 +141,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
           ),
         ),
         body: const Center(
-          child: CircularProgressIndicator(
-            color: Colors.white,
-          ),
+          child: CircularProgressIndicator(color: Colors.white),
         ),
       );
     }
@@ -172,24 +170,37 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
                   padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
                   child: Column(
                     children: [
-                      DetailBoardCard(boardPost: _boardPost ?? BoardPost(boardId: '', profileImage: '', email: '', nickname: '', title: '', content: '', streetName: '', show: '', mapShow: '', fileInfoList: [], createdAt: '', likeCount: 0, replyCount: 0, reply: [], isLike: false, isOwner: false)),
-                      
+                      DetailBoardCard(
+                        boardPost:
+                            _boardPost ?? BoardPost(
+                                            boardId: '',
+                                            profileImage: '',
+                                            email: '',
+                                            nickname: '',
+                                            title: '',
+                                            content: '',
+                                            streetName: '',
+                                            show: '',
+                                            mapShow: '',
+                                            fileInfoList: [],
+                                            createdAt: '',
+                                            likeCount: 0,
+                                            replyCount: 0,
+                                            reply: [],
+                                            isLike: false,
+                                            isOwner: false,
+                                          ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
             // 댓글 입력 영역 (키보드가 올라올 때 함께 올라감)
-            CommentInput(
-              controller: _commentController,
-              onSend: _addComment,
-            ),
+            CommentInput(controller: _commentController, onSend: _addComment),
           ],
         ),
       ),
     );
   }
 }
-
-
-

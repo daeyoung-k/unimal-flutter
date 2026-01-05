@@ -51,6 +51,7 @@ class DetailBoardCard extends StatelessWidget {
               isLike: boardPost.isLike,
               likeCount: boardPost.likeCount.toString(),
               replyCount: boardPost.replyCount.toString(),
+              boardId: boardPost.boardId,
             ),
           ],
         ),
