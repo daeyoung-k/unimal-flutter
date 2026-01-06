@@ -18,22 +18,5 @@
             "program": "lib/main.dart",
             "args": ["--dart-define=ENV=prod"]
         },
-        {
-            "name": "unimal-flutter",
-            "request": "launch",
-            "type": "dart"
-        },
-        {
-            "name": "unimal-flutter (profile mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "profile"
-        },
-        {
-            "name": "unimal-flutter (release mode)",
-            "request": "launch",
-            "type": "dart",
-            "flutterMode": "release"
-        }
     ]
 }

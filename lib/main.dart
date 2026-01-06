@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
-import 'package:unimal/screens/%08map/marker/marker_preview.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
-import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/state_init.dart';
 
 Future<void> main() async {
@@ -19,15 +17,14 @@ Future<void> main() async {
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화
   NaverLoginService().naverInit();
-  // 상태관리 초기화
-  StateInit().stateInit();
-
-  final authState = Get.find<AuthState>();
+  // 상태관리 초기화 (토큰 로드 완료까지 대기)
+  final authState = await StateInit().stateInit();
   final provider = authState.provider;
 
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
+  // loadTokens() 완료 후 저장된 토큰이 있는지 확인
   runApp(MyApp(loginChecked: provider.value != LoginType.none));
 }
 
@@ -41,7 +38,8 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
       home: loginChecked ? RootScreen() : LoginScreens(),
-      // home: loginChecked ? RootScreen() : RootScreen(),
+      // home: loginChecked ? RootScreen() : DetailBoardScreen(),
+    //   home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 2),
       // home: MarkerPreview(),
     );
   }

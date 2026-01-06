@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
-import 'package:unimal/models/signup_models.dart';
+import 'package:unimal/service/user/model/signup_models.dart';
 import 'package:unimal/service/login/account_service.dart';
 
 class UserInfoService {

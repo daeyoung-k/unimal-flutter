@@ -43,18 +43,31 @@ class _BoardCardImageState extends State<BoardCardImage> {
               });
             },
             itemBuilder: (context, index) {
-                return ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                        decoration: BoxDecoration(
-                            border: Border.all(color: const Color(0xFFB8BFC8)),
-                            image: DecorationImage(
-                                image: NetworkImage(widget.imageUrls[index]),
-                                fit: BoxFit.fill
-                            ),
-                        ),
+              final url = widget.imageUrls[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFB8BFC8)),
                     ),
-                );
+                    child: Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stack) => const Center(
+                        child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40),
+                      ),
+                      loadingBuilder: (context, child, progress) {
+                        if (progress == null) return child;
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
             }
           ),
           if (_currentPage > 0) PhotoArrow(pageController: _pageController, direction: "previous"),

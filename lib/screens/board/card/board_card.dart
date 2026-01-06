@@ -1,28 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:unimal/screens/board/widget/card/board_card_content.dart';
-import 'package:unimal/screens/board/widget/card/board_card_image.dart';
-import 'package:unimal/screens/board/widget/card/board_card_profile.dart';
+import 'package:get/get.dart';
+import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/screens/board/card/board_card_content.dart';
+import 'package:unimal/screens/board/card/board_card_image.dart';
+import 'package:unimal/screens/board/card/board_card_profile.dart';
 
 class BoardCard extends StatefulWidget {
-  
-  // backend 데이터 받아오는 영역
-  final String profileImageUrl;
-  final String nickname;
-  final String location;
-  final List<String> imageUrls;
-  final String content;
-  final String likeCount;
-  final String commentCount;
+  final BoardPost boardPost;
 
   const BoardCard({
     super.key, 
-    required this.profileImageUrl,
-    required this.nickname,
-    required this.location,
-    required this.imageUrls, 
-    required this.content, 
-    required this.likeCount, 
-    required this.commentCount
+    required this.boardPost,
   });
 
   @override
@@ -37,6 +25,20 @@ class _BoardCardState extends State<BoardCard>
   late Animation<double> _cardFadeAnimation;
   late Animation<double> _cardScaleAnimation;
   late Animation<Offset> _cardSlideAnimation;
+
+  void _goToDetail() {
+    // Get.toNamed를 사용하여 parameters에 id를 명시적으로 전달
+    // 이렇게 하면 이전 파라미터가 초기화되고 새로운 id로 설정됨
+    Get.toNamed(
+      '/detail-board',
+      parameters: {
+        'id': widget.boardPost.boardId.toString(),
+      },
+      arguments: {
+        'boardPost': widget.boardPost,
+      },
+    );
+  }
 
   @override
   void initState() {
@@ -100,24 +102,33 @@ class _BoardCardState extends State<BoardCard>
             child: Column(
               children: [
                 // 프로필 영역
-                BoardCardProfile(
-                  screenHeight: screenHeight, 
-                  profileImageUrl: widget.profileImageUrl, 
-                  nickname: widget.nickname, 
-                  location: widget.location
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _goToDetail,
+                  child: BoardCardProfile(
+                    screenHeight: screenHeight, 
+                    profileImageUrl: widget.boardPost.profileImage, 
+                    nickname: widget.boardPost.nickname, 
+                    location: widget.boardPost.streetName
+                  ),
                 ),
                 // 이미지 영역 (있는 경우에만)
-                if (widget.imageUrls.isNotEmpty) 
+                if (widget.boardPost.fileInfoList.isNotEmpty) 
                   BoardCardImage(
                     screenHeight: screenHeight, 
-                    imageUrls: widget.imageUrls,
+                    imageUrls: widget.boardPost.fileInfoList.map((e) => e.fileUrl).toList(),
                   ),
                 // 콘텐츠 영역
                 BoardCardContent(
-                  content: widget.content,
-                  likeCount: widget.likeCount,
-                  commentCount: widget.commentCount,
-                  maxLine: widget.imageUrls.isNotEmpty ? 2 : 5,
+                  title: widget.boardPost.title,
+                  content: widget.boardPost.content,
+                  isLike: widget.boardPost.isLike,
+                  likeCount: widget.boardPost.likeCount.toString(),
+                  commentCount: widget.boardPost.replyCount.toString(),
+                  maxLine: widget.boardPost.fileInfoList.isNotEmpty ? 2 : 5,
+                  onTap: _goToDetail,
+                  boardId: widget.boardPost.boardId,
+                  createdAt: widget.boardPost.createdAt,
                 ),
               ],
             ),

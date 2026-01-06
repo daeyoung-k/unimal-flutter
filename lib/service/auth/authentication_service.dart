@@ -10,6 +10,7 @@ import 'package:unimal/service/login/login_type.dart';
 
 class AuthenticationCodeService {
   var logger = Logger();
+  
   final host = Platform.isAndroid
       ? dotenv.env['ANDORID_SERVER']
       : dotenv.env['IOS_SERVER'];
@@ -85,8 +86,7 @@ class AuthenticationCodeService {
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
       if (bodyData['code'] == 200) {
         final accountService = AccountService();
-        var loginType =
-            LoginType.from(res.headers['x-unimal-provider'].toString());
+        var loginType = LoginType.from(res.headers['x-unimal-provider'].toString());
         var accessToken = res.headers['x-unimal-access-token'].toString();
         var refreshToken = res.headers['x-unimal-refresh-token'].toString();
         var email = res.headers['x-unimal-email'].toString();

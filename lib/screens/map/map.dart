@@ -112,6 +112,15 @@ class MapStateScreens extends State<MapScreens> {
     _getCurrentLocation();
   }
 
+  // 새로고침 메서드: 위치 정보와 마커를 다시 로드
+  Future<void> refreshMap() async {
+    setState(() {
+      _markers.clear();
+      _customMarkerIcon = null;
+    });
+    await _getCurrentLocation();
+  }
+
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
     // 지도가 생성된 후 위치 정보가 있다면 중심 이동
