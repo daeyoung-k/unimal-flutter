@@ -19,7 +19,6 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
   var logger = Logger();
   final CustomAlert _customAlert = CustomAlert();
   final TextEditingController _commentController = TextEditingController();
-  final List<Map<String, dynamic>> _comments = [];
   final ScrollController _scrollController = ScrollController();
   final BoardApiService _boardApiService = BoardApiService();
   BoardPost? _boardPost;
@@ -102,27 +101,45 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
     // 키보드 내리기
     FocusScope.of(context).unfocus();
 
-    setState(() {
-      _comments.add({
-        'id': DateTime.now().millisecondsSinceEpoch,
-        'author': '나',
-        'content': _commentController.text.trim(),
-        'profileImageUrl': 'https://via.placeholder.com/150',
-        'createdAt': DateTime.now(),
-      });
-      _commentController.clear();
-    });
+    // TODO: 실제 댓글 작성 API 호출 필요
+    _commentController.clear();
+    
+    // 댓글 추가 후 게시글 다시 로드하여 최신 댓글 반영
+    _loadBoardDetail();
+  }
 
-    // 댓글 추가 후 스크롤을 맨 아래로
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+  // ReplyInfo 리스트를 CommentSection이 사용할 수 있는 형태로 변환
+  List<Map<String, dynamic>> _convertRepliesToComments() {
+    if (_boardPost == null || _boardPost!.reply.isEmpty) {
+      return [];
+    }
+
+    return _boardPost!.reply
+        .where((reply) => !reply.isDel) // 삭제된 댓글 제외
+        .map((reply) {
+      // createdAt 문자열을 DateTime으로 변환
+      DateTime createdAt;
+      try {
+        createdAt = DateTime.parse(reply.createdAt);
+      } catch (e) {
+        createdAt = DateTime.now();
       }
-    });
+
+      return {
+        'id': int.tryParse(reply.id) ?? 0,
+        'author': reply.nickname,
+        'content': reply.comment,
+        'profileImageUrl': _boardPost?.profileImage ?? 'https://via.placeholder.com/150',
+        'createdAt': createdAt,
+        'isOwner': reply.isOwner,
+      };
+    }).toList();
+  }
+
+  void _deleteComment(int commentId) {
+    // TODO: 실제 댓글 삭제 API 호출 필요
+    // 삭제 후 게시글 다시 로드
+    _loadBoardDetail();
   }
 
   @override
@@ -190,6 +207,12 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
                                             isLike: false,
                                             isOwner: false,
                                           ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 서버에서 받아온 댓글 리스트 표시
+                      CommentSection(
+                        comments: _convertRepliesToComments(),
+                        onDelete: _deleteComment,
                       ),
                     ],
                   ),
