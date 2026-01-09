@@ -70,4 +70,16 @@ class SecureStorage {
   Future<void> deleteEmail() async {
     await _storage.delete(key: 'email');
   }
+
+  Future<void> saveFCMToken(String fcmToken) async {
+    await write('fcmToken', fcmToken);
+  }
+
+  Future<String?> getFCMToken() async {
+    return await read('fcmToken');
+  }
+
+  Future<void> deleteFCMToken() async {
+    await _storage.delete(key: 'fcmToken');
+  }
 }
