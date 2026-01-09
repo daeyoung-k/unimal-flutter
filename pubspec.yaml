@@ -52,6 +52,8 @@ dependencies:
   firebase_messaging: ^16.1.0             # 푸시 알림
   googleapis_auth: ^2.0.0                 # 푸시 알림
   flutter_local_notifications: ^19.5.0    # 푸시 알림 로컬 알림
+  package_info_plus: ^9.0.0               # 앱 버전 정보
+  url_launcher: ^6.3.2                    # URL 실행 (앱 스토어 이동)
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

@@ -54,6 +54,24 @@ android {
     }
 }
 
+configurations.all {
+    resolutionStrategy {
+        eachDependency { details ->
+            // 1. browser 라이브러리 버전 강제 다운그레이드 (1.9.0 -> 1.8.0)
+            if (details.requested.group == 'androidx.browser' && details.requested.name == 'browser') {
+                details.useVersion "1.8.0"
+            }
+            // 2. core 및 core-ktx 라이브러리 버전 강제 다운그레이드 (1.17.0 -> 1.13.1)
+            // 참고: 1.17.0은 매우 최신(혹은 알파) 버전이라 AGP 충돌이 납니다.
+            if (details.requested.group == 'androidx.core') {
+                if (details.requested.name == 'core' || details.requested.name == 'core-ktx') {
+                    details.useVersion "1.13.1"
+                }
+            }
+        }
+    }
+}
+
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
 }

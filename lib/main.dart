@@ -8,6 +8,7 @@ import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/service/auth/permission_service.dart';
+import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -57,8 +58,16 @@ Future<void> main() async {
   // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
+  // 앱 업데이트 체크
+  WidgetsBinding.instance.addPostFrameCallback((_) async {
+    final updateCheckService = UpdateCheckService();
+    await updateCheckService.initialize();
+    // await updateCheckService.checkAndHandleUpdate();
+  });
+
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
   runApp(MyApp(loginChecked: provider.value != LoginType.none));
+  
 }
 
 class MyApp extends StatelessWidget {
