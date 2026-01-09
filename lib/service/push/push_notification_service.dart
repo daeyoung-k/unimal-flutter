@@ -49,23 +49,6 @@ class PushNotificationService {
       // 로컬 알림 초기화
       await _initializeLocalNotifications();
 
-      // 알림 권한 요청 (iOS)
-      NotificationSettings settings = await _firebaseMessaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
-
-      if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-        _logger.i('사용자가 알림 권한을 허용했습니다.');
-      } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
-        _logger.i('사용자가 임시 알림 권한을 허용했습니다.');
-      } else {
-        _logger.w('사용자가 알림 권한을 거부했습니다.');
-        return;
-      }
-
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _getFCMToken();
       _firebaseMessaging.onTokenRefresh.listen((newToken) {

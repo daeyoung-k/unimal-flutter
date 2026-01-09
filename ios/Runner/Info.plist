@@ -29,11 +29,8 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-                <!-- 카카오 -->
 				<string>kakao$(KAKAO_LOGIN_APP_KEY)</string>
-                <!-- 네이버 -->
 				<string>$(NAVER_LOGIN_IOS_URL_SCHEMA)</string>
-                <!-- 구글 -->
 				<string>com.googleusercontent.apps.$(GOOGLE_LOGIN_IOS_CLIENT_ID)</string>
 			</array>
 		</dict>
@@ -48,6 +45,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>$(GOOGLE_LOGIN_IOS_CLIENT_ID)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>kakaokompassauth</string>
@@ -59,8 +58,21 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Privacy - Camera Usage Description in the visual editor.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs access to location when open.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Privacy - Microphone Usage Description in the visual editor.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Privacy - Photo Library Usage Description in the visual editor.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -80,15 +92,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-    <key>GIDClientID</key>
-    <string>$(GOOGLE_LOGIN_IOS_CLIENT_ID)</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>This app needs access to location when open.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Privacy - Photo Library Usage Description in the visual editor.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Privacy - Camera Usage Description in the visual editor.</string>
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Privacy - Microphone Usage Description in the visual editor.</string>
 </dict>
 </plist>

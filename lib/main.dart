@@ -7,6 +7,7 @@ import 'package:unimal/firebase_options.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
+import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
@@ -47,6 +48,9 @@ Future<void> main() async {
   final authState = await StateInit().stateInit();
   final provider = authState.provider;
 
+  // 알림, 위치 권한 요청
+  await PermissionService().requestNotificationAndLocationPermissions();
+  
   // 푸시 알림 서비스 초기화
   await PushNotificationService().initialize();
 
