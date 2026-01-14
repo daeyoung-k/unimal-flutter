@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/auth_state.dart';
 
 class ProfileScreens extends StatefulWidget {
@@ -12,6 +13,7 @@ class ProfileScreens extends StatefulWidget {
 class _ProfileScreensState extends State<ProfileScreens> {
   int _selectedTab = 0; // 0: 데이로그, 1: 큐레이션
   final _authState = Get.find<AuthState>();
+  final _accountService = AccountService();
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +176,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                       size: 24,
                     ),
                     onPressed: () {
-                      // 설정 화면 (추후 구현)
+                      _showLogoutDialog();
                     },
                   ),
                 ],
@@ -390,5 +392,61 @@ class _ProfileScreensState extends State<ProfileScreens> {
         ),
       );
     }
+  }
+
+  /// 로그아웃 다이얼로그 표시
+  void _showLogoutDialog() {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text(
+          '로그아웃',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            fontFamily: 'Pretendard',
+          ),
+        ),
+        content: const Text(
+          '정말 로그아웃 하시겠습니까?',
+          style: TextStyle(
+            fontSize: 16,
+            fontFamily: 'Pretendard',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Get.back(); // 다이얼로그 닫기
+            },
+            child: const Text(
+              '취소',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Get.back(); // 다이얼로그 닫기
+              await _accountService.logout();
+            },
+            child: const Text(
+              '로그아웃',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.red,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

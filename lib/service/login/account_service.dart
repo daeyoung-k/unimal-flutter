@@ -8,7 +8,9 @@ import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:logger/logger.dart';
 import 'package:naver_login_sdk/naver_login_sdk.dart';
+import 'package:unimal/service/auth/device_info_service.dart';
 import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
 
 class AccountService {
@@ -27,6 +29,8 @@ class AccountService {
     LoginType loginType,
   ) async {
     await _authState.setTokens(accessToken, refreshToken, email, loginType);
+    final simpleDeviceInfo = await DeviceInfoService().getSimpleDeviceInfo();
+    await UserInfoService().updateDeviceInfo(simpleDeviceInfo);
   }
 
   Future<void> logout() async {

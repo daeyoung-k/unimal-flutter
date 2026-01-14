@@ -7,6 +7,7 @@ import 'package:unimal/firebase_options.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
+import 'package:unimal/service/auth/device_info_service.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
@@ -51,7 +52,7 @@ Future<void> main() async {
 
   // 알림, 위치 권한 요청
   await PermissionService().requestNotificationAndLocationPermissions();
-  
+
   // 푸시 알림 서비스 초기화
   await PushNotificationService().initialize();
 
