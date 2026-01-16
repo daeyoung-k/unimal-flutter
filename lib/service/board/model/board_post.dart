@@ -1,4 +1,5 @@
 import 'package:unimal/service/board/model/file_info.dart';
+import 'package:unimal/service/board/model/reply_info.dart';
 
 class BoardPost {
   final String boardId;
@@ -14,7 +15,7 @@ class BoardPost {
   final int likeCount;
   final int replyCount;
   final String createdAt;
-  final List<String> reply;
+  final List<ReplyInfo> reply;
   final bool isLike;  
   final bool isOwner;  
 
@@ -59,8 +60,12 @@ class BoardPost {
       // int 타입은 null일 경우 0으로 기본값 설정
       likeCount: json['likeCount'] as int? ?? 0,
       replyCount: json['replyCount'] as int? ?? 0,
-      // reply는 리스트이므로 null 체크 후 빈 리스트로 기본값 설정
-      reply: [],
+      // reply는 ReplyInfo 객체 리스트로 파싱
+      reply: json['reply'] != null
+          ? (json['reply'] as List)
+              .map((e) => ReplyInfo.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : <ReplyInfo>[],
       isLike: json['isLike'] as bool? ?? false,
       isOwner: json['isOwner'] as bool? ?? false,
     );
@@ -83,7 +88,7 @@ class BoardPost {
       'createdAt': createdAt,
       'likeCount': likeCount,
       'replyCount': replyCount,
-      'reply': reply,
+      'reply': reply.map((e) => e.toJson()).toList(),
       'isLike': isLike,
       'isOwner': isOwner,
     };

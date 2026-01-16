@@ -52,3 +52,5 @@ app.*.map.json
 /ios/*.xcconfig
 *.xcconfig
 .cursor/
+unimal-project-firebase-key.json
+firebase.json

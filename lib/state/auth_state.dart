@@ -11,6 +11,7 @@ class AuthState extends GetxController {
     var accessToken = ''.obs;
     var refreshToken = ''.obs;
     var email = ''.obs;
+    var fcmToken = ''.obs;
 
     Future<void> loadTokens() async {
       final access = await secureStorage.getAccessToken();
@@ -46,5 +47,14 @@ class AuthState extends GetxController {
       refreshToken.value = '';
       email.value = '';
       provider.value = LoginType.none;
+    }
+
+    Future<void> setFCMToken(String fcmToken) async {
+      this.fcmToken.value = fcmToken;
+      await secureStorage.saveFCMToken(fcmToken);
+    }
+
+    Future<String?> getFCMToken() async {
+      return await secureStorage.getFCMToken();
     }
 }

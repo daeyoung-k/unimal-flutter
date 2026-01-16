@@ -6,9 +6,11 @@ import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/user/model/signup_models.dart';
 import 'package:unimal/service/login/account_service.dart';
+import 'package:unimal/state/secure_storage.dart';
 
 class UserInfoService {
   var logger = Logger();
+  final SecureStorage _secureStorage = SecureStorage();
   final host = Platform.isAndroid
       ? dotenv.env['ANDORID_SERVER']
       : dotenv.env['IOS_SERVER'];
@@ -16,11 +18,14 @@ class UserInfoService {
   final headers = {"Content-Type": "application/json;charset=utf-8"};
 
   Future<String> changePassword(
-      String email, String oldPassword, String newPassword) async {
+    String email,
+    String oldPassword,
+    String newPassword,
+  ) async {
     var body = jsonEncode({
       "email": email,
       "oldPassword": oldPassword,
-      "newPassword": newPassword
+      "newPassword": newPassword,
     });
 
     var url = Uri.http(host.toString(), '/user/member/find/change/password');
@@ -63,9 +68,7 @@ class UserInfoService {
 
   Future<String> checkEmail(String email) async {
     var url = Uri.http(host.toString(), '/user/member/find/email/duplicate');
-    var body = jsonEncode({
-      "email": email
-    });
+    var body = jsonEncode({"email": email});
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -80,12 +83,10 @@ class UserInfoService {
       return "이메일 인증요청 실패\n 잠시 후 다시 시도해주세요.";
     }
   }
-  
+
   Future<String> checkTel(String tel) async {
     var url = Uri.http(host.toString(), '/user/member/find/tel/duplicate');
-    var body = jsonEncode({
-      "tel": tel
-    });
+    var body = jsonEncode({"tel": tel});
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -100,10 +101,8 @@ class UserInfoService {
       return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
     }
   }
-  
-  Future<String> signup(
-    SignupModel signupModel
-    ) async {
+
+  Future<String> signup(SignupModel signupModel) async {
     var url = Uri.http(host.toString(), '/user/auth/signup/manual');
     var body = jsonEncode(signupModel.toJson());
 
@@ -120,6 +119,21 @@ class UserInfoService {
     } catch (error) {
       logger.e("전화번호 인증요청 실패.. ${error.toString()}");
       return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
+  }
+
+  Future<void> updateDeviceInfo(Map<String, dynamic> deviceInfo) async {
+    var url = Uri.http(host.toString(), '/user/member/device/info/update');
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }    
+    var body = jsonEncode(deviceInfo);
+    try {
+      await http.post(url, headers: headers, body: body);
+    } catch (error) {
+      logger.e("디바이스 정보 업데이트 실패.. ${error.toString()}");
     }
   }
 }
