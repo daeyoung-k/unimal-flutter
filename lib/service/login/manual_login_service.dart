@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 
 class ManualLoginService {
@@ -21,9 +20,8 @@ class ManualLoginService {
     });
 
     try {
-      var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
       var headers = {"Content-Type": "application/json;charset=utf-8"};
-      var url = Uri.http(host.toString(), 'user/auth/login/manual');
+      var url = ApiUri.resolve('user/auth/login/manual');
       var res = await http.post(url, headers: headers, body: body);
 
       var bodyData = jsonDecode(res.body);

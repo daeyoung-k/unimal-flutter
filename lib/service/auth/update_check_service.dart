@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 // import 'package:http/http.dart' as http; // 실제 서버 API 연동 시 주석 해제
 import 'package:logger/logger.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 앱 업데이트 확인 서비스
@@ -84,7 +85,7 @@ class UpdateCheckService {
     
     /* 실제 서버 API 연동 시 사용
     try {
-      final url = Uri.http(host.toString(), '/app/version/check');
+      final url = ApiUri.resolve('/app/version/check');
       
       final response = await http.get(
         url,

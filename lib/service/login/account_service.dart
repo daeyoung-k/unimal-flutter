@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
@@ -12,15 +10,12 @@ import 'package:unimal/service/auth/device_info_service.dart';
 import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/utils/api_uri.dart';
 
 class AccountService {
   var logger = Logger();
 
   final _authState = Get.find<AuthState>();
-
-  var host = Platform.isAndroid
-      ? dotenv.env['ANDORID_SERVER']
-      : dotenv.env['IOS_SERVER'];
 
   Future<void> login(
     String accessToken,
@@ -34,7 +29,7 @@ class AccountService {
   }
 
   Future<void> logout() async {
-    var url = Uri.http(host.toString(), 'user/auth/logout');
+    var url = ApiUri.resolve('user/auth/logout');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
     await http.get(url, headers: headers);
 
@@ -44,7 +39,7 @@ class AccountService {
   }
 
   Future<void> withdrawal() async {
-    var url = Uri.http(host.toString(), 'user/auth/withdrawal');
+    var url = ApiUri.resolve('user/auth/withdrawal');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
     await http.get(url, headers: headers);
 
@@ -54,7 +49,7 @@ class AccountService {
   }
 
   Future<bool> tokenReIssue() async {
-    var url = Uri.http(host.toString(), '/user/auth/token-reissue');
+    var url = ApiUri.resolve('/user/auth/token-reissue');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
     try {
       var res = await http.get(url, headers: headers);

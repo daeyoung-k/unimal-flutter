@@ -1,22 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
 import 'package:unimal/service/login/account_service.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
 
 class BoardApiService {
   var logger = Logger();
-  var host = Platform.isAndroid
-      ? dotenv.env['ANDORID_SERVER']
-      : dotenv.env['IOS_SERVER'];
 
   final SecureStorage _secureStorage = SecureStorage();
   final CustomAlert _customAlert = CustomAlert();
@@ -35,7 +32,7 @@ class BoardApiService {
     String? guGun,
     String? dong,
   ) async {
-    var url = Uri.http(host.toString(), 'board/post');
+    var url = ApiUri.resolve('board/post');
     // MultipartRequest 생성
     var request = http.MultipartRequest('POST', url);
 
@@ -97,7 +94,7 @@ class BoardApiService {
   }
 
   Future<BoardPost> getBoardDetail(String id) async {
-    var url = Uri.http(host.toString(), 'board/post/$id');
+    var url = ApiUri.resolve('board/post/$id');
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     String? accessToken = await _secureStorage.getAccessToken();
@@ -132,7 +129,7 @@ class BoardApiService {
   }
 
   Future<List<BoardPost>> getBoardPostList({int page = 0}) async {
-    var url = Uri.http(host.toString(), 'board/post/list', {
+    var url = ApiUri.resolve('board/post/list', {
       'page': page.toString(),
     });
     var headers = {"Content-Type": "application/json;charset=utf-8"};
@@ -197,7 +194,7 @@ class BoardApiService {
   }
 
   Future<LikeInfo?> requestLike(String boardId) async {
-    var url = Uri.http(host.toString(), 'board/post/$boardId/like');
+    var url = ApiUri.resolve('board/post/$boardId/like');
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     // Bearer token 헤더 추가

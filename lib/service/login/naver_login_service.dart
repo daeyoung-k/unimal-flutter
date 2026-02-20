@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
@@ -8,6 +7,7 @@ import 'package:naver_login_sdk/naver_login_sdk.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 
 class NaverLoginService {
@@ -38,9 +38,8 @@ class NaverLoginService {
           "profileImage": profile.profileImage
         });
 
-        var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
         var headers = {"Content-Type": "application/json;charset=utf-8"};
-        var url = Uri.http(host.toString(), 'user/auth/login/mobile/naver');
+        var url = ApiUri.resolve('user/auth/login/mobile/naver');
         var res = await http.post(url, headers: headers, body: body);
         var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
 
