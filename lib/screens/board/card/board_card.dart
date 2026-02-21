@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/board/card/board_card_content.dart';
 import 'package:unimal/screens/board/card/board_card_image.dart';
@@ -18,13 +19,84 @@ class BoardCard extends StatefulWidget {
 
 }
 
-class _BoardCardState extends State<BoardCard> 
+class _BoardCardState extends State<BoardCard>
     with TickerProviderStateMixin {
-  
+
+  final BoardApiService _boardApiService = BoardApiService();
   late AnimationController _cardAnimationController;
   late Animation<double> _cardFadeAnimation;
   late Animation<double> _cardScaleAnimation;
   late Animation<Offset> _cardSlideAnimation;
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          '게시글 삭제',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
+        ),
+        content: const Text(
+          '게시글을 삭제하면 복구할 수 없어요.\n정말 삭제할까요?',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 14,
+            color: Color(0xFF666666),
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: Text(
+              '취소',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text(
+              '삭제',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                color: Color(0xFFE53935),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await _boardApiService.deleteBoard(widget.boardPost.boardId);
+    if (success) {
+      Get.offAllNamed('/board');
+    } else {
+      Get.dialog(
+        AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('삭제 실패', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+          content: const Text('게시글 삭제에 실패했습니다.\n잠시 후 다시 시도해주세요.', style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Color(0xFF666666))),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('확인', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFF4D91FF), fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
 
   void _goToDetail() {
     // Get.toNamed를 사용하여 parameters에 id를 명시적으로 전달
@@ -112,11 +184,9 @@ class _BoardCardState extends State<BoardCard>
                     location: widget.boardPost.streetName,
                     isOwner: widget.boardPost.isOwner,
                     onEdit: () {
-                      // TODO: 게시글 수정
+                      Get.toNamed('/edit-board', arguments: widget.boardPost);
                     },
-                    onDelete: () {
-                      // TODO: 게시글 삭제
-                    },
+                    onDelete: _confirmDelete,
                   ),
                 ),
                 // 이미지 영역 (있는 경우에만)

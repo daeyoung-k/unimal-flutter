@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/add/add_item.dart';
+import 'package:unimal/screens/board/edit_board/edit_board.dart';
 import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
 import 'package:unimal/screens/auth/signup.dart';
@@ -44,6 +45,7 @@ class AppRoutes {
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),
       GetPage(name: '/signup', page: () => SignupScreens()),
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
+      GetPage(name: '/edit-board', page: () => EditBoardScreen()),
     ];
   }
 

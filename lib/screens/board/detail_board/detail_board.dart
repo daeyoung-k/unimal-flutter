@@ -142,6 +142,99 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
     _loadBoardDetail();
   }
 
+  final GlobalKey _menuButtonKey = GlobalKey();
+
+  void _showPostMenu() {
+    final renderBox = _menuButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<String>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 4,
+      color: Colors.white,
+      items: [
+        PopupMenuItem(
+          value: 'edit',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 16, color: Colors.grey[700]),
+              const SizedBox(width: 10),
+              Text('수정', style: TextStyle(fontSize: 14, color: Colors.grey[800], fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          height: 44,
+          child: const Row(
+            children: [
+              Icon(Icons.delete_outline, size: 16, color: Color(0xFFE53935)),
+              SizedBox(width: 10),
+              Text('삭제', style: TextStyle(fontSize: 14, color: Color(0xFFE53935), fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'edit') {
+        Get.toNamed('/edit-board', arguments: _boardPost);
+      } else if (value == 'delete') {
+        _confirmDelete();
+      }
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('게시글 삭제', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+        content: const Text('게시글을 삭제하면 복구할 수 없어요.\n정말 삭제할까요?', style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Color(0xFF666666), height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: Text('취소', style: TextStyle(fontFamily: 'Pretendard', color: Colors.grey[600], fontWeight: FontWeight.w500)),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text('삭제', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFFE53935), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await _boardApiService.deleteBoard(_boardPost!.boardId);
+    if (success) {
+      Get.offAllNamed('/board');
+    } else {
+      Get.dialog(
+        AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('삭제 실패', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+          content: const Text('게시글 삭제에 실패했습니다.\n잠시 후 다시 시도해주세요.', style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Color(0xFF666666))),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('확인', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFF4D91FF), fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     void goToBoard() => Get.offAllNamed('/board');
@@ -184,6 +277,14 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
           icon: const Icon(Icons.chevron_left, color: Colors.white),
           onPressed: goToBoard,
         ),
+        actions: [
+          if (_boardPost?.isOwner == true)
+            IconButton(
+              key: _menuButtonKey,
+              onPressed: _showPostMenu,
+              icon: const Icon(Icons.more_horiz, color: Colors.white),
+            ),
+        ],
       ),
       body: SafeArea(
         bottom: false,
