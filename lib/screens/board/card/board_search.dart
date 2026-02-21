@@ -3,8 +3,15 @@ import 'package:flutter_svg/svg.dart';
 
 class BoardSearch extends StatefulWidget {
   final Function(bool) onFocusChange;
+  final Function(String) onSearchChanged;
+  final Function(String) onSortChanged;
 
-  const BoardSearch({super.key, required this.onFocusChange});
+  const BoardSearch({
+    super.key,
+    required this.onFocusChange,
+    required this.onSearchChanged,
+    required this.onSortChanged,
+  });
 
   @override
   State<BoardSearch> createState() => _BoardSearchState();
@@ -13,34 +20,8 @@ class BoardSearch extends StatefulWidget {
 class _BoardSearchState extends State<BoardSearch> {
   final FocusNode _focusNode = FocusNode();
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false;
   String _searchQuery = '';
-  String _selectedLocation = '내 근처';
   String _selectedSort = '최신순';
-
-  // 임시 추천 검색어 목록
-  final List<String> _suggestions = [
-    '강아지',
-    '고양이',
-    '반려동물',
-    '애완동물',
-    '동물병원',
-    '산책',
-    '사료',
-    '간식',
-    '미용',
-    '훈련'
-  ];
-
-  // 지역 필터 옵션
-  final List<String> _locationOptions = [
-    '내 근처',
-    '전체',
-    '강남구',
-    '서초구',
-    '송파구',
-    '마포구',
-  ];
 
   // 정렬 필터 옵션
   final List<String> _sortOptions = [
@@ -54,9 +35,6 @@ class _BoardSearchState extends State<BoardSearch> {
     super.initState();
     _focusNode.addListener(() {
       widget.onFocusChange(_focusNode.hasFocus);
-      setState(() {
-        _isSearching = _focusNode.hasFocus;
-      });
     });
   }
 
@@ -71,23 +49,7 @@ class _BoardSearchState extends State<BoardSearch> {
     setState(() {
       _searchQuery = query;
     });
-    // TODO: 실제 검색 로직 구현
-    print("검색어: $query");
-  }
-
-  void _onSuggestionSelected(String suggestion) {
-    _searchController.text = suggestion;
-    _onSearch(suggestion);
-    _focusNode.unfocus();
-  }
-
-  void _onLocationSelected(String? location) {
-    if (location != null) {
-      setState(() {
-        _selectedLocation = location;
-      });
-      _applyFilters();
-    }
+    widget.onSearchChanged(query);
   }
 
   void _onSortSelected(String? sort) {
@@ -95,19 +57,13 @@ class _BoardSearchState extends State<BoardSearch> {
       setState(() {
         _selectedSort = sort;
       });
-      _applyFilters();
+      widget.onSortChanged(sort);
     }
-  }
-
-  void _applyFilters() {
-    // TODO: 실제 필터 로직 구현
-    print("지역: $_selectedLocation, 정렬: $_selectedSort");
   }
 
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
-    double screenHeight = MediaQuery.of(context).size.height;
     
     return Column(
       children: [
@@ -170,7 +126,7 @@ class _BoardSearchState extends State<BoardSearch> {
         Align(
           alignment: Alignment.centerLeft,
           child: Container(
-            width: screenWidth * 0.4,
+            width: screenWidth * 0.28,
             height: 30,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
@@ -181,105 +137,26 @@ class _BoardSearchState extends State<BoardSearch> {
                 width: 0.5,
               ),
             ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedLocation,
-                      isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down, size: 15),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF333333),
-                      ),
-                      items: _locationOptions.map((String location) {
-                        return DropdownMenuItem<String>(
-                          value: location,
-                          child: Text(location),
-                        );
-                      }).toList(),
-                      onChanged: _onLocationSelected,
-                    ),
-                  ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedSort,
+                isExpanded: true,
+                icon: const Icon(Icons.keyboard_arrow_down, size: 15),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF333333),
                 ),
-                Container(
-                  width: 1,
-                  height: 10,
-                  color: const Color(0xFFB8BFC8),
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                ),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _selectedSort,
-                      isExpanded: true,
-                      icon: const Icon(Icons.keyboard_arrow_down, size: 15),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF333333),
-                      ),
-                      items: _sortOptions.map((String sort) {
-                        return DropdownMenuItem<String>(
-                          value: sort,
-                          child: Text(sort),
-                        );
-                      }).toList(),
-                      onChanged: _onSortSelected,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (_isSearching)
-          Container(
-            width: screenWidth * 0.9,
-            constraints: BoxConstraints(
-              maxHeight: screenHeight * 0.65, // 세로 크기 제한 (200px)
-            ),
-            margin: const EdgeInsets.only(top: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      '추천 검색어',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF666666),
-                      ),
-                    ),
-                  ),
-                  ..._suggestions.map((suggestion) => ListTile(
-                    title: Text(
-                      suggestion,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Color(0xFF333333),
-                      ),
-                    ),
-                    onTap: () => _onSuggestionSelected(suggestion),
-                  )),
-                ],
+                items: _sortOptions.map((String sort) {
+                  return DropdownMenuItem<String>(
+                    value: sort,
+                    child: Text(sort),
+                  );
+                }).toList(),
+                onChanged: _onSortSelected,
               ),
             ),
           ),
+        ),
       ],
     );
   }

@@ -81,8 +81,8 @@ class BoardApiService {
 
     if (response.statusCode == 200) {
       var bodyData = jsonDecode(utf8.decode(response.bodyBytes));
-      final id = bodyData['data']['boardId'];
-      Get.toNamed('/detail-board', parameters: {'id': id ?? ''});
+      final id = bodyData['data']['boardId']?.toString() ?? '';
+      Get.toNamed('/detail-board', parameters: {'id': id});
     } else {
       logger.e('게시글 생성 실패: ${response.statusCode}');
       logger.e('에러 메시지: ${response.body}');
@@ -112,6 +112,7 @@ class BoardApiService {
         "게시글 상세 조회 실패",
         "게시글 상세 조회 실패 입니다.\n잠시후에 다시 시도 해주세요.",
       );
+      throw Exception('게시글 상세 조회 실패: ${response.statusCode}');
     }
 
     // JSON 파싱
@@ -128,10 +129,19 @@ class BoardApiService {
     return result;
   }
 
-  Future<List<BoardPost>> getBoardPostList({int page = 0}) async {
-    var url = ApiUri.resolve('board/post/list', {
+  Future<List<BoardPost>> getBoardPostList({
+    int page = 0,
+    String? keyword,
+    String sortType = 'LATEST',
+  }) async {
+    final queryParams = <String, String>{
       'page': page.toString(),
-    });
+      'sortType': sortType,
+    };
+    if (keyword != null && keyword.isNotEmpty) {
+      queryParams['keyword'] = keyword;
+    }
+    var url = ApiUri.resolve('board/post/list', queryParams);
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     String? accessToken = await _secureStorage.getAccessToken();

@@ -144,26 +144,35 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    void goToBoard() => Get.offAllNamed('/board');
+
     // 로딩 중일 때 로딩 인디케이터 표시
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF4D91FF),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.white),
-            onPressed: () => Get.back(),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF4D91FF),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.chevron_left, color: Colors.white),
+              onPressed: goToBoard,
+            ),
           ),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+          body: const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
         ),
       );
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+      child: Scaffold(
       backgroundColor: const Color(0xFF4D91FF),
       // 키보드가 올라올 때 레이아웃 자동 조정
       resizeToAvoidBottomInset: true,
@@ -173,7 +182,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Get.back(),
+          onPressed: goToBoard,
         ),
       ),
       body: SafeArea(
@@ -224,6 +233,6 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }
