@@ -185,7 +185,7 @@ class _EditBoardScreenState extends State<EditBoardScreen> {
             onPressed: () => Get.back(),
           ),
           title: const Text(
-            '게시글 수정',
+            '수정하기',
             style: TextStyle(color: Colors.white, fontSize: 20, fontFamily: 'Pretendard', fontWeight: FontWeight.w700),
           ),
           actions: [

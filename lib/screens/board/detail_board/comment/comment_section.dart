@@ -3,16 +3,24 @@ import 'package:unimal/screens/board/detail_board/comment/comment_item.dart';
 
 class CommentSection extends StatelessWidget {
   final List<Map<String, dynamic>> comments;
-  final Function(int) onDelete;
+  final Function(String) onDelete;
+  final Function(String, String) onEdit;
+  final Function(String, String) onReply; // (replyId, nickname)
 
   const CommentSection({
-    super.key, 
+    super.key,
     required this.comments,
     required this.onDelete,
+    required this.onEdit,
+    required this.onReply,
   });
 
   @override
   Widget build(BuildContext context) {
+    final topLevel = comments
+        .where((c) => (c['parentId'] as String? ?? '').isEmpty)
+        .toList();
+
     if (comments.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(24),
@@ -76,11 +84,64 @@ class CommentSection extends StatelessWidget {
             ),
           ),
           const Divider(height: 1),
-          ...comments.map((comment) => CommentItem(
-                comment: comment,
-                onDelete: () => onDelete(comment['id'] as int),
-              )),
+          ...topLevel.expand((parent) {
+            final children = comments
+                .where((c) => (c['parentId'] as String? ?? '') == parent['id'])
+                .toList();
+            return [
+              CommentItem(
+                comment: parent,
+                onDelete: () => onDelete(parent['id'] as String),
+                onEdit: () => onEdit(parent['id'] as String, parent['content'] as String),
+                onReply: () => onReply(parent['id'] as String, parent['author'] as String),
+              ),
+              ...children.map((child) => CommentItem(
+                    comment: child,
+                    isNested: true,
+                    onDelete: () => onDelete(child['id'] as String),
+                    onEdit: () => onEdit(child['id'] as String, child['content'] as String),
+                    onReply: null,
+                  )),
+              // 대댓글이 있을 때만 스레드 하단 답글 버튼 표시
+              if (children.isNotEmpty)
+                _ThreadReplyButton(
+                  onTap: () => onReply(parent['id'] as String, parent['author'] as String),
+                ),
+            ];
+          }),
         ],
+      ),
+    );
+  }
+}
+
+class _ThreadReplyButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _ThreadReplyButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFFF7F9FF),
+      padding: const EdgeInsets.only(left: 52, top: 4, bottom: 10),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Icon(Icons.reply, size: 14, color: Colors.grey[500]),
+            const SizedBox(width: 4),
+            Text(
+              '답글 달기',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[500],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
