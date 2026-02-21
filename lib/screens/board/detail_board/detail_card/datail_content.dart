@@ -191,24 +191,6 @@ class _DetailContentState extends State<DetailContent> {
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
-              // 댓글 버튼
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.replyCount ?? "0",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[600],
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
               const Spacer(),
               Icon(
                 Icons.access_time,

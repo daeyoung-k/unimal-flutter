@@ -54,3 +54,4 @@ app.*.map.json
 .cursor/
 unimal-project-firebase-key.json
 firebase.json
+.claude/

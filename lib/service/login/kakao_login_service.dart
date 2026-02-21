@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:convert';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -8,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 
 class KakaoLoginService {
@@ -23,8 +23,7 @@ class KakaoLoginService {
     final customAlert = CustomAlert();  
     try {
       OAuthToken token = await UserApi.instance.loginWithKakaoAccount();
-      var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
-      var url = Uri.http(host.toString(), 'user/auth/login/mobile/kakao');
+      var url = ApiUri.resolve('user/auth/login/mobile/kakao');
       var headers = {
         "Authorization": "Bearer ${token.accessToken}",
         "Content-Type": "application/json; charset=utf-8",

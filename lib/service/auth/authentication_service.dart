@@ -1,25 +1,21 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/screens/auth/dto/find_email.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/utils/api_uri.dart';
 
 class AuthenticationCodeService {
   var logger = Logger();
-  
-  final host = Platform.isAndroid
-      ? dotenv.env['ANDORID_SERVER']
-      : dotenv.env['IOS_SERVER'];
+
   final headers = {"Content-Type": "application/json;charset=utf-8"};
 
   Future<bool> sendEmailTelVerificationCode(String email, String tel) async {
     var body = jsonEncode({"email": email, "tel": tel});
 
-    var url = Uri.http(host.toString(), '/user/auth/email-tel/code-request');
+    var url = ApiUri.resolve('/user/auth/email-tel/code-request');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -39,7 +35,7 @@ class AuthenticationCodeService {
   Future<String> sendEmailTelCheckVerificationCode(String email, String tel) async {
     var body = jsonEncode({"email": email, "tel": tel});
 
-    var url = Uri.http(host.toString(), '/user/member/find/email-tel/check/request');
+    var url = ApiUri.resolve('/user/member/find/email-tel/check/request');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -59,7 +55,7 @@ class AuthenticationCodeService {
   Future<String> verifyEmailTelVerificationCode(String email, String tel, String code) async {
     var body = jsonEncode({"email": email, "tel": tel, "code": code});
 
-    var url = Uri.http(host.toString(), '/user/auth/email-tel/code-verify');
+    var url = ApiUri.resolve('/user/auth/email-tel/code-verify');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -80,7 +76,7 @@ class AuthenticationCodeService {
       String email, String tel, String code) async {
     var body = jsonEncode({"email": email, "tel": tel, "code": code});
 
-    var url = Uri.http(host.toString(), '/user/auth/tel/check-update');
+    var url = ApiUri.resolve('/user/auth/tel/check-update');
     try {
       var res = await http.post(url, headers: headers, body: body);
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
@@ -108,7 +104,7 @@ class AuthenticationCodeService {
       "tel": tel,
     });
 
-    var url = Uri.http(host.toString(), '/user/auth/tel/code-request');
+    var url = ApiUri.resolve('/user/auth/tel/code-request');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -129,7 +125,7 @@ class AuthenticationCodeService {
       String tel, String code) async {
     var body = jsonEncode({"tel": tel, "code": code});
 
-    var url = Uri.http(host.toString(), '/user/member/find/email');
+    var url = ApiUri.resolve('/user/member/find/email');
     try {
       var res = await http.post(url, headers: headers, body: body);
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
@@ -156,7 +152,7 @@ class AuthenticationCodeService {
   Future<String> verifyEmailVerificationCode(String email, String code) async {
     var body = jsonEncode({"email": email, "code": code});
 
-    var url = Uri.http(host.toString(), '/user/auth/email/code-verify');
+    var url = ApiUri.resolve('/user/auth/email/code-verify');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -176,7 +172,7 @@ class AuthenticationCodeService {
   Future<String> verifyTelVerificationCode(String tel, String code) async {
     var body = jsonEncode({"tel": tel, "code": code});
 
-    var url = Uri.http(host.toString(), '/user/auth/tel/code-verify');
+    var url = ApiUri.resolve('/user/auth/tel/code-verify');
 
     try {
       var res = await http.post(url, headers: headers, body: body);

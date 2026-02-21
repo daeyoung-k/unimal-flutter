@@ -521,6 +521,15 @@ class _AddItemScreensState extends State<AddItemScreens> {
            _myLocation!.postalCode.isNotEmpty;
   }
 
+  void _clearForm() {
+    _titleController.clear();
+    _contentController.clear();
+    setState(() {
+      _images.clear();
+      isShow = true;
+    });
+  }
+
   // 소식 업로드 함수
   void _uploadPost() async {
     setState(() {
@@ -541,6 +550,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
         _myLocation?.guGun ?? '',
         _myLocation?.dong ?? '',
       );
+      _clearForm();
     } catch (e) {
       // 에러 발생 시 처리 (필요시 에러 메시지 표시)
     } finally {

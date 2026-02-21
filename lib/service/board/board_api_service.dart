@@ -1,22 +1,19 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
 import 'package:unimal/service/login/account_service.dart';
+import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
 
 class BoardApiService {
   var logger = Logger();
-  var host = Platform.isAndroid
-      ? dotenv.env['ANDORID_SERVER']
-      : dotenv.env['IOS_SERVER'];
 
   final SecureStorage _secureStorage = SecureStorage();
   final CustomAlert _customAlert = CustomAlert();
@@ -35,7 +32,7 @@ class BoardApiService {
     String? guGun,
     String? dong,
   ) async {
-    var url = Uri.http(host.toString(), 'board/post');
+    var url = ApiUri.resolve('board/post');
     // MultipartRequest 생성
     var request = http.MultipartRequest('POST', url);
 
@@ -84,8 +81,8 @@ class BoardApiService {
 
     if (response.statusCode == 200) {
       var bodyData = jsonDecode(utf8.decode(response.bodyBytes));
-      final id = bodyData['data']['boardId'];
-      Get.toNamed('/detail-board', parameters: {'id': id ?? ''});
+      final id = bodyData['data']['boardId']?.toString() ?? '';
+      Get.toNamed('/detail-board', parameters: {'id': id});
     } else {
       logger.e('게시글 생성 실패: ${response.statusCode}');
       logger.e('에러 메시지: ${response.body}');
@@ -97,7 +94,7 @@ class BoardApiService {
   }
 
   Future<BoardPost> getBoardDetail(String id) async {
-    var url = Uri.http(host.toString(), 'board/post/$id');
+    var url = ApiUri.resolve('board/post/$id');
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     String? accessToken = await _secureStorage.getAccessToken();
@@ -115,6 +112,7 @@ class BoardApiService {
         "게시글 상세 조회 실패",
         "게시글 상세 조회 실패 입니다.\n잠시후에 다시 시도 해주세요.",
       );
+      throw Exception('게시글 상세 조회 실패: ${response.statusCode}');
     }
 
     // JSON 파싱
@@ -131,10 +129,19 @@ class BoardApiService {
     return result;
   }
 
-  Future<List<BoardPost>> getBoardPostList({int page = 0}) async {
-    var url = Uri.http(host.toString(), 'board/post/list', {
+  Future<List<BoardPost>> getBoardPostList({
+    int page = 0,
+    String? keyword,
+    String sortType = 'LATEST',
+  }) async {
+    final queryParams = <String, String>{
       'page': page.toString(),
-    });
+      'sortType': sortType,
+    };
+    if (keyword != null && keyword.isNotEmpty) {
+      queryParams['keyword'] = keyword;
+    }
+    var url = ApiUri.resolve('board/post/list', queryParams);
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     String? accessToken = await _secureStorage.getAccessToken();
@@ -196,8 +203,300 @@ class BoardApiService {
         .cast<BoardPost>();
   }
 
+  Future<bool> updateBoard({
+    required String boardId,
+    required String title,
+    required String content,
+    required bool isShow,
+  }) async {
+    var url = ApiUri.resolve('board/post/$boardId/update');
+    var headers = {
+      "Content-Type": "application/json;charset=utf-8",
+    };
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    final body = jsonEncode({
+      'title': title,
+      'content': content,
+      'isShow': isShow ? 'PUBLIC' : 'PRIVATE',
+      'isMapShow': 'SAME',
+    });
+
+    var response = await http.patch(url, headers: headers, body: body);
+
+    if (response.statusCode == 200) {
+      return true;
+    } else if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) {
+          headers['Authorization'] = 'Bearer $newAccessToken';
+        }
+        var retryResponse = await http.patch(url, headers: headers, body: body);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('게시글 수정 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('게시글 수정 실패: ${e.toString()}');
+        return false;
+      }
+    } else {
+      logger.e('게시글 수정 실패: ${response.statusCode}');
+      logger.e('에러 메시지: ${response.body}');
+      return false;
+    }
+  }
+
+  Future<bool> deleteBoard(String boardId) async {
+    var url = ApiUri.resolve('board/post/$boardId/delete');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    var response = await http.delete(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      return true;
+    } else if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) {
+          headers['Authorization'] = 'Bearer $newAccessToken';
+        }
+        var retryResponse = await http.delete(url, headers: headers);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('게시글 삭제 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('게시글 삭제 실패: ${e.toString()}');
+        return false;
+      }
+    } else {
+      logger.e('게시글 삭제 실패: ${response.statusCode}');
+      logger.e('에러 메시지: ${response.body}');
+      return false;
+    }
+  }
+
+  Future<bool> createReply(String boardId, String comment, {String? replyId}) async {
+    var url = ApiUri.resolve('board/post/$boardId/reply');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    final bodyMap = <String, String>{'comment': comment};
+    if (replyId != null && replyId.isNotEmpty) {
+      bodyMap['replyId'] = replyId;
+    }
+    final body = jsonEncode(bodyMap);
+
+    var response = await http.post(url, headers: headers, body: body);
+
+    if (response.statusCode == 200) return true;
+
+    if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.post(url, headers: headers, body: body);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('댓글 작성 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('댓글 작성 실패: ${e.toString()}');
+        return false;
+      }
+    }
+
+    logger.e('댓글 작성 실패: ${response.statusCode}');
+    return false;
+  }
+
+  Future<bool> updateReply(String boardId, String replyId, String comment) async {
+    var url = ApiUri.resolve('board/post/$boardId/reply/$replyId/update');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) headers['Authorization'] = 'Bearer $accessToken';
+
+    final body = jsonEncode({'comment': comment});
+    var response = await http.patch(url, headers: headers, body: body);
+
+    if (response.statusCode == 200) return true;
+
+    if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.patch(url, headers: headers, body: body);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('댓글 수정 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('댓글 수정 실패: ${e.toString()}');
+        return false;
+      }
+    }
+
+    logger.e('댓글 수정 실패: ${response.statusCode}');
+    return false;
+  }
+
+  Future<bool> deleteReply(String boardId, String replyId) async {
+    var url = ApiUri.resolve('board/post/$boardId/reply/$replyId/delete');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) headers['Authorization'] = 'Bearer $accessToken';
+
+    var response = await http.delete(url, headers: headers);
+
+    if (response.statusCode == 200) return true;
+
+    if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.delete(url, headers: headers);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('댓글 삭제 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('댓글 삭제 실패: ${e.toString()}');
+        return false;
+      }
+    }
+
+    logger.e('댓글 삭제 실패: ${response.statusCode}');
+    return false;
+  }
+
+  Future<bool> uploadBoardFiles(String boardId, List<File> imageFiles) async {
+    var url = ApiUri.resolve('board/post/$boardId/file/upload');
+    var request = http.MultipartRequest('POST', url);
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      request.headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    for (var file in imageFiles) {
+      var fileName = file.path.split('/').last;
+      var fileExtension = fileName.split('.').last;
+      var mimeType = ImageMimeType.fromExtension(fileExtension) ?? ImageMimeType.defaultType;
+      var multipartFile = await http.MultipartFile.fromPath(
+        'files',
+        file.path,
+        filename: fileName,
+        contentType: mimeType.toMediaType(),
+      );
+      request.files.add(multipartFile);
+    }
+
+    var streamedResponse = await request.send();
+    var response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode == 200) return true;
+
+    if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) request.headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryStreamed = await request.send();
+        var retryResponse = await http.Response.fromStream(retryStreamed);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('이미지 업로드 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('이미지 업로드 실패: ${e.toString()}');
+        return false;
+      }
+    }
+
+    logger.e('이미지 업로드 실패: ${response.statusCode}');
+    return false;
+  }
+
+  Future<bool> deleteBoardFiles(String boardId, List<String> fileIds) async {
+    var url = ApiUri.resolve('board/post/$boardId/file/delete');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    final body = jsonEncode({'fileIds': fileIds});
+    var response = await http.post(url, headers: headers, body: body);
+
+    if (response.statusCode == 200) return true;
+
+    if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) {
+        _customAlert.pageMovingWithshowTextAlert("인증 오류", "인증에 실패했습니다.\n다시 로그인해주세요.", "/login");
+        return false;
+      }
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.post(url, headers: headers, body: body);
+        if (retryResponse.statusCode == 200) return true;
+        logger.e('이미지 삭제 실패: ${utf8.decode(retryResponse.bodyBytes)}');
+        return false;
+      } catch (e) {
+        logger.e('이미지 삭제 실패: ${e.toString()}');
+        return false;
+      }
+    }
+
+    logger.e('이미지 삭제 실패: ${response.statusCode}');
+    return false;
+  }
+
   Future<LikeInfo?> requestLike(String boardId) async {
-    var url = Uri.http(host.toString(), 'board/post/$boardId/like');
+    var url = ApiUri.resolve('board/post/$boardId/like');
     var headers = {"Content-Type": "application/json;charset=utf-8"};
 
     // Bearer token 헤더 추가

@@ -1,19 +1,15 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/user/model/signup_models.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
+import 'package:unimal/utils/api_uri.dart';
 
 class UserInfoService {
   var logger = Logger();
   final SecureStorage _secureStorage = SecureStorage();
-  final host = Platform.isAndroid
-      ? dotenv.env['ANDORID_SERVER']
-      : dotenv.env['IOS_SERVER'];
 
   final headers = {"Content-Type": "application/json;charset=utf-8"};
 
@@ -28,7 +24,7 @@ class UserInfoService {
       "newPassword": newPassword,
     });
 
-    var url = Uri.http(host.toString(), '/user/member/find/change/password');
+    var url = ApiUri.resolve('/user/member/find/change/password');
 
     try {
       var res = await http.post(url, headers: headers, body: body);
@@ -46,11 +42,7 @@ class UserInfoService {
   }
 
   Future<String> checkNickname(String nickname) async {
-    var url = Uri.http(
-      host.toString(),
-      '/user/member/find/nickname/duplicate',
-      {'nickname': nickname},
-    );
+    var url = ApiUri.resolve('/user/member/find/nickname/duplicate', {'nickname': nickname});
 
     try {
       var res = await http.get(url);
@@ -67,7 +59,7 @@ class UserInfoService {
   }
 
   Future<String> checkEmail(String email) async {
-    var url = Uri.http(host.toString(), '/user/member/find/email/duplicate');
+    var url = ApiUri.resolve('/user/member/find/email/duplicate');
     var body = jsonEncode({"email": email});
 
     try {
@@ -85,7 +77,7 @@ class UserInfoService {
   }
 
   Future<String> checkTel(String tel) async {
-    var url = Uri.http(host.toString(), '/user/member/find/tel/duplicate');
+    var url = ApiUri.resolve('/user/member/find/tel/duplicate');
     var body = jsonEncode({"tel": tel});
 
     try {
@@ -103,7 +95,7 @@ class UserInfoService {
   }
 
   Future<String> signup(SignupModel signupModel) async {
-    var url = Uri.http(host.toString(), '/user/auth/signup/manual');
+    var url = ApiUri.resolve('/user/auth/signup/manual');
     var body = jsonEncode(signupModel.toJson());
 
     try {
@@ -123,7 +115,7 @@ class UserInfoService {
   }
 
   Future<void> updateDeviceInfo(Map<String, dynamic> deviceInfo) async {
-    var url = Uri.http(host.toString(), '/user/member/device/info/update');
+    var url = ApiUri.resolve('/user/member/device/info/update');
 
     String? accessToken = await _secureStorage.getAccessToken();
     if (accessToken != null) {

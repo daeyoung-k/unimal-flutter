@@ -20,9 +20,38 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
   final CustomAlert _customAlert = CustomAlert();
   final TextEditingController _commentController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _commentFocusNode = FocusNode();
   final BoardApiService _boardApiService = BoardApiService();
   BoardPost? _boardPost;
   bool _isLoading = true;
+
+  String? _replyToId;
+  String? _replyToNickname;
+
+  void _setReplyTo(String replyId, String nickname) {
+    setState(() {
+      _replyToId = replyId;
+      _replyToNickname = nickname;
+    });
+    _commentFocusNode.requestFocus();
+    // 입력창이 보이도록 스크롤을 맨 아래로
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  void _clearReplyTo() {
+    setState(() {
+      _replyToId = null;
+      _replyToNickname = null;
+    });
+  }
 
   @override
   void initState() {
@@ -92,20 +121,33 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
   void dispose() {
     _commentController.dispose();
     _scrollController.dispose();
+    _commentFocusNode.dispose();
     super.dispose();
   }
 
-  void _addComment() {
-    if (_commentController.text.trim().isEmpty) return;
+  bool _isSendingComment = false;
 
-    // 키보드 내리기
+  Future<void> _addComment() async {
+    final text = _commentController.text.trim();
+    if (text.isEmpty || _isSendingComment || _boardPost == null) return;
+
     FocusScope.of(context).unfocus();
+    setState(() => _isSendingComment = true);
 
-    // TODO: 실제 댓글 작성 API 호출 필요
-    _commentController.clear();
-    
-    // 댓글 추가 후 게시글 다시 로드하여 최신 댓글 반영
-    _loadBoardDetail();
+    final success = await _boardApiService.createReply(
+      _boardPost!.boardId,
+      text,
+      replyId: _replyToId,
+    );
+
+    if (mounted) {
+      setState(() => _isSendingComment = false);
+      if (success) {
+        _commentController.clear();
+        _clearReplyTo();
+        _loadBoardDetail();
+      }
+    }
   }
 
   // ReplyInfo 리스트를 CommentSection이 사용할 수 있는 형태로 변환
@@ -126,7 +168,8 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
       }
 
       return {
-        'id': int.tryParse(reply.id) ?? 0,
+        'id': reply.id,
+        'parentId': reply.replyId ?? '',
         'author': reply.nickname,
         'content': reply.comment,
         'profileImageUrl': _boardPost?.profileImage ?? 'https://via.placeholder.com/150',
@@ -136,34 +179,175 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
     }).toList();
   }
 
-  void _deleteComment(int commentId) {
-    // TODO: 실제 댓글 삭제 API 호출 필요
-    // 삭제 후 게시글 다시 로드
-    _loadBoardDetail();
+  Future<void> _deleteComment(String replyId) async {
+    if (_boardPost == null) return;
+    final success = await _boardApiService.deleteReply(_boardPost!.boardId, replyId);
+    if (success && mounted) _loadBoardDetail();
+  }
+
+  Future<void> _editComment(String replyId, String currentContent) async {
+    if (_boardPost == null) return;
+    final controller = TextEditingController(text: currentContent);
+
+    final newContent = await Get.dialog<String>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('댓글 수정', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.grey[100],
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          ),
+          style: const TextStyle(fontFamily: 'Pretendard', fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('취소', style: TextStyle(fontFamily: 'Pretendard', color: Colors.grey[600], fontWeight: FontWeight.w500)),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: controller.text.trim()),
+            child: const Text('수정', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFF4D91FF), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (newContent == null || newContent.isEmpty) return;
+
+    final success = await _boardApiService.updateReply(_boardPost!.boardId, replyId, newContent);
+    if (success && mounted) _loadBoardDetail();
+  }
+
+  final GlobalKey _menuButtonKey = GlobalKey();
+
+  void _showPostMenu() {
+    final renderBox = _menuButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<String>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 4,
+      color: Colors.white,
+      items: [
+        PopupMenuItem(
+          value: 'edit',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 16, color: Colors.grey[700]),
+              const SizedBox(width: 10),
+              Text('수정', style: TextStyle(fontSize: 14, color: Colors.grey[800], fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          height: 44,
+          child: const Row(
+            children: [
+              Icon(Icons.delete_outline, size: 16, color: Color(0xFFE53935)),
+              SizedBox(width: 10),
+              Text('삭제', style: TextStyle(fontSize: 14, color: Color(0xFFE53935), fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'edit') {
+        Get.toNamed('/edit-board', arguments: _boardPost);
+      } else if (value == 'delete') {
+        _confirmDelete();
+      }
+    });
+  }
+
+  Future<void> _confirmDelete() async {
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('게시글 삭제', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+        content: const Text('게시글을 삭제하면 복구할 수 없어요.\n정말 삭제할까요?', style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Color(0xFF666666), height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: Text('취소', style: TextStyle(fontFamily: 'Pretendard', color: Colors.grey[600], fontWeight: FontWeight.w500)),
+          ),
+          TextButton(
+            onPressed: () => Get.back(result: true),
+            child: const Text('삭제', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFFE53935), fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final success = await _boardApiService.deleteBoard(_boardPost!.boardId);
+    if (success) {
+      Get.offAllNamed('/board');
+    } else {
+      Get.dialog(
+        AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('삭제 실패', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+          content: const Text('게시글 삭제에 실패했습니다.\n잠시 후 다시 시도해주세요.', style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Color(0xFF666666))),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('확인', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFF4D91FF), fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    void goToBoard() => Get.offAllNamed('/board');
+
     // 로딩 중일 때 로딩 인디케이터 표시
     if (_isLoading) {
-      return Scaffold(
-        backgroundColor: const Color(0xFF4D91FF),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.chevron_left, color: Colors.white),
-            onPressed: () => Get.back(),
+      return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+        child: Scaffold(
+          backgroundColor: const Color(0xFF4D91FF),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.chevron_left, color: Colors.white),
+              onPressed: goToBoard,
+            ),
           ),
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+          body: const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
         ),
       );
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+      child: Scaffold(
       backgroundColor: const Color(0xFF4D91FF),
       // 키보드가 올라올 때 레이아웃 자동 조정
       resizeToAvoidBottomInset: true,
@@ -173,8 +357,16 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.chevron_left, color: Colors.white),
-          onPressed: () => Get.back(),
+          onPressed: goToBoard,
         ),
+        actions: [
+          if (_boardPost?.isOwner == true)
+            IconButton(
+              key: _menuButtonKey,
+              onPressed: _showPostMenu,
+              icon: const Icon(Icons.more_horiz, color: Colors.white),
+            ),
+        ],
       ),
       body: SafeArea(
         bottom: false,
@@ -213,6 +405,8 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
                       CommentSection(
                         comments: _convertRepliesToComments(),
                         onDelete: _deleteComment,
+                        onEdit: _editComment,
+                        onReply: _setReplyTo,
                       ),
                     ],
                   ),
@@ -220,10 +414,17 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
               ),
             ),
             // 댓글 입력 영역 (키보드가 올라올 때 함께 올라감)
-            CommentInput(controller: _commentController, onSend: _addComment),
+            CommentInput(
+              controller: _commentController,
+              focusNode: _commentFocusNode,
+              onSend: _addComment,
+              isLoading: _isSendingComment,
+              replyToNickname: _replyToNickname,
+              onCancelReply: _clearReplyTo,
+            ),
           ],
         ),
       ),
-    );
+    ));
   }
 }

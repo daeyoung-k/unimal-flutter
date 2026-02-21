@@ -1,19 +1,16 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/map/models/geocoding_models.dart';
+import 'package:unimal/utils/api_uri.dart';
 
 class GeocodingApiService {
-
-  var host = Platform.isAndroid ? dotenv.env['ANDORID_SERVER'] : dotenv.env['IOS_SERVER'];
 
   Future<GeocodingModel> getGeocoding(
     String latitude,
     String longitude,
   ) async {
-    var url = Uri.http(host.toString(), 'map/reverse-geocoding', {
+    var url = ApiUri.resolve('map/reverse-geocoding', {
       'latitude': latitude,
       'longitude': longitude,
     });    
