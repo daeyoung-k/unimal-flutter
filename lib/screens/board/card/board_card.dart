@@ -106,10 +106,17 @@ class _BoardCardState extends State<BoardCard>
                   behavior: HitTestBehavior.opaque,
                   onTap: _goToDetail,
                   child: BoardCardProfile(
-                    screenHeight: screenHeight, 
-                    profileImageUrl: widget.boardPost.profileImage, 
-                    nickname: widget.boardPost.nickname, 
-                    location: widget.boardPost.streetName
+                    screenHeight: screenHeight,
+                    profileImageUrl: widget.boardPost.profileImage,
+                    nickname: widget.boardPost.nickname,
+                    location: widget.boardPost.streetName,
+                    isOwner: widget.boardPost.isOwner,
+                    onEdit: () {
+                      // TODO: 게시글 수정
+                    },
+                    onDelete: () {
+                      // TODO: 게시글 삭제
+                    },
                   ),
                 ),
                 // 이미지 영역 (있는 경우에만)

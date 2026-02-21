@@ -5,25 +5,96 @@ class BoardCardProfile extends StatefulWidget {
   final String profileImageUrl;
   final String nickname;
   final String location;
-  
+  final bool isOwner;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+
   const BoardCardProfile({
-    super.key, 
-    required this.screenHeight, 
-    required this.profileImageUrl, 
-    required this.nickname, 
-    required this.location
+    super.key,
+    required this.screenHeight,
+    required this.profileImageUrl,
+    required this.nickname,
+    required this.location,
+    this.isOwner = false,
+    this.onEdit,
+    this.onDelete,
   });
 
   @override
   State<BoardCardProfile> createState() => _BoardCardProfileState();
 }
 
-class _BoardCardProfileState extends State<BoardCardProfile> 
+class _BoardCardProfileState extends State<BoardCardProfile>
     with SingleTickerProviderStateMixin {
-  
+
+  final GlobalKey _buttonKey = GlobalKey();
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  void _showPostMenu() {
+    if (!widget.isOwner) return;
+    final renderBox = _buttonKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        renderBox.localToGlobal(Offset.zero, ancestor: overlay),
+        renderBox.localToGlobal(renderBox.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    showMenu<String>(
+      context: context,
+      position: position,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 4,
+      color: Colors.white,
+      items: [
+        PopupMenuItem(
+          value: 'edit',
+          height: 44,
+          child: Row(
+            children: [
+              Icon(Icons.edit_outlined, size: 16, color: Colors.grey[700]),
+              const SizedBox(width: 10),
+              Text(
+                '수정',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[800],
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          height: 44,
+          child: Row(
+            children: [
+              const Icon(Icons.delete_outline, size: 16, color: Color(0xFFE53935)),
+              const SizedBox(width: 10),
+              const Text(
+                '삭제',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFFE53935),
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'edit') widget.onEdit?.call();
+      if (value == 'delete') widget.onDelete?.call();
+    });
+  }
 
   @override
   void initState() {
@@ -145,9 +216,8 @@ class _BoardCardProfileState extends State<BoardCardProfile>
               ),
               // 더보기 버튼
               IconButton(
-                onPressed: () {
-                  // 더보기 기능
-                },
+                key: _buttonKey,
+                onPressed: _showPostMenu,
                 icon: Icon(
                   Icons.more_horiz,
                   color: Colors.grey[600],
