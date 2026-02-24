@@ -20,6 +20,8 @@ class AppRoutes {
   final GlobalKey boardScreenKey = GlobalKey();
   // 지도 화면의 GlobalKey (새로고침을 위해 사용)
   final GlobalKey mapScreenKey = GlobalKey();
+  // 프로필 화면의 GlobalKey (새로고침을 위해 사용)
+  final GlobalKey profileScreenKey = GlobalKey();
 
   List<GetPage> pages() {
     return [
@@ -73,7 +75,7 @@ class AppRoutes {
         label: '게시판')
     },
     {
-      "page": ProfileScreens(),
+      "page": ProfileScreens(key: profileScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/user_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/user_bold_icon.svg'),

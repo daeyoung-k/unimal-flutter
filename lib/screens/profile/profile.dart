@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
@@ -19,10 +22,17 @@ class _ProfileScreensState extends State<ProfileScreens> {
 
   UserInfoModel? _userInfo;
   bool _isLoading = true;
+  bool _isUploadingImage = false;
+  final _picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
+    _loadUserInfo();
+  }
+
+  /// 네비게이션 탭 재탭 시 외부에서 호출되는 새로고침 메서드
+  void refreshProfile() {
     _loadUserInfo();
   }
 
@@ -79,31 +89,68 @@ class _ProfileScreensState extends State<ProfileScreens> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 프로필 아바타
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          GestureDetector(
+            onTap: _isUploadingImage ? null : _pickAndUploadProfileImage,
+            child: Stack(
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                    border: Border.all(color: Colors.white, width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: _isUploadingImage
+                        ? Container(
+                            color: Colors.grey[200],
+                            child: const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF4D91FF),
+                              ),
+                            ),
+                          )
+                        : (_userInfo?.profileImage != null
+                            ? Image.network(
+                                _userInfo!.profileImage!,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _buildAvatarLetter(avatarLetter),
+                              )
+                            : _buildAvatarLetter(avatarLetter)),
+                  ),
                 ),
+                // 카메라 아이콘 뱃지
+                if (!_isUploadingImage)
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFF4D91FF), width: 1.5),
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        size: 13,
+                        color: Color(0xFF4D91FF),
+                      ),
+                    ),
+                  ),
               ],
-            ),
-            child: ClipOval(
-              child: _userInfo?.profileImage != null
-                  ? Image.network(
-                      _userInfo!.profileImage!,
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildAvatarLetter(avatarLetter),
-                    )
-                  : _buildAvatarLetter(avatarLetter),
             ),
           ),
           const SizedBox(width: 16),
@@ -113,21 +160,22 @@ class _ProfileScreensState extends State<ProfileScreens> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 닉네임
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    fontFamily: 'Pretendard',
+                GestureDetector(
+                  onTap: _showEditNicknameSheet,
+                  child: Text(
+                    displayName,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      fontFamily: 'Pretendard',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
                 // 소개글
                 GestureDetector(
-                  onTap: () {
-                    // 소개글 수정 기능 (추후 구현)
-                  },
+                  onTap: _showEditIntroductionSheet,
                   child: Text(
                     introduction,
                     style: TextStyle(
@@ -247,6 +295,255 @@ class _ProfileScreensState extends State<ProfileScreens> {
         ],
       ),
     );
+  }
+
+  /// 프로필 이미지 선택 및 업로드
+  Future<void> _pickAndUploadProfileImage() async {
+    final XFile? picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 85,
+    );
+    if (picked == null) return;
+
+    if (!mounted) return;
+    setState(() => _isUploadingImage = true);
+
+    final success = await _userInfoService.uploadProfileImage(
+      accessToken: _authState.accessToken.value,
+      imageFile: File(picked.path),
+    );
+
+    if (success && mounted) {
+      await _loadUserInfo();
+    }
+
+    if (mounted) {
+      setState(() => _isUploadingImage = false);
+    }
+  }
+
+  /// 닉네임 수정 바텀시트 표시
+  void _showEditNicknameSheet() {
+    final controller = TextEditingController(text: _userInfo?.nickname ?? '');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        bool isSaving = false;
+        String? errorText;
+
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '닉네임 수정',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    maxLength: 20,
+                    onChanged: (_) {
+                      if (errorText != null) {
+                        setSheetState(() => errorText = null);
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: '닉네임을 입력해 주세요',
+                      errorText: errorText,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: isSaving
+                          ? null
+                          : () async {
+                              final nickname = controller.text.trim();
+                              if (nickname.isEmpty) return;
+
+                              setSheetState(() {
+                                isSaving = true;
+                                errorText = null;
+                              });
+
+                              // 현재 닉네임과 동일하면 중복검사 생략
+                              if (nickname != _userInfo?.nickname) {
+                                final result = await _userInfoService.checkNickname(nickname);
+                                if (result != 'ok') {
+                                  setSheetState(() {
+                                    isSaving = false;
+                                    errorText = result;
+                                  });
+                                  return;
+                                }
+                              }
+
+                              if (ctx.mounted) Navigator.pop(ctx);
+                              await _updateNickname(nickname);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF4D91FF),
+                        disabledBackgroundColor: Colors.grey[300],
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: isSaving
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text(
+                              '저장',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _updateNickname(String nickname) async {
+    final success = await _userInfoService.updateMemberInfo(
+      accessToken: _authState.accessToken.value,
+      nickname: nickname,
+      introduction: _userInfo?.introduction ?? '',
+    );
+    if (success && mounted) {
+      await _loadUserInfo();
+    }
+  }
+
+  /// 소개글 수정 바텀시트 표시
+  void _showEditIntroductionSheet() {
+    final controller = TextEditingController(text: _userInfo?.introduction ?? '');
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '소개글 수정',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Pretendard',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                autofocus: true,
+                maxLength: 100,
+                decoration: InputDecoration(
+                  hintText: '나를 소개해 보세요',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _updateIntroduction(controller.text);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4D91FF),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    '저장',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _updateIntroduction(String introduction) async {
+    final success = await _userInfoService.updateMemberInfo(
+      accessToken: _authState.accessToken.value,
+      nickname: _userInfo?.nickname ?? '',
+      introduction: introduction,
+    );
+    if (success && mounted) {
+      await _loadUserInfo();
+    }
   }
 
   /// 설정 바텀시트 표시 (내 개인정보 / 설정 / 로그아웃)

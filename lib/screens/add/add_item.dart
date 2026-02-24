@@ -55,13 +55,15 @@ class _AddItemScreensState extends State<AddItemScreens> {
   }
 
   Future<void> _getMyLocation() async {
+    if (!mounted) return;
     setState(() {
       _isLoadingLocation = true;
     });
-    
+
     try {
       Position position = await Geolocator.getCurrentPosition();
       GeocodingModel geocoding = await GeocodingApiService().getGeocoding(position.latitude.toString(), position.longitude.toString());
+      if (!mounted) return;
       setState(() {
         _myLocation = geocoding;
         _myLocation?.latitude = position.latitude.toDouble();
@@ -70,6 +72,7 @@ class _AddItemScreensState extends State<AddItemScreens> {
         _isLoadingLocation = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoadingLocation = false;
       });
