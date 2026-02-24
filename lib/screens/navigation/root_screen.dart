@@ -45,6 +45,17 @@ class _RootScreen extends State<RootScreen> {
           // 메서드가 없거나 호출 실패 시 무시
         }
       }
+    }
+    // My 탭(인덱스 3)을 이미 선택한 상태에서 다시 터치하면 새로고침
+    else if (index == 3 && _selectedIndex == 3) {
+      final profileState = appRoutes.profileScreenKey.currentState;
+      if (profileState != null) {
+        try {
+          (profileState as dynamic).refreshProfile();
+        } catch (e) {
+          // 메서드가 없거나 호출 실패 시 무시
+        }
+      }
     } else {
       setState(() {
         _selectedIndex = index;

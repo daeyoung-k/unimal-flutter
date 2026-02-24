@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/user/model/signup_models.dart';
+import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/api_uri.dart';
@@ -111,6 +113,84 @@ class UserInfoService {
     } catch (error) {
       logger.e("전화번호 인증요청 실패.. ${error.toString()}");
       return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
+  }
+
+  Future<UserInfoModel?> getMemberInfo(String accessToken) async {
+    var url = ApiUri.resolve('/user/member/info');
+    var authHeaders = {"Authorization": "Bearer $accessToken"};
+
+    try {
+      var res = await http.get(url, headers: authHeaders);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return UserInfoModel.fromJson(bodyData['data']);
+      } else {
+        logger.e("내 정보 조회 실패.. ${bodyData['message']}");
+        if (bodyData['code'] == 401 || res.statusCode == 401) {
+          await AccountService().logout();
+        }
+        return null;
+      }
+    } catch (error) {
+      logger.e("내 정보 조회 실패.. ${error.toString()}");
+      await AccountService().logout();
+      return null;
+    }
+  }
+
+  Future<bool> updateMemberInfo({
+    required String accessToken,
+    required String nickname,
+    required String introduction,
+  }) async {
+    var url = ApiUri.resolve('/user/member/info/update');
+    var authHeaders = {
+      "Content-Type": "application/json;charset=utf-8",
+      "Authorization": "Bearer $accessToken",
+    };
+    var body = jsonEncode({
+      "nickname": nickname,
+      "introduction": introduction,
+    });
+
+    try {
+      var res = await http.patch(url, headers: authHeaders, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return true;
+      } else {
+        logger.e("정보 업데이트 실패.. ${bodyData['message']}");
+        return false;
+      }
+    } catch (error) {
+      logger.e("정보 업데이트 실패.. ${error.toString()}");
+      return false;
+    }
+  }
+
+  Future<bool> uploadProfileImage({
+    required String accessToken,
+    required File imageFile,
+  }) async {
+    var url = ApiUri.resolve('/user/member/profile/image/upload');
+    var request = http.MultipartRequest('POST', url)
+      ..headers['Authorization'] = 'Bearer $accessToken'
+      ..files.add(await http.MultipartFile.fromPath('image', imageFile.path));
+
+    try {
+      final streamedResponse = await request.send();
+      final res = await http.Response.fromStream(streamedResponse);
+      final bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return true;
+      } else {
+        logger.e("프로필 이미지 업로드 실패.. ${bodyData['message']}");
+        return false;
+      }
+    } catch (error) {
+      logger.e("프로필 이미지 업로드 실패.. ${error.toString()}");
+      return false;
     }
   }
 

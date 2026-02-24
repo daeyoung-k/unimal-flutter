@@ -16,6 +16,29 @@ class CommentItem extends StatelessWidget {
     this.isNested = false,
   });
 
+  // 이니셜 아바타 (프로필 이미지 없거나 로드 실패 시 폴백)
+  Widget _buildInitial(double radius) {
+    final author = comment['author'] as String? ?? '?';
+    final letter = author.isNotEmpty ? author[0] : '?';
+    final size = radius * 2;
+    return Container(
+      width: size,
+      height: size,
+      color: Colors.grey[200],
+      child: Center(
+        child: Text(
+          letter,
+          style: TextStyle(
+            fontSize: radius * 0.8,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF4D91FF),
+            fontFamily: 'Pretendard',
+          ),
+        ),
+      ),
+    );
+  }
+
   String _formatDateTime(DateTime dateTime) {
     final now = DateTime.now();
     final difference = now.difference(dateTime);
@@ -54,8 +77,23 @@ class CommentItem extends StatelessWidget {
                 CircleAvatar(
                   radius: isNested ? 14 : 18,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage: NetworkImage(comment['profileImageUrl'] as String),
-                  onBackgroundImageError: (e, s) {},
+                  child: ClipOval(
+                    child: () {
+                      final url = comment['profileImageUrl'] as String?;
+                      final radius = isNested ? 14.0 : 18.0;
+                      final size = radius * 2;
+                      if (url != null && url.isNotEmpty) {
+                        return Image.network(
+                          url,
+                          width: size,
+                          height: size,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _buildInitial(radius),
+                        );
+                      }
+                      return _buildInitial(radius);
+                    }(),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
