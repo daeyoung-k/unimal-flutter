@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class DetailProfile extends StatelessWidget {
-  final String profileImageUrl;
+  final String? profileImageUrl;
   final String nickname;
   final String location;
   
@@ -11,6 +11,27 @@ class DetailProfile extends StatelessWidget {
     required this.nickname,
     required this.location,
   });
+
+  // 이니셜 아바타 (프로필 이미지 없거나 로드 실패 시 폴백)
+  Widget _buildInitial() {
+    final letter = nickname.isNotEmpty ? nickname[0] : '?';
+    return Container(
+      width: 36,
+      height: 36,
+      color: Colors.grey[200],
+      child: Center(
+        child: Text(
+          letter,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF4D91FF),
+            fontFamily: 'Pretendard',
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,8 +55,17 @@ class DetailProfile extends StatelessWidget {
           CircleAvatar(
             radius: 18,
             backgroundColor: Colors.grey[200],
-            backgroundImage: NetworkImage(profileImageUrl),
-            onBackgroundImageError: (e, s) {},
+            child: ClipOval(
+              child: profileImageUrl != null && profileImageUrl!.isNotEmpty
+                  ? Image.network(
+                      profileImageUrl!,
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildInitial(),
+                    )
+                  : _buildInitial(),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(

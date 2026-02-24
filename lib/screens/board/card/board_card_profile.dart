@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 class BoardCardProfile extends StatefulWidget {
   final double screenHeight;
-  final String profileImageUrl;
+  final String? profileImageUrl;
   final String nickname;
   final String location;
   final bool isOwner;
@@ -31,6 +31,27 @@ class _BoardCardProfileState extends State<BoardCardProfile>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+
+  // 이니셜 아바타 (프로필 이미지 없거나 로드 실패 시 폴백)
+  Widget _buildInitial() {
+    final letter = widget.nickname.isNotEmpty ? widget.nickname[0] : '?';
+    return Container(
+      width: 36,
+      height: 36,
+      color: Colors.grey[200],
+      child: Center(
+        child: Text(
+          letter,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF4D91FF),
+            fontFamily: 'Pretendard',
+          ),
+        ),
+      ),
+    );
+  }
 
   void _showPostMenu() {
     if (!widget.isOwner) return;
@@ -167,10 +188,17 @@ class _BoardCardProfileState extends State<BoardCardProfile>
                 child: CircleAvatar(
                   radius: 18,
                   backgroundColor: Colors.grey[200],
-                  backgroundImage: NetworkImage(widget.profileImageUrl),
-                  onBackgroundImageError: (exception, stackTrace) {
-                    // 에러 처리
-                  },
+                  child: ClipOval(
+                    child: widget.profileImageUrl != null && widget.profileImageUrl!.isNotEmpty
+                        ? Image.network(
+                            widget.profileImageUrl!,
+                            width: 36,
+                            height: 36,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _buildInitial(),
+                          )
+                        : _buildInitial(),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

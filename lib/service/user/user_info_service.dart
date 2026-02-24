@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:logger/logger.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/user/model/signup_models.dart';
+import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/api_uri.dart';
@@ -111,6 +112,25 @@ class UserInfoService {
     } catch (error) {
       logger.e("전화번호 인증요청 실패.. ${error.toString()}");
       return "전화번호 인증요청 실패\n 잠시 후 다시 시도해주세요.";
+    }
+  }
+
+  Future<UserInfoModel?> getMemberInfo(String accessToken) async {
+    var url = ApiUri.resolve('/user/member/info');
+    var authHeaders = {"Authorization": "Bearer $accessToken"};
+
+    try {
+      var res = await http.get(url, headers: authHeaders);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return UserInfoModel.fromJson(bodyData['data']);
+      } else {
+        logger.e("내 정보 조회 실패.. ${bodyData['message']}");
+        return null;
+      }
+    } catch (error) {
+      logger.e("내 정보 조회 실패.. ${error.toString()}");
+      return null;
     }
   }
 
