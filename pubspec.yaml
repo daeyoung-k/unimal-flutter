@@ -30,6 +30,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
   # 추가 라이브러리
   flutter_native_splash: ^2.4.4           # 스플래시 화면 제작

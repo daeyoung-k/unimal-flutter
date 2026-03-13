@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:unimal/screens/profile/mypage/mypage.dart';
+import 'package:unimal/screens/profile/setting/setting.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
@@ -270,7 +272,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () {
-              // 첫 발자국 남기기 기능 (추후 구현)
+              Get.toNamed('/add');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
@@ -578,9 +580,10 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     fontFamily: 'Pretendard',
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Get.back();
-                  // 내 개인정보 화면 (추후 구현)
+                  await Get.to(() => const MyPageScreen());
+                  _loadUserInfo();
                 },
               ),
               ListTile(
@@ -594,7 +597,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                 ),
                 onTap: () {
                   Get.back();
-                  // 설정 화면 (추후 구현)
+                  Get.to(() => const SettingScreen());
                 },
               ),
               const Divider(height: 1),

@@ -169,6 +169,44 @@ class UserInfoService {
     }
   }
 
+  Future<bool> updatePersonalInfo({
+    required String accessToken,
+    required String name,
+    required String nickname,
+    required String tel,
+    required String introduction,
+    required String birthday,
+    required String gender,
+  }) async {
+    var url = ApiUri.resolve('/user/member/info/update');
+    var authHeaders = {
+      "Content-Type": "application/json;charset=utf-8",
+      "Authorization": "Bearer $accessToken",
+    };
+    var body = jsonEncode({
+      "name": name,
+      "nickname": nickname,
+      "tel": tel,
+      "introduction": introduction,
+      "birthday": birthday,
+      "gender": gender, // MALE | FEMALE
+    });
+
+    try {
+      var res = await http.patch(url, headers: authHeaders, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return true;
+      } else {
+        logger.e("개인정보 업데이트 실패.. ${bodyData['message']}");
+        return false;
+      }
+    } catch (error) {
+      logger.e("개인정보 업데이트 실패.. ${error.toString()}");
+      return false;
+    }
+  }
+
   Future<bool> uploadProfileImage({
     required String accessToken,
     required File imageFile,
