@@ -1,0 +1,369 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:get/get.dart';
+import 'package:unimal/icon/custom_icon_icons.dart';
+import 'package:unimal/screens/auth/login/widget/manual_login_form.dart';
+import 'package:unimal/service/login/kakao_login_service.dart';
+import 'package:unimal/service/login/login_type.dart';
+import 'package:unimal/service/login/naver_login_service.dart';
+import 'package:unimal/service/login/google_login_service.dart';
+import 'package:unimal/state/auth_state.dart';
+
+class LoginScreen2 extends StatefulWidget {
+  const LoginScreen2({super.key});
+
+  @override
+  State<LoginScreen2> createState() => _LoginScreen2State();
+}
+
+class _LoginScreen2State extends State<LoginScreen2> {
+  bool _showEmailLogin = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authState = Get.find<AuthState>();
+      if (authState.provider.value != LoginType.none) {
+        Get.offAllNamed("/map");
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF7B6FE8),
+              Color(0xFF9B6FD8),
+              Color(0xFFBB6FC8),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
+              child: IntrinsicHeight(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 60),
+                    // 앱 아이콘
+                    _AppIcon(),
+                    const SizedBox(height: 24),
+                    // 앱 이름
+                    const Text(
+                      '스토맵',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // 서브타이틀
+                    const Text(
+                      '지도 위에 당신의 이야기를 남기세요',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    const SizedBox(height: 40),
+                    // 로그인 카드
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 20,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 32),
+                        child: _showEmailLogin
+                            ? _EmailLoginSection(
+                                onBack: () =>
+                                    setState(() => _showEmailLogin = false),
+                              )
+                            : _SocialLoginSection(
+                                onEmailLogin: () =>
+                                    setState(() => _showEmailLogin = true),
+                              ),
+                      ),
+                    ),
+                    const Spacer(),
+                    // 하단 약관 텍스트
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 32, vertical: 24),
+                      child: Text(
+                        '로그인하면 서비스 이용약관 및 개인정보 보호정책에 동의하게 됩니다',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.75),
+                          fontSize: 12,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AppIcon extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEEEF5),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.location_on,
+            size: 52,
+            color: Color(0xFF4A7FE5),
+          ),
+        ),
+        Positioned(
+          bottom: -6,
+          right: -6,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE85888),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.chat_bubble,
+              size: 16,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SocialLoginSection extends StatelessWidget {
+  final VoidCallback onEmailLogin;
+
+  const _SocialLoginSection({required this.onEmailLogin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          '시작하기',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF1A1A2E),
+            fontSize: 20,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 24),
+        // 카카오 버튼
+        _LoginButton(
+          onPressed: () => KakaoLoginService().login(),
+          backgroundColor: const Color(0xFFFEE500),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.chat_bubble, color: Colors.black87, size: 22),
+              SizedBox(width: 10),
+              Text(
+                '카카오로 시작하기',
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 16,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 네이버 버튼
+        _LoginButton(
+          onPressed: () => NaverLoginService().login(),
+          backgroundColor: const Color(0xFF03C75A),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Center(
+                  child: Text(
+                    'N',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '네이버로 시작하기',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 구글 버튼
+        _LoginButton(
+          onPressed: () => GoogleLoginService().login(),
+          backgroundColor: Colors.white,
+          border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SvgPicture.asset(
+                'assets/icon/svg/google_icon.svg',
+                width: 22,
+                height: 22,
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                '구글로 시작하기',
+                style: TextStyle(
+                  color: Color(0xFF333333),
+                  fontSize: 16,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // 이메일 로그인
+        TextButton(
+          onPressed: onEmailLogin,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.mail_outline, color: Color(0xFF888888), size: 18),
+              SizedBox(width: 6),
+              Text(
+                '이메일로 로그인',
+                style: TextStyle(
+                  color: Color(0xFF888888),
+                  fontSize: 14,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoginButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final Color backgroundColor;
+  final Widget child;
+  final BoxBorder? border;
+
+  const _LoginButton({
+    required this.onPressed,
+    required this.backgroundColor,
+    required this.child,
+    this.border,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        height: 54,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(14),
+          border: border,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _EmailLoginSection extends StatelessWidget {
+  final VoidCallback onBack;
+
+  const _EmailLoginSection({required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return ManualLoginFormWidget(onBackPressed: onBack);
+  }
+}

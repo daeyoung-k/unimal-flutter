@@ -5,6 +5,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
+import 'package:unimal/screens/auth/login/login2.dart';
+import 'package:unimal/screens/auth/login/login3.dart';
+import 'package:unimal/screens/auth/login/login4.dart';
+import 'package:unimal/screens/auth/login/login5.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
@@ -81,7 +85,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
-      home: loginChecked ? RootScreen() : LoginScreens(),
+      home: loginChecked ? RootScreen() : LoginScreen2(),
       // home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 3),
       // home: MarkerPreview(),
       localizationsDelegates: const [
