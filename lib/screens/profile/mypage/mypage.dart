@@ -14,6 +14,9 @@ class MyPageScreen extends StatefulWidget {
 }
 
 class _MyPageScreenState extends State<MyPageScreen> {
+  static const Color _primary = Color(0xFF5B9FEF);
+  static const Color _primaryDark = Color(0xFF3578E5);
+
   final _authState = Get.find<AuthState>();
   final _userInfoService = UserInfoService();
   final _accountService = AccountService();
@@ -225,7 +228,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           style: TextStyle(fontSize: 15, fontFamily: 'Pretendard')),
                       value: 'MALE',
                       groupValue: _gender,
-                      activeColor: const Color(0xFF4D91FF),
+                      activeColor: _primary,
                       onChanged: (val) {
                         setSheetState(() {});
                         setState(() => _gender = val!);
@@ -237,7 +240,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
                           style: TextStyle(fontSize: 15, fontFamily: 'Pretendard')),
                       value: 'FEMALE',
                       groupValue: _gender,
-                      activeColor: const Color(0xFF4D91FF),
+                      activeColor: _primary,
                       onChanged: (val) {
                         setSheetState(() {});
                         setState(() => _gender = val!);
@@ -445,34 +448,49 @@ class _MyPageScreenState extends State<MyPageScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _save,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4D91FF),
-                  disabledBackgroundColor: Colors.grey[300],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text(
-                        '저장하기',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                          fontFamily: 'Pretendard',
+            GestureDetector(
+              onTap: _isSaving ? null : _save,
+              child: Container(
+                width: double.infinity,
+                height: 52,
+                decoration: BoxDecoration(
+                  gradient: _isSaving
+                      ? null
+                      : const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [_primaryDark, _primary],
                         ),
-                      ),
+                  color: _isSaving ? Color(0xFFE0E0E0) : null,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: _isSaving
+                      ? []
+                      : [
+                          BoxShadow(
+                            color: _primaryDark.withValues(alpha: 0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                ),
+                child: Center(
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          '저장하기',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                ),
               ),
             ),
             const SizedBox(height: 60),

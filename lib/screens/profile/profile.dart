@@ -9,6 +9,7 @@ import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/state/nav_controller.dart';
 
 class ProfileScreens extends StatefulWidget {
   const ProfileScreens({super.key});
@@ -17,7 +18,8 @@ class ProfileScreens extends StatefulWidget {
   State<ProfileScreens> createState() => _ProfileScreensState();
 }
 
-class _ProfileScreensState extends State<ProfileScreens> {
+class _ProfileScreensState extends State<ProfileScreens>
+    with SingleTickerProviderStateMixin {
   final _authState = Get.find<AuthState>();
   final _accountService = AccountService();
   final _userInfoService = UserInfoService();
@@ -27,10 +29,53 @@ class _ProfileScreensState extends State<ProfileScreens> {
   bool _isUploadingImage = false;
   final _picker = ImagePicker();
 
+  bool _lastTickerEnabled = false;
+  late AnimationController _ctrl;
+  late Animation<Offset> _headerSlide;
+  late Animation<double> _headerFade;
+  late Animation<Offset> _statsSlide;
+  late Animation<double> _statsFade;
+  late Animation<double> _contentFade;
+
   @override
   void initState() {
     super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _headerSlide = Tween(begin: const Offset(0, -0.3), end: Offset.zero).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
+    );
+    _headerFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.45, curve: Curves.easeOut)),
+    );
+    _statsSlide = Tween(begin: const Offset(0, 0.4), end: Offset.zero).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.25, 0.65, curve: Curves.easeOut)),
+    );
+    _statsFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.25, 0.6, curve: Curves.easeOut)),
+    );
+    _contentFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0, curve: Curves.easeOut)),
+    );
     _loadUserInfo();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerEnabled = TickerMode.of(context);
+    if (tickerEnabled && !_lastTickerEnabled && !_isLoading) {
+      _ctrl.forward(from: 0);
+    }
+    _lastTickerEnabled = tickerEnabled;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
   }
 
   /// 네비게이션 탭 재탭 시 외부에서 호출되는 새로고침 메서드
@@ -46,31 +91,138 @@ class _ProfileScreensState extends State<ProfileScreens> {
         _userInfo = info;
         _isLoading = false;
       });
+      _ctrl.forward(from: 0);
     }
   }
+
+  static const Color _primary = Color(0xFF7AB3FF);
+  static const Color _primaryDark = Color(0xFF3578E5);
+  static const Color _accent = Color(0xFFFF6B6B);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF4D91FF),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
-            : Column(
-                children: [
-                  // 프로필 헤더
-                  _buildProfileHeader(),
-                  const SizedBox(height: 20),
-                  // 내 소식 탭 헤더
-                  _buildTabBar(),
-                  const SizedBox(height: 20),
-                  // 내 소식 콘텐츠
-                  Expanded(
-                    child: _buildContent(),
-                  ),
-                ],
-              ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_primaryDark, _primary, Color(0xFFA8CCFF)],
+          ),
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Colors.white))
+              : Column(
+                  children: [
+                    FadeTransition(
+                      opacity: _headerFade,
+                      child: SlideTransition(
+                        position: _headerSlide,
+                        child: _buildProfileHeader(),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FadeTransition(
+                      opacity: _statsFade,
+                      child: SlideTransition(
+                        position: _statsSlide,
+                        child: _buildStatsCard(),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FadeTransition(
+                      opacity: _contentFade,
+                      child: Column(
+                        children: [
+                          _buildTabBar(),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: FadeTransition(
+                        opacity: _contentFade,
+                        child: _buildContent(),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildStatsCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildStatItem(
+                icon: Icons.location_on_rounded,
+                iconColor: _primary,
+                value: '0',
+                label: '내 스토리',
+              ),
+            ),
+            Container(width: 1, height: 48, color: const Color(0xFFE8E8E8)),
+            Expanded(
+              child: _buildStatItem(
+                icon: Icons.favorite_rounded,
+                iconColor: _accent,
+                value: '0',
+                label: '받은 좋아요',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required String label,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: iconColor, size: 28),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF1A1A2E),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+            fontFamily: 'Pretendard',
+          ),
+        ),
+      ],
     );
   }
 
@@ -117,7 +269,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                             child: const Center(
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFF4D91FF),
+                                color: _primary,
                               ),
                             ),
                           )
@@ -143,12 +295,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF4D91FF), width: 1.5),
+                        border: Border.all(color: _primary, width: 1.5),
                       ),
                       child: const Icon(
                         Icons.camera_alt,
                         size: 13,
-                        color: Color(0xFF4D91FF),
+                        color: _primary,
                       ),
                     ),
                   ),
@@ -214,7 +366,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
           style: const TextStyle(
             fontSize: 32,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF4D91FF),
+            color: _primary,
             fontFamily: 'Pretendard',
           ),
         ),
@@ -222,7 +374,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
     );
   }
 
-  // 내 소식 탭 헤더
+  // 내 스토리 탭 헤더
   Widget _buildTabBar() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -242,7 +394,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
           ),
         ),
         child: const Text(
-          '내 소식',
+          '내 스토리',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 15,
@@ -255,7 +407,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
     );
   }
 
-  // 내 소식 콘텐츠 위젯
+  // 내 스토리 콘텐츠 위젯
   Widget _buildContent() {
     return Center(
       child: Column(
@@ -272,7 +424,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
           const SizedBox(height: 24),
           ElevatedButton(
             onPressed: () {
-              Get.toNamed('/add');
+              Get.find<NavController>().selectedIndex.value = 1;
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
@@ -286,7 +438,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
               ),
             ),
             child: const Text(
-              '첫 발자국 남기기',
+              '첫 스토리 남기기',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -413,7 +565,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                               await _updateNickname(nickname);
                             },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4D91FF),
+                        backgroundColor: _primary,
                         disabledBackgroundColor: Colors.grey[300],
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -514,7 +666,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     _updateIntroduction(controller.text);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4D91FF),
+                    backgroundColor: _primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

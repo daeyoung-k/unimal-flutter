@@ -10,10 +10,6 @@ import 'package:unimal/screens/auth/signup.dart';
 import 'package:unimal/screens/board/detail_board/detail_board.dart';
 import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
-import 'package:unimal/screens/auth/login/login2.dart';
-import 'package:unimal/screens/auth/login/login3.dart';
-import 'package:unimal/screens/auth/login/login4.dart';
-import 'package:unimal/screens/auth/login/login5.dart';
 import 'package:unimal/screens/map/map.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
@@ -46,10 +42,6 @@ class AppRoutes {
   List<GetPage> _authRoutes() {
     return [
       GetPage(name: '/login', page: () => LoginScreens()),
-      GetPage(name: '/login2', page: () => LoginScreen2()),
-      GetPage(name: '/login3', page: () => LoginScreen3()),
-      GetPage(name: '/login4', page: () => LoginScreen4()),
-      GetPage(name: '/login5', page: () => LoginScreen5()),
       GetPage(name: '/tel-verification', page: () => TelVerificationScreen()),
       GetPage(name: '/id-find', page: () => IdFindScreen()),
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),

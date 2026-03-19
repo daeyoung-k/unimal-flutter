@@ -1,4 +1,4 @@
-# 🐾 Unimal - 우리 주변 동물
+# 스토맵 (Stomap)
 
 <p align="center">
   <img src="https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white" alt="Flutter">
@@ -8,14 +8,70 @@
 
 ## 📱 프로젝트 소개
 
-**Unimal** 사용자들이 위치 기반으로 야생동물과 반려동물의 사진과 정보를 지도에 공유할 수 있는 커뮤니티 기반 플랫폼입니다.
+**스토맵(Stomap)** 은 지도 위에 나만의 이야기를 핀으로 남기고, 주변 사람들과 공유하는 위치 기반 스토리 공유 앱입니다.
+
+> "지도 위에 당신의 이야기를 남기세요"
 
 ### 🎯 주요 특징
 
-- **📍 위치 기반 서비스**: Google Maps를 활용한 캠퍼스 주변 정보 제공
-- **💬 커뮤니티 게시판**: 사용자들 간 정보 공유 및 소통 공간
+- **📍 위치 기반 스토리**: 현재 위치에 스토리를 핀으로 등록하고 지도에 노출
+- **💬 커뮤니티 게시판**: 스토리 피드, 좋아요, 댓글/대댓글
 - **🔐 소셜 로그인**: 카카오, 네이버, 구글 간편 로그인 지원
-- **🎨 모던한 UI/UX**: Material Design 3 기반의 직관적인 인터페이스
+- **🎨 브랜드 디자인**: 파란 핀 + 코랄 포인트 컬러의 일관된 UI
+
+---
+
+## 🎨 디자인 시스템
+
+### 브랜드 컬러
+| 역할 | 색상 | HEX |
+|---|---|---|
+| Primary | 메인 블루 | `#7AB3FF` |
+| Primary (Nav Active) | 진한 블루 | `#5B9FEF` |
+| Primary Dark | 딥 블루 | `#3578E5` |
+| Accent | 코랄 레드 | `#FF6B6B` |
+| Background Light | 연한 블루 | `#E8F2FF` |
+| Gradient Light | 밝은 블루 | `#A8CCFF` |
+
+### 그라디언트
+- **화면 배경** (로그인/공유하기/프로필): `#3578E5` → `#7AB3FF` → `#A8CCFF` (위→아래, 위가 진하게)
+- **버튼**: `#3578E5` → `#5B9FEF` (위→아래)
+
+### 타이포그래피
+- **기본 폰트**: Pretendard
+- **앱 이름**: `w800`, 32px, white
+
+### 공통 컴포넌트
+- 카드: `BorderRadius.circular(24)`, `Colors.white.withOpacity(0.95)`, 부드러운 그림자
+- 버튼: `BorderRadius.circular(14)`, 그라디언트 적용
+- 로그인 버튼: `BorderRadius.circular(14)`, height 54
+
+---
+
+## 📂 주요 화면 구조
+
+```
+lib/screens/
+├── auth/login/
+│   └── login.dart              # 메인 로그인 화면 (소셜 + 이메일)
+│       └── widget/
+│           └── manual_login_form.dart
+├── add/
+│   └── add_item.dart           # 스토리 공유하기 화면
+├── board/
+│   ├── board.dart              # 게시판 피드
+│   └── widget/
+├── navigation/
+│   ├── root_screen.dart        # 하단 네비게이션 + IndexedStack
+│   └── app_routes.dart         # 라우트 정의
+├── profile/
+│   ├── profile.dart            # 내 프로필 (스탯카드 + 내 스토리)
+│   ├── mypage/mypage.dart      # 개인정보 수정
+│   └── setting/setting.dart    # 설정
+└── map/                        # 지도 화면
+```
+
+---
 
 ## 🛠 기술 스택
 
@@ -31,101 +87,79 @@ dependencies:
   # UI/UX
   flutter_native_splash: ^2.4.4    # 스플래시 화면
   flutter_svg: ^2.0.17             # SVG 이미지 지원
-  
+
   # 지도 & 위치
   google_maps_flutter: ^2.12.3     # Google Maps 통합
   geolocator: ^11.0.0              # 위치 정보 획득
-  
+
   # 인증
   kakao_flutter_sdk: ^1.9.6        # 카카오 로그인
-  naver_login_sdk: ^2.3.0          # 네이버 로그인  
+  naver_login_sdk: ^2.3.0          # 네이버 로그인
   google_sign_in: ^6.3.0           # 구글 로그인
-  
+
   # 데이터 & 보안
   http: ^1.3.0                     # HTTP 통신
   flutter_secure_storage: ^9.2.4   # 안전한 데이터 저장
   flutter_dotenv: ^5.2.1           # 환경변수 관리
-  
+
   # 유틸리티
   image_picker: ^1.0.7             # 이미지 선택
   permission_handler: ^11.3.0      # 권한 관리
   logger: ^2.5.0                   # 로깅
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.3  # 앱 아이콘 생성
 ```
 
-## 📂 프로젝트 구조
+---
 
-```
-lib/
-├── main.dart                    # 앱 진입점
-├── models/                      # 데이터 모델
-│   ├── board_post.dart
-│   └── signup_models.dart
-├── screens/                     # UI 화면
-│   ├── auth/                   # 인증 관련
-│   │   ├── login/
-│   │   ├── signup.dart
-│   │   └── tel_verification.dart
-│   ├── board/                  # 게시판
-│   │   ├── board.dart
-│   │   └── widget/
-│   ├── navigation/             # 네비게이션
-│   │   ├── root_screen.dart
-│   │   └── app_routes.dart
-│   ├── home.dart
-│   ├── search.dart
-│   └── profile.dart
-├── service/                    # 비즈니스 로직
-│   ├── auth/
-│   ├── login/
-│   └── user/
-├── state/                      # 상태 관리
-│   ├── auth_state.dart
-│   └── secure_storage.dart
-└── repositories/               # 데이터 레이어
-    └── board_repository.dart
-```
+## ✅ 주요 변경 이력
 
-## 🎨 UI/UX 특징
+### 2026-03-19
+- **앱 이름 변경**: Unimal → 스토맵 (iOS `CFBundleDisplayName`, Android `android:label`)
+- **로그인 화면 개편** (`login.dart`)
+  - 로고: 파란 핀 + 빨간 말풍선 인라인 SVG
+  - 배경: 그라디언트 `#A8CCFF → #7AB3FF → #3578E5`
+  - 소셜 로그인 카드: white 95% 반투명 + `BorderRadius.circular(24)`
+  - 진입 애니메이션: 로고 스케일+페이드 → 타이틀 슬라이드업 → 카드 슬라이드업 (순차, 1.2초)
+  - 불필요한 login2~5.dart, 개별 버튼 위젯 파일 삭제
+- **스플래시 화면** (`flutter_native_splash.yaml`)
+  - 배경색: `#E8F2FF` (앱 아이콘 배경과 동일)
+  - 중앙 이미지: 핀 이미지 240px
+  - Android 12+: `app_icon_android.png` 사용 (원형 크롭 대응)
+- **앱 아이콘** (`flutter_launcher_icons`)
+  - iOS 1024px / Android 512px 적용
+  - `remove_alpha_ios: true`
+  - Adaptive icon 배경: `#E8F2FF`
+- **공유하기 화면** (`add_item.dart`)
+  - 배경: 그라디언트 `#3578E5 → #7AB3FF → #A8CCFF` (위가 진하게)
+  - 카드: `BorderRadius.circular(24)`, white 95%
+  - 업로드 버튼: white 카드 + `#7AB3FF` 텍스트
+  - 진입 애니메이션: 헤더 → 이미지영역 → 제목/내용카드 → 위치/토글 → 버튼 스태거 (1초)
+  - `TickerMode` 기반 탭 재진입 시 애니메이션 재생
+- **하단 네비게이션** (`root_screen.dart`)
+  - `BottomNavigationBar` 제거 → 커스텀 `_buildBottomNav()`
+  - SVG 아이콘 `ColorFilter.mode()` 로 컬러 적용
+  - 활성: `#5B9FEF`, 비활성: `#9E9E9E`
+  - 상단 테두리 `#E8E8E8`, 소프트 그림자
+- **프로필 화면** (`profile.dart`)
+  - 배경: 그라디언트 `#3578E5 → #7AB3FF → #A8CCFF` (위가 진하게)
+  - 스탯카드 추가: 내 스토리 (파란 핀 아이콘) + 받은 좋아요 (코랄 하트 아이콘)
+  - "내 소식" → "내 스토리" 변경
+  - 진입 애니메이션: 헤더 슬라이드다운 → 스탯카드 슬라이드업 → 콘텐츠 페이드 (데이터 로드 후 시작)
+  - `TickerMode` 기반 탭 재진입 시 애니메이션 재생
+- **내 개인정보 화면** (`mypage.dart`)
+  - 저장하기 버튼: 그라디언트 `#3578E5 → #5B9FEF` + 그림자
+  - 기존 `#4D91FF` → `#5B9FEF` 통일
 
-### 디자인 시스템
-- **컬러 테마**: 블루(#4D91FF) 메인 컬러의 모던한 디자인
-- **타이포그래피**: Pretendard, InstagramSans 폰트 조합
-- **컴포넌트**: Material Design 3 기반 커스텀 컴포넌트
+---
 
-### 주요 화면
-1. **로그인/회원가입**: 소셜 로그인 및 전화번호 인증
-2. **홈 피드**: 실시간 게시물 및 활동 표시
-3. **게시판**: 무한 스크롤, 이미지 슬라이드, 좋아요/댓글 기능
-4. **지도**: 사용자 주변 정보 마커 표시
-5. **프로필**: 사용자 정보 및 활동 내역
-
-## 🔒 보안 기능
+## 🔒 보안
 
 - **Secure Storage**: 민감한 사용자 정보 암호화 저장
-- **환경 변수 분리**: 개발/프로덕션 환경 구분
+- **환경 변수 분리**: `.env` 파일로 API 키 관리
 - **토큰 관리**: JWT 기반 인증 토큰 자동 갱신
 - **권한 관리**: 위치, 카메라 등 필요 권한만 요청
-
-## 📈 주요 기능
-
-### 인증 시스템
-- 카카오, 네이버, 구글 소셜 로그인
-- 이메일/비밀번호 로그인
-- 전화번호 인증
-- 자동 로그인 및 세션 관리
-
-### 게시판 기능
-- 실시간 피드 업데이트
-- 이미지 업로드 (최대 10장)
-- 좋아요 및 댓글
-- 무한 스크롤 페이지네이션
-- 검색 및 필터링
-
-### 위치 서비스
-- Google Maps 통합
-- 커스텀 마커 표시
-- 현재 위치 추적
-- 주변 정보 검색
 
 ---
 
