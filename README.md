@@ -115,6 +115,47 @@ dev_dependencies:
 
 ## ✅ 주요 변경 이력
 
+### 2026-03-23
+
+- **게시판 파일 리팩토링** (`board2.dart` → `board.dart`)
+  - `Board2Screens` → `BoardScreens`, `Board2Card` → `BoardCard` 클래스명 변경
+  - `board2.dart`, `board2_card.dart` 삭제, FAB heroTag `board2_fab` → `board_fab`
+  - `app_routes.dart` 임포트 및 사용처 일괄 업데이트
+
+- **게시판 검색 정렬 UI 개선** (`board_search.dart`)
+  - 드롭다운 → pill 칩 → 단일 버튼 + 바텀시트 방식으로 변경
+  - 정렬 버튼 탭 시 아래에서 바텀시트 올라오며 옵션 선택
+  - 현재 선택 항목 파란 배경 + 체크 아이콘 표시
+  - 정렬 기능 연결: `최신순 → LATEST`, `좋아요순 → LIKES`, `댓글순 → REPLYS`
+
+- **게시글 카드 더보기 버튼 변경** (`board_card.dart`)
+  - 회색 배경 제거, `more_horiz` → `more_vert` (세로 점 3개), `#7AB3FF` 파란색 적용
+  - 댓글 더보기 버튼 동일하게 통일 (`comment_item.dart`)
+
+- **소셜 로그인 취소 버그 수정**
+  - Google: `signIn()` 반환값 `null` 체크 → 취소 시 에러 알림 없이 조용히 종료
+  - Kakao: catch 에서 `cancel` / `access_denied` 메시지 감지 → 조용히 종료
+  - Naver: `onFailure` / `onError` 콜백에서 취소 메시지 감지 → 조용히 종료
+
+- **로그인 화면 그라디언트 방향 수정** (`login.dart`)
+  - `#A8CCFF → #7AB3FF → #3578E5` → `#3578E5 → #7AB3FF → #A8CCFF` (공유하기/프로필과 통일)
+
+- **설정 화면** (`setting.dart`)
+  - `알림설정` → `권한설정` 텍스트 변경
+  - 아이콘 `notifications_outlined` → `security_outlined`
+
+- **권한설정 화면 신규 추가** (`permission_setting.dart`)
+  - 위치 / 카메라 / 사진 라이브러리 / 알림 4개 권한 상태 표시
+  - 위치: `Geolocator.checkPermission()` — `whileInUse` / `always` 모두 허용 처리
+  - 알림: `FirebaseMessaging.getNotificationSettings()` — 정확한 iOS 알림 권한 반영
+  - 카메라 / 사진: `permission_handler` 사용
+  - 허용(초록) / 거부됨(빨강) 뱃지 표시, 진입 시 자동 상태 조회
+  - 탭 시 `app-settings:` URL 스킴으로 앱 전용 설정 페이지 바로 이동 (폴백: `openAppSettings()`)
+  - 앱 복귀 시 권한 상태 자동 새로고침 (`WidgetsBindingObserver`)
+
+- **이미지 디버그 로그 제거** (`board_card.dart`)
+  - 이미지 로드 시작/완료/실패, 프로필 이미지 실패 로그 모두 삭제
+
 ### 2026-03-19
 - **앱 이름 변경**: Unimal → 스토맵 (iOS `CFBundleDisplayName`, Android `android:label`)
 - **로그인 화면 개편** (`login.dart`)

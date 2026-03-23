@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/profile/setting/permission_setting.dart';
 
 class SettingScreen extends StatelessWidget {
   const SettingScreen({super.key});
@@ -35,9 +36,9 @@ class SettingScreen extends StatelessWidget {
           ),
           _buildDivider(),
           _buildItem(
-            icon: Icons.notifications_outlined,
-            title: '알림설정',
-            onTap: () {},
+            icon: Icons.security_outlined,
+            title: '권한설정',
+            onTap: () => Get.to(() => const PermissionSettingScreen()),
           ),
           _buildDivider(),
           _buildItem(

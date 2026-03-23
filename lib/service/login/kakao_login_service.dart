@@ -49,6 +49,10 @@ class KakaoLoginService {
         customAlert.showTextAlert("로그인 오류", "카카오 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
       }
     } catch (error) {
+      final msg = error.toString().toLowerCase();
+      if (msg.contains('cancel') || msg.contains('access_denied') || msg.contains('accessdenied')) {
+        return; // 사용자가 취소
+      }
       logger.e('카카오 로그인 실패.. ${error.toString()}');
       customAlert.showTextAlert("로그인 오류", "카카오 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
     }

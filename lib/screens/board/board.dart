@@ -2,31 +2,19 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/board/card/board_card.dart';
 import 'package:unimal/screens/board/card/board_search.dart';
+import 'package:unimal/state/nav_controller.dart';
 
 class BoardScreens extends StatefulWidget {
   const BoardScreens({super.key});
 
   @override
   State<BoardScreens> createState() => _BoardScreensState();
-  
-  // GlobalKey를 통해 State에 접근하기 위한 static 메서드
-  static _BoardScreensState? of(BuildContext? context) {
-    if (context == null) return null;
-    final state = context.findAncestorStateOfType<_BoardScreensState>();
-    return state;
-  }
 }
-
-// 정렬 UI 레이블 → API 값 매핑
-const Map<String, String> _sortTypeMap = {
-  '최신순': 'LATEST',
-  '좋아요순': 'LIKES',
-  '댓글순': 'REPLYS',
-};
 
 class _BoardScreensState extends State<BoardScreens> {
   bool _isSearchFocused = false;
@@ -40,6 +28,8 @@ class _BoardScreensState extends State<BoardScreens> {
   final List<BoardPost> _posts = [];
   final BoardApiService _boardApiService = BoardApiService();
   final ScrollController _scrollController = ScrollController();
+
+  static const Color _primary = Color(0xFF7AB3FF);
 
   @override
   void initState() {
@@ -56,17 +46,15 @@ class _BoardScreensState extends State<BoardScreens> {
   }
 
   void _onScroll() {
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.8) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.8) {
       _loadMorePosts();
     }
   }
 
   Future<void> _loadPosts() async {
     if (_isLoading) return;
-    
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final posts = await _boardApiService.getBoardPostList(
@@ -74,27 +62,24 @@ class _BoardScreensState extends State<BoardScreens> {
         keyword: _keyword.isNotEmpty ? _keyword : null,
         sortType: _sortType,
       );
+      if (!mounted) return;
       setState(() {
         _posts.addAll(posts);
         _isLoading = false;
         _hasMore = posts.isNotEmpty;
       });
-
     } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
   Future<void> _loadMorePosts() async {
     if (_isLoading || !_hasMore) return;
-    
     _currentPage++;
     await _loadPosts();
   }
 
-  // 새로고침 메서드: 리스트 초기화 후 첫 페이지부터 다시 로드
   Future<void> refreshPosts() async {
     setState(() {
       _posts.clear();
@@ -104,12 +89,25 @@ class _BoardScreensState extends State<BoardScreens> {
     await _loadPosts();
   }
 
+  void _onSearchChanged(String keyword) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() {
+        _keyword = keyword;
+        _posts.clear();
+        _currentPage = 0;
+        _hasMore = true;
+      });
+      _loadPosts();
+    });
+  }
+
   Widget _buildEmptyState() {
     final bool isSearching = _keyword.isNotEmpty;
     return RefreshIndicator(
       onRefresh: refreshPosts,
-      color: Colors.white,
-      backgroundColor: const Color(0xFF4D91FF),
+      color: _primary,
       child: SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: SizedBox(
@@ -122,20 +120,16 @@ class _BoardScreensState extends State<BoardScreens> {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: _primary.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.pets,
-                    size: 52,
-                    color: Colors.white,
-                  ),
+                  child: const Icon(Icons.pets, size: 52, color: _primary),
                 ),
                 const SizedBox(height: 24),
                 Text(
                   isSearching ? '검색 결과가 없어요' : '아직 올라온 소식이 없어요',
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: Color(0xFF1A1A2E),
                     fontSize: 18,
                     fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w700,
@@ -148,10 +142,9 @@ class _BoardScreensState extends State<BoardScreens> {
                       : '우리 동네 친구들의 소식을\n가장 먼저 공유해보세요 🐾',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.85),
+                    color: Colors.grey[500],
                     fontSize: 14,
                     fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w400,
                     height: 1.6,
                   ),
                 ),
@@ -163,31 +156,6 @@ class _BoardScreensState extends State<BoardScreens> {
     );
   }
 
-  void _onSearchChanged(String keyword) {
-    _debounceTimer?.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      setState(() {
-        _keyword = keyword;
-        _posts.clear();
-        _currentPage = 0;
-        _hasMore = true;
-      });
-      _loadPosts();
-    });
-  }
-
-  void _onSortChanged(String sortLabel) {
-    final sortType = _sortTypeMap[sortLabel] ?? 'LATEST';
-    if (_sortType == sortType) return;
-    setState(() {
-      _sortType = sortType;
-      _posts.clear();
-      _currentPage = 0;
-      _hasMore = true;
-    });
-    _loadPosts();
-  }
-
   @override
   Widget build(BuildContext context) {
     double topMargin = Platform.isAndroid ? 20 : 0;
@@ -195,96 +163,88 @@ class _BoardScreensState extends State<BoardScreens> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFF4D91FF),
+        backgroundColor: const Color(0xFFF0F7FF),
+        floatingActionButton: FloatingActionButton.small(
+          heroTag: 'board_fab',
+          onPressed: () => Get.find<NavController>().selectedIndex.value = 1,
+          backgroundColor: _primary,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
+        ),
         body: SafeArea(
           child: Column(
             children: [
               Padding(padding: EdgeInsets.only(top: topMargin)),
-              // 검색 위젯을 흰색 카드로 감싸기
+              // 검색 헤더
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: 10),
+                width: double.infinity,
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.white.withOpacity(0.85),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: BoardSearch(
-                    onFocusChange: (focused) {
-                      setState(() {
-                        _isSearchFocused = focused;
-                      });
-                    },
-                    onSearchChanged: _onSearchChanged,
-                    onSortChanged: _onSortChanged,
-                  ),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                child: BoardSearch(
+                  onFocusChange: (focused) =>
+                      setState(() => _isSearchFocused = focused),
+                  onSearchChanged: _onSearchChanged,
+                  onSortChanged: (sort) {
+                    final map = {'최신순': 'LATEST', '좋아요순': 'LIKES', '댓글순': 'REPLYS'};
+                    final sortType = map[sort] ?? 'LATEST';
+                    setState(() {
+                      _sortType = sortType;
+                      _posts.clear();
+                      _currentPage = 0;
+                      _hasMore = true;
+                    });
+                    _loadPosts();
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              // 게시글 리스트
               if (!_isSearchFocused)
                 Expanded(
                   child: _posts.isEmpty && _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        ),
-                      )
-                    : _posts.isEmpty && !_isLoading
-                      ? _buildEmptyState()
-                      : RefreshIndicator(
-                        onRefresh: refreshPosts,
-                        color: Colors.white,
-                        backgroundColor: const Color(0xFF4D91FF),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          itemCount: _posts.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (index == _posts.length) {
-                              // 스피너가 화면에 렌더되는 순간 다음 페이지 로드 트리거
-                              WidgetsBinding.instance.addPostFrameCallback(
-                                (_) { if (mounted) _loadMorePosts(); },
-                              );
-                              return const Center(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16.0),
-                                  child: CircularProgressIndicator(
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                ),
-                              );
-                            }
-                            
-                            final post = _posts[index];
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 16),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.08),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                      ? const Center(
+                          child: CircularProgressIndicator(color: _primary),
+                        )
+                      : _posts.isEmpty && !_isLoading
+                          ? _buildEmptyState()
+                          : RefreshIndicator(
+                              onRefresh: refreshPosts,
+                              color: _primary,
+                              child: ListView.builder(
+                                controller: _scrollController,
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(12, 0, 12, 80),
+                                itemCount: _posts.length + (_hasMore ? 1 : 0),
+                                itemBuilder: (context, index) {
+                                  if (index == _posts.length) {
+                                    WidgetsBinding.instance
+                                        .addPostFrameCallback((_) {
+                                      if (mounted) _loadMorePosts();
+                                    });
+                                    return const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.all(16),
+                                        child: CircularProgressIndicator(
+                                            color: _primary),
+                                      ),
+                                    );
+                                  }
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: BoardCard(boardPost: _posts[index]),
+                                  );
+                                },
                               ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: BoardCard(boardPost: post),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                            ),
                 ),
             ],
           ),

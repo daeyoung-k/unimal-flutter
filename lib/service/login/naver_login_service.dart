@@ -68,9 +68,13 @@ class NaverLoginService {
         customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
       }));
     }, onFailure: (httpStatus, message) {
+      final msg = message.toLowerCase();
+      if (msg.contains('cancel') || msg.contains('user_cancel')) return;
       logger.e("네이버 로그인 실패.. httpStatus: $httpStatus, message: $message");
       customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
     }, onError: (errorCode, message) {
+      final msg = message.toLowerCase();
+      if (msg.contains('cancel') || msg.contains('user_cancel')) return;
       logger.e("네이버 로그인 에러.. errorCode: $errorCode, message: $message");
       customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
     }));

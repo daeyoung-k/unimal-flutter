@@ -87,9 +87,9 @@ class _LoginScreensState extends State<LoginScreens>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Color(0xFFA8CCFF),
-              _primary,
               _primaryDark,
+              _primary,
+              Color(0xFFA8CCFF),
             ],
           ),
         ),

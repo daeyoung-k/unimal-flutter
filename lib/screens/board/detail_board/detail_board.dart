@@ -327,18 +327,18 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
         child: Scaffold(
-          backgroundColor: const Color(0xFF4D91FF),
+          backgroundColor: const Color(0xFFF0F7FF),
           appBar: AppBar(
-            backgroundColor: Colors.transparent,
+            backgroundColor: Colors.white.withOpacity(0.92),
             elevation: 0,
-            centerTitle: true,
+            surfaceTintColor: Colors.transparent,
             leading: IconButton(
-              icon: const Icon(Icons.chevron_left, color: Colors.white),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF374151), size: 20),
               onPressed: goToBoard,
             ),
           ),
           body: const Center(
-            child: CircularProgressIndicator(color: Colors.white),
+            child: CircularProgressIndicator(color: Color(0xFF7AB3FF)),
           ),
         ),
       );
@@ -348,15 +348,15 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
       child: Scaffold(
-      backgroundColor: const Color(0xFF4D91FF),
-      // 키보드가 올라올 때 레이아웃 자동 조정
+      backgroundColor: const Color(0xFFF0F7FF),
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
+        backgroundColor: Colors.white.withOpacity(0.92),
+        elevation: 0.5,
+        shadowColor: Colors.black.withOpacity(0.08),
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF374151), size: 20),
           onPressed: goToBoard,
         ),
         actions: [
@@ -364,7 +364,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
             IconButton(
               key: _menuButtonKey,
               onPressed: _showPostMenu,
-              icon: const Icon(Icons.more_horiz, color: Colors.white),
+              icon: const Icon(Icons.more_vert, color: Color(0xFF374151), size: 22),
             ),
         ],
       ),
@@ -376,7 +376,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
               child: SingleChildScrollView(
                 controller: _scrollController,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(5, 0, 5, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Column(
                     children: [
                       DetailBoardCard(

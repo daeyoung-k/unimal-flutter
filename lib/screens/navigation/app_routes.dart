@@ -18,10 +18,9 @@ class AppRoutes {
   // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
   // State 타입을 명시적으로 지정하기 위해 dynamic 사용
   final GlobalKey boardScreenKey = GlobalKey();
-  // 지도 화면의 GlobalKey (새로고침을 위해 사용)
   final GlobalKey mapScreenKey = GlobalKey();
-  // 프로필 화면의 GlobalKey (새로고침을 위해 사용)
   final GlobalKey profileScreenKey = GlobalKey();
+  final GlobalKey addItemScreenKey = GlobalKey();
 
   List<GetPage> pages() {
     return [
@@ -61,7 +60,7 @@ class AppRoutes {
         label: '지도')
     },
     {
-      "page": AddItemScreens(),
+      "page": AddItemScreens(key: addItemScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
