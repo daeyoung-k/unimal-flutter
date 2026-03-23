@@ -54,8 +54,8 @@ Future<void> main() async {
   final authState = await StateInit().stateInit();
   final provider = authState.provider;
 
-  // 알림, 위치 권한 요청
-  await PermissionService().requestNotificationAndLocationPermissions();
+  // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
+  await PermissionService().requestNotificationPermission();
 
   // 푸시 알림 서비스 초기화
   await PushNotificationService().initialize();

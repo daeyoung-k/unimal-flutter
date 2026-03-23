@@ -48,6 +48,13 @@ class _RootScreen extends State<RootScreen> {
       }
     } else {
       _nav.selectedIndex.value = index;
+      // 공유하기 탭 진입 시 위치 조회 시작
+      if (index == 1) {
+        final addItemState = appRoutes.addItemScreenKey.currentState;
+        if (addItemState != null) {
+          try { (addItemState as dynamic).onTabEntered(); } catch (_) {}
+        }
+      }
     }
   }
 

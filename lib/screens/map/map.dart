@@ -17,62 +17,52 @@ class MapScreens extends StatefulWidget {
 
 class MapStateScreens extends State<MapScreens> {
   final ImageService imageService = ImageService();
-  late GoogleMapController mapController;
+  GoogleMapController? _mapController;
   Position? _currentPosition;
   bool _isLoading = true;
   Set<Marker> _markers = {};
   BitmapDescriptor? _customMarkerIcon;
 
+  static const LatLng _seoulStation = LatLng(37.5547, 126.9706);
+
   Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
-    // 위치 서비스 확인
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      setState(() {
-        _isLoading = false;
-      });
-      return;
-    }
-
-    // 위치 권한 확인
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
-    }
-
-    // 위치 정보 가져오기
     try {
-      Position position = await Geolocator.getCurrentPosition();
-      setState(() {
-        _currentPosition = position;
-        _isLoading = false;
-      });
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
 
-      // 커스텀 마커 아이콘 로드
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        try {
+          permission = await Geolocator.requestPermission();
+        } on PermissionRequestInProgressException {
+          permission = await Geolocator.checkPermission();
+        }
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) return;
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      if (!mounted) return;
+      setState(() => _currentPosition = position);
+
       await _loadCustomMarkerIcon();
-
-      // 커스텀 마커 추가
       _addCustomMarker();
 
-      // 위치 정보가 업데이트되면 지도 중심 이동
-      mapController.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(position.latitude, position.longitude),
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+      try {
+        await _mapController?.animateCamera(
+          CameraUpdate.newLatLng(LatLng(position.latitude, position.longitude)),
+        );
+      } catch (_) {}
+    } catch (_) {
+      // 권한 없음 또는 타임아웃 시 서울역 기본값 유지
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -121,22 +111,30 @@ class MapStateScreens extends State<MapScreens> {
     await _getCurrentLocation();
   }
 
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
+  }
+
   void _onMapCreated(GoogleMapController controller) {
-    mapController = controller;
-    // 지도가 생성된 후 위치 정보가 있다면 중심 이동
+    _mapController = controller;
     if (_currentPosition != null) {
-      controller.animateCamera(
-        CameraUpdate.newLatLng(
-          LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        ),
-      );
+      try {
+        controller.animateCamera(
+          CameraUpdate.newLatLng(
+            LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+          ),
+        );
+      } catch (_) {}
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final LatLng center = LatLng(_currentPosition?.latitude ?? 37.500026,
-        _currentPosition?.longitude ?? 127.030946);
+    final LatLng center = _currentPosition != null
+        ? LatLng(_currentPosition!.latitude, _currentPosition!.longitude)
+        : _seoulStation;
 
     return Scaffold(
         appBar: AppBar(
@@ -176,15 +174,18 @@ class MapStateScreens extends State<MapScreens> {
               left: 16,
               bottom: 40,
               child: FloatingActionButton(
+                heroTag: 'map_location_fab',
                 mini: true,
                 onPressed: () {
                   if (_currentPosition != null) {
-                    mapController.animateCamera(
-                      CameraUpdate.newLatLng(
-                        LatLng(_currentPosition!.latitude,
-                            _currentPosition!.longitude),
-                      ),
-                    );
+                    try {
+                      _mapController?.animateCamera(
+                        CameraUpdate.newLatLng(
+                          LatLng(_currentPosition!.latitude,
+                              _currentPosition!.longitude),
+                        ),
+                      );
+                    } catch (_) {}
                   } else {
                     _getCurrentLocation();
                   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:get/get.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/state/nav_controller.dart';
 import 'dart:io';
 
 import 'package:unimal/service/map/geocoding_api_service.dart';
@@ -81,18 +83,32 @@ class _AddItemScreensState extends State<AddItemScreens>
       CurvedAnimation(parent: _ctrl, curve: const Interval(0.65, 1.0, curve: Curves.easeOut)),
     );
 
-    _getCurrentLocation();
   }
 
 
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return;
+    if (!serviceEnabled) {
+      _showLocationRequiredDialog();
+      return;
+    }
 
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
+      try {
+        permission = await Geolocator.requestPermission();
+      } on PermissionRequestInProgressException {
+        permission = await Geolocator.checkPermission();
+      }
+      if (permission == LocationPermission.denied) {
+        _showLocationRequiredDialog();
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _showLocationRequiredDialog();
+      return;
     }
 
     await _getMyLocation();
@@ -103,7 +119,10 @@ class _AddItemScreensState extends State<AddItemScreens>
     setState(() => _isLoadingLocation = true);
 
     try {
-      Position position = await Geolocator.getCurrentPosition();
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 10),
+      );
       GeocodingModel geocoding = await GeocodingApiService().getGeocoding(
         position.latitude.toString(),
         position.longitude.toString(),
@@ -118,7 +137,50 @@ class _AddItemScreensState extends State<AddItemScreens>
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingLocation = false);
+      _showLocationRequiredDialog();
     }
+  }
+
+  void _showLocationRequiredDialog() {
+    if (!mounted) return;
+    if (!TickerMode.of(context)) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.location_off_rounded, color: Color(0xFF7AB3FF)),
+            SizedBox(width: 8),
+            Text(
+              '위치 정보 필요',
+              style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 18),
+            ),
+          ],
+        ),
+        content: const Text(
+          '위치 정보 없이는 게시글을 올릴 수 없습니다.\n지도 화면에서 위치 권한을 허용해 주세요.',
+          style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, color: Colors.black87),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Get.find<NavController>().selectedIndex.value = 0;
+            },
+            child: const Text(
+              '지도로 이동',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF7AB3FF),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _getImage(ImageSource source) async {
@@ -488,7 +550,7 @@ class _AddItemScreensState extends State<AddItemScreens>
                             children: [
                       // 위치 카드
                       GestureDetector(
-                        onTap: _isLoadingLocation ? null : _getMyLocation,
+                        onTap: _isLoadingLocation ? null : _getCurrentLocation,
                         child: _buildCard(
                           child: Row(
                             children: [
@@ -570,66 +632,66 @@ class _AddItemScreensState extends State<AddItemScreens>
                       FadeTransition(
                         opacity: _btnFade,
                         child: SizedBox(
-                        width: double.infinity,
-                        height: 56,
-                        child: ElevatedButton(
-                          onPressed: (_canUpload() && !_isUploading) ? _uploadPost : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _canUpload() && !_isUploading
-                                ? Colors.white.withOpacity(0.95)
-                                : Colors.white.withOpacity(0.4),
-                            foregroundColor: _primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
+                          width: double.infinity,
+                          height: 56,
+                          child: ElevatedButton(
+                            onPressed: (_canUpload() && !_isUploading) ? _uploadPost : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _canUpload() && !_isUploading
+                                  ? Colors.white.withOpacity(0.95)
+                                  : Colors.white.withOpacity(0.4),
+                              foregroundColor: _primary,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              elevation: _canUpload() && !_isUploading ? 6 : 0,
+                              shadowColor: Colors.black.withOpacity(0.15),
                             ),
-                            elevation: _canUpload() && !_isUploading ? 6 : 0,
-                            shadowColor: Colors.black.withOpacity(0.15),
-                          ),
-                          child: _isUploading
-                              ? Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: const [
-                                    SizedBox(
-                                      width: 20, height: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        valueColor: AlwaysStoppedAnimation<Color>(_primary),
+                            child: _isUploading
+                                ? Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      SizedBox(
+                                        width: 20, height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(_primary),
+                                        ),
                                       ),
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      '업로드 중...',
-                                      style: TextStyle(
-                                        fontFamily: 'Pretendard',
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: _primary,
+                                      SizedBox(width: 10),
+                                      Text(
+                                        '업로드 중...',
+                                        style: TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: _primary,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                )
-                              : Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.send_rounded,
-                                      size: 18,
-                                      color: _canUpload() ? _primary : Colors.grey,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '소식 업로드',
-                                      style: TextStyle(
-                                        fontFamily: 'Pretendard',
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
+                                    ],
+                                  )
+                                : Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.send_rounded,
+                                        size: 18,
                                         color: _canUpload() ? _primary : Colors.grey,
                                       ),
-                                    ),
-                                  ],
-                                ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '소식 업로드',
+                                        style: TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w700,
+                                          color: _canUpload() ? _primary : Colors.grey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                          ),
                         ),
-                      ),
                       ),  // FadeTransition 업로드 버튼
                     ],
                   ),
@@ -674,6 +736,7 @@ class _AddItemScreensState extends State<AddItemScreens>
     _contentController.clear();
     setState(() {
       _images.clear();
+      _myLocation = null;
       isShow = true;
     });
   }
@@ -696,9 +759,20 @@ class _AddItemScreensState extends State<AddItemScreens>
       );
       _clearForm();
     } catch (e) {
-      // 에러 처리
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('업로드에 실패했습니다. 다시 시도해 주세요.')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  void onTabEntered() {
+    _ctrl.forward(from: 0);
+    if (_myLocation == null && !_isLoadingLocation) {
+      _getCurrentLocation();
     }
   }
 
