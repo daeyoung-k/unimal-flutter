@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
+import 'package:unimal/screens/profile/setting/privacy_policy.dart';
+import 'package:unimal/screens/profile/setting/terms_of_service.dart';
 
 class SettingScreen extends StatelessWidget {
   const SettingScreen({super.key});
@@ -32,7 +35,7 @@ class SettingScreen extends StatelessWidget {
           _buildItem(
             icon: Icons.campaign_outlined,
             title: '공지사항',
-            onTap: () {},
+            onTap: () => Get.to(() => const NoticeListScreen()),
           ),
           _buildDivider(),
           _buildItem(
@@ -60,13 +63,13 @@ class SettingScreen extends StatelessWidget {
           _buildItem(
             icon: Icons.description_outlined,
             title: '이용약관',
-            onTap: () {},
+            onTap: () => Get.to(() => const TermsOfServiceScreen()),
           ),
           _buildDivider(),
           _buildItem(
             icon: Icons.lock_outline,
             title: '개인정보 취급방침',
-            onTap: () {},
+            onTap: () => Get.to(() => const PrivacyPolicyScreen()),
           ),
         ],
       ),

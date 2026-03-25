@@ -232,6 +232,58 @@ class UserInfoService {
     }
   }
 
+  /// 전화번호 변경 인증코드 발송
+  Future<String> sendTelVerificationCode(String accessToken, String email, String tel) async {
+    var url = ApiUri.resolve('/user/auth/email-tel/code-request');
+    var authHeaders = {
+      "Content-Type": "application/json;charset=utf-8",
+      "Authorization": "Bearer $accessToken",
+    };
+    var body = jsonEncode({"email": email, "tel": tel});
+
+    try {
+      var res = await http.post(url, headers: authHeaders, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return 'ok';
+      } else {
+        logger.e("전화번호 인증코드 발송 실패.. $bodyData");
+        return bodyData['message'] ?? '인증코드 발송 실패';
+      }
+    } catch (error) {
+      logger.e("전화번호 인증코드 발송 실패.. ${error.toString()}");
+      return '인증코드 발송 실패. 잠시 후 다시 시도해주세요.';
+    }
+  }
+
+  /// 전화번호 변경 인증 확인 → 성공 시 새 토큰 헤더 반환
+  Future<Map<String, String>?> verifyAndUpdateTel(String accessToken, String code, String email, String tel) async {
+    var url = ApiUri.resolve('/user/auth/tel/check-update');
+    var authHeaders = {
+      "Content-Type": "application/json;charset=utf-8",
+      "Authorization": "Bearer $accessToken",
+    };
+    var body = jsonEncode({"code": code, "email": email, "tel": tel});
+
+    try {
+      var res = await http.post(url, headers: authHeaders, body: body);
+      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      if (bodyData['code'] == 200) {
+        return {
+          'email': res.headers['x-unimal-email'] ?? '',
+          'accessToken': res.headers['x-unimal-access-token'] ?? '',
+          'refreshToken': res.headers['x-unimal-refresh-token'] ?? '',
+        };
+      } else {
+        logger.e("전화번호 변경 인증 실패.. $bodyData");
+        return {'error': bodyData['message'] ?? '인증에 실패했습니다.'};
+      }
+    } catch (error) {
+      logger.e("전화번호 변경 인증 실패.. ${error.toString()}");
+      return {'error': '인증에 실패했습니다. 잠시 후 다시 시도해주세요.'};
+    }
+  }
+
   Future<void> updateDeviceInfo(Map<String, dynamic> deviceInfo) async {
     var url = ApiUri.resolve('/user/member/device/info/update');
 

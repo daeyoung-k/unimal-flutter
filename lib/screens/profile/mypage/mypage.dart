@@ -257,6 +257,266 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
+  void _showTelChangeSheet() {
+    final telController = TextEditingController();
+    final codeController = TextEditingController();
+    bool codeSent = false;
+    bool isSendingCode = false;
+    bool isVerifying = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 24,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 핸들
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    '휴대폰 번호 변경',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // 번호 입력 + 인증번호 발송
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: telController,
+                          keyboardType: TextInputType.phone,
+                          enabled: !codeSent,
+                          style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard'),
+                          decoration: InputDecoration(
+                            hintText: '새 휴대폰 번호 입력',
+                            hintStyle: const TextStyle(
+                                fontSize: 15, color: Colors.black38, fontFamily: 'Pretendard'),
+                            contentPadding:
+                                const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            disabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: Colors.grey[200]!),
+                            ),
+                            filled: codeSent,
+                            fillColor: Colors.grey[100],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: (isSendingCode || codeSent)
+                            ? null
+                            : () async {
+                                final tel = telController.text.trim();
+                                if (tel.isEmpty) {
+                                  Get.snackbar('오류', '번호를 입력해주세요',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor: Colors.red[50],
+                                      colorText: Colors.red);
+                                  return;
+                                }
+                                if (tel == _userInfo?.tel) {
+                                  Get.snackbar('오류', '현재 사용중인 번호와 동일한 번호로 변경할 수 없습니다',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor: Colors.red[50],
+                                      colorText: Colors.red);
+                                  return;
+                                }
+                                setSheetState(() => isSendingCode = true);
+                                final result = await _userInfoService
+                                    .sendTelVerificationCode(_authState.accessToken.value, _authState.email.value, tel);
+                                setSheetState(() => isSendingCode = false);
+                                if (result == 'ok') {
+                                  setSheetState(() => codeSent = true);
+                                  Get.snackbar('완료', '인증번호가 발송되었습니다',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor: Colors.green[50],
+                                      colorText: Colors.green[800]);
+                                } else {
+                                  Get.snackbar('오류', result,
+                                      snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor: Colors.red[50],
+                                      colorText: Colors.red);
+                                }
+                              },
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: (isSendingCode || codeSent)
+                                ? Colors.grey[200]
+                                : const Color(0xFF4D91FF),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: isSendingCode
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
+                                  )
+                                : Text(
+                                    codeSent ? '발송됨' : '인증번호 발송',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: codeSent ? Colors.black38 : Colors.white,
+                                      fontFamily: 'Pretendard',
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  // 인증번호 입력 (발송 후 표시)
+                  if (codeSent) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: codeController,
+                            keyboardType: TextInputType.number,
+                            style:
+                                const TextStyle(fontSize: 15, fontFamily: 'Pretendard'),
+                            decoration: InputDecoration(
+                              hintText: '인증번호 입력',
+                              hintStyle: const TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.black38,
+                                  fontFamily: 'Pretendard'),
+                              contentPadding:
+                                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: Colors.grey[300]!),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                borderSide: BorderSide(color: Colors.grey[300]!),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        GestureDetector(
+                          onTap: isVerifying
+                              ? null
+                              : () async {
+                                  final code = codeController.text.trim();
+                                  final tel = telController.text.trim();
+                                  if (code.isEmpty) {
+                                    Get.snackbar('오류', '인증번호를 입력해주세요',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor: Colors.red[50],
+                                        colorText: Colors.red);
+                                    return;
+                                  }
+                                  setSheetState(() => isVerifying = true);
+                                  final result = await _userInfoService.verifyAndUpdateTel(
+                                      _authState.accessToken.value, code, _authState.email.value, tel);
+                                  setSheetState(() => isVerifying = false);
+                                  if (result != null && !result.containsKey('error')) {
+                                    // 토큰 업데이트
+                                    await _authState.setTokens(
+                                      result['accessToken']!,
+                                      result['refreshToken']!,
+                                      result['email']!,
+                                      _authState.provider.value,
+                                    );
+                                    Navigator.pop(ctx);
+                                    await _loadUserInfo();
+                                    Get.snackbar('완료', '휴대폰 번호가 변경되었습니다',
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor: Colors.green[50],
+                                        colorText: Colors.green[800]);
+                                  } else {
+                                    final msg = result?['error'] ?? '인증에 실패했습니다. 인증번호를 확인해주세요';
+                                    Get.snackbar('오류', msg,
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor: Colors.red[50],
+                                        colorText: Colors.red);
+                                  }
+                                },
+                          child: Container(
+                            height: 48,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: isVerifying
+                                  ? Colors.grey[200]
+                                  : const Color(0xFF3578E5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Center(
+                              child: isVerifying
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                          strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Text(
+                                      '확인',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                        fontFamily: 'Pretendard',
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -309,10 +569,15 @@ class _MyPageScreenState extends State<MyPageScreen> {
         ),
         _buildDivider(),
         // 이메일 (수정 불가)
-        _buildReadOnlyItem(label: '이메일', value: _userInfo?.email ?? '-'),
+        _buildReadOnlyItem(label: '이메일', value: _userInfo?.email ?? '-', disabled: true),
         _buildDivider(),
-        // 휴대폰 번호 (수정 불가)
-        _buildReadOnlyItem(label: '휴대폰 번호', value: _userInfo?.tel.isNotEmpty == true ? _userInfo!.tel : '-'),
+        // 휴대폰 번호 (변경 가능)
+        _buildTappableItem(
+          label: '휴대폰 번호',
+          value: _userInfo?.tel.isNotEmpty == true ? _userInfo!.tel : '번호를 등록하세요',
+          valueColor: _userInfo?.tel.isNotEmpty == true ? Colors.black87 : Colors.black38,
+          onTap: _showTelChangeSheet,
+        ),
         _buildDivider(),
         // 생년월일 (날짜 선택)
         _buildTappableItem(
@@ -382,7 +647,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
-  Widget _buildReadOnlyItem({required String label, required String value}) {
+  Widget _buildReadOnlyItem({required String label, required String value, bool disabled = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
@@ -391,12 +656,20 @@ class _MyPageScreenState extends State<MyPageScreen> {
           Text(label,
               style: const TextStyle(
                   fontSize: 15, color: Colors.black54, fontFamily: 'Pretendard')),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black87,
-                  fontFamily: 'Pretendard')),
+          Row(
+            children: [
+              Text(value,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: disabled ? Colors.black38 : Colors.black87,
+                      fontFamily: 'Pretendard')),
+              if (disabled) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.lock_outline, size: 14, color: Colors.black26),
+              ],
+            ],
+          ),
         ],
       ),
     );
