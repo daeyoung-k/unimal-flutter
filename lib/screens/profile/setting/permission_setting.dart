@@ -70,7 +70,9 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
     // 일반 권한 (카메라, 사진)
     final Map<Permission, PermissionStatus> result = {};
     for (final item in _items) {
-      result[item.permission] = await item.permission.status;
+      final status = await item.permission.status;
+      debugPrint('[PermissionSetting] ${item.title} 상태: $status');
+      result[item.permission] = status;
     }
 
     // 위치 권한은 Geolocator로 체크 (whileInUse / always 모두 허용으로 처리)
@@ -189,7 +191,9 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
                         icon: item.icon,
                         title: item.title,
                         description: item.description,
-                        isGranted: status == PermissionStatus.granted || status == PermissionStatus.limited,
+                        isGranted: status != null &&
+                            status != PermissionStatus.denied &&
+                            status != PermissionStatus.permanentlyDenied,
                         onTap: () {
                           debugPrint('[PermissionSetting] 탭: ${item.title}, 현재 상태: $status');
                           _openAppPermissionSettings();
