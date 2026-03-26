@@ -495,6 +495,74 @@ class BoardApiService {
     return false;
   }
 
+  Future<int?> getMyPostTotal() async {
+    var url = ApiUri.resolve('board/post/total');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    var response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body['data'] as int?;
+    } else if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) return null;
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.get(url, headers: headers);
+        if (retryResponse.statusCode == 200) {
+          final body = jsonDecode(utf8.decode(retryResponse.bodyBytes));
+          return body['data'] as int?;
+        }
+      } catch (e) {
+        logger.e('내 게시물 수 조회 실패: ${e.toString()}');
+      }
+    } else {
+      logger.e('내 게시물 수 조회 실패: ${response.statusCode}');
+    }
+    return null;
+  }
+
+  Future<int?> getMyLikeTotal() async {
+    var url = ApiUri.resolve('board/post/total/like');
+    var headers = {"Content-Type": "application/json;charset=utf-8"};
+
+    String? accessToken = await _secureStorage.getAccessToken();
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    var response = await http.get(url, headers: headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      return body['data'] as int?;
+    } else if (response.statusCode == 401) {
+      bool isTokenReIssue = await _accountService.tokenReIssue();
+      if (!isTokenReIssue) return null;
+      try {
+        String? newAccessToken = await _secureStorage.getAccessToken();
+        if (newAccessToken != null) headers['Authorization'] = 'Bearer $newAccessToken';
+        var retryResponse = await http.get(url, headers: headers);
+        if (retryResponse.statusCode == 200) {
+          final body = jsonDecode(utf8.decode(retryResponse.bodyBytes));
+          return body['data'] as int?;
+        }
+      } catch (e) {
+        logger.e('내 좋아요 받은 수 조회 실패: ${e.toString()}');
+      }
+    } else {
+      logger.e('내 좋아요 받은 수 조회 실패: ${response.statusCode}');
+    }
+    return null;
+  }
+
   Future<LikeInfo?> requestLike(String boardId) async {
     var url = ApiUri.resolve('board/post/$boardId/like');
     var headers = {"Content-Type": "application/json;charset=utf-8"};

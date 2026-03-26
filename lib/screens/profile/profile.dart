@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:unimal/screens/profile/mypage/mypage.dart';
 import 'package:unimal/screens/profile/setting/setting.dart';
+import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
@@ -23,8 +24,11 @@ class _ProfileScreensState extends State<ProfileScreens>
   final _authState = Get.find<AuthState>();
   final _accountService = AccountService();
   final _userInfoService = UserInfoService();
+  final _boardApiService = BoardApiService();
 
   UserInfoModel? _userInfo;
+  int _myPostCount = 0;
+  int _myLikeCount = 0;
   bool _isLoading = true;
   bool _isUploadingImage = false;
   final _picker = ImagePicker();
@@ -83,12 +87,18 @@ class _ProfileScreensState extends State<ProfileScreens>
     _loadUserInfo();
   }
 
-  /// GET /user/member/info 호출 후 결과를 _userInfo에 저장
+  /// GET /user/member/info, /board/post/total, /board/post/total/like 병렬 호출
   Future<void> _loadUserInfo() async {
-    final info = await _userInfoService.getMemberInfo(_authState.accessToken.value);
+    final results = await Future.wait([
+      _userInfoService.getMemberInfo(_authState.accessToken.value),
+      _boardApiService.getMyPostTotal(),
+      _boardApiService.getMyLikeTotal(),
+    ]);
     if (mounted) {
       setState(() {
-        _userInfo = info;
+        _userInfo = results[0] as UserInfoModel?;
+        _myPostCount = (results[1] as int?) ?? 0;
+        _myLikeCount = (results[2] as int?) ?? 0;
         _isLoading = false;
       });
       _ctrl.forward(from: 0);
@@ -175,7 +185,7 @@ class _ProfileScreensState extends State<ProfileScreens>
               child: _buildStatItem(
                 icon: Icons.location_on_rounded,
                 iconColor: _primary,
-                value: '0',
+                value: _myPostCount.toString(),
                 label: '내 스토리',
               ),
             ),
@@ -184,7 +194,7 @@ class _ProfileScreensState extends State<ProfileScreens>
               child: _buildStatItem(
                 icon: Icons.favorite_rounded,
                 iconColor: _accent,
-                value: '0',
+                value: _myLikeCount.toString(),
                 label: '받은 좋아요',
               ),
             ),
