@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'dart:io';
@@ -183,12 +185,48 @@ class _AddItemScreensState extends State<AddItemScreens>
     );
   }
 
+  Future<bool> _requestPhotoPermission() async {
+    final status = await Permission.photos.status;
+    if (status.isGranted || status.isLimited) return true;
+
+    final result = await PermissionService().requestPhotosPermission();
+    if (result) return true;
+
+    final denied = await Permission.photos.isPermanentlyDenied;
+    if (!mounted) return false;
+    if (denied) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('사진 접근 권한 필요'),
+          content: const Text('사진첩에 접근하려면 설정에서 권한을 허용해주세요.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+            TextButton(
+              onPressed: () { Navigator.pop(context); openAppSettings(); },
+              child: const Text('설정으로 이동'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진 접근 권한이 필요합니다.')),
+      );
+    }
+    return false;
+  }
+
   Future<void> _getImage(ImageSource source) async {
     if (_images.length >= _maxImageLength) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('최대 ${_maxImageLength}장까지만 추가할 수 있습니다.')),
       );
       return;
+    }
+    if (source == ImageSource.gallery) {
+      final granted = await _requestPhotoPermission();
+      if (!granted) return;
     }
     final XFile? image = await _picker.pickImage(source: source);
     if (image != null) {
@@ -204,6 +242,8 @@ class _AddItemScreensState extends State<AddItemScreens>
       );
       return;
     }
+    final granted = await _requestPhotoPermission();
+    if (!granted) return;
 
     final List<XFile> images = await _picker.pickMultipleMedia(
       maxWidth: 1920,
@@ -284,7 +324,7 @@ class _AddItemScreensState extends State<AddItemScreens>
                             children: [
                       // 안내 텍스트
                       const Text(
-                        '대표 이미지는 지도에 노출됩니다.',
+                        '첫 번째 사진이 지도 위 스토리의 대표 이미지로 표시돼요.',
                         style: TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
@@ -482,7 +522,7 @@ class _AddItemScreensState extends State<AddItemScreens>
                                 color: Color(0xFF1A1A2E),
                               ),
                               decoration: const InputDecoration(
-                                hintText: '제목을 입력하세요',
+                                hintText: '이 장소의 이야기를 제목으로 남겨보세요.',
                                 hintStyle: TextStyle(
                                   color: Colors.grey,
                                   fontFamily: 'Pretendard',
@@ -522,7 +562,7 @@ class _AddItemScreensState extends State<AddItemScreens>
                                 color: Color(0xFF1A1A2E),
                               ),
                               decoration: const InputDecoration(
-                                hintText: '우리 주변 친구들의 소식을 공유해주세요.',
+                                hintText: '이 장소에서 느낀 순간을 자유롭게 기록해보세요.\n발길 닿은 곳의 이야기가 지도 위에 남겨져요.',
                                 hintStyle: TextStyle(
                                   color: Colors.grey,
                                   fontFamily: 'Pretendard',
@@ -603,7 +643,7 @@ class _AddItemScreensState extends State<AddItemScreens>
                                   ),
                                   const SizedBox(height: 2),
                                   const Text(
-                                    '노출 설정시 지도위에 표시됩니다.',
+                                    '켜두면 내 스토리가 지도에 핀으로 표시돼요.',
                                     style: TextStyle(
                                       color: Colors.grey,
                                       fontFamily: 'Pretendard',

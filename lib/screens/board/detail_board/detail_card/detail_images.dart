@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/board/widget/photo_arrow.dart';
 
@@ -36,19 +37,13 @@ class _DetailImagesState extends State<DetailImages> {
             itemCount: widget.imageUrls.length,
             onPageChanged: (index) => setState(() => _currentPage = index),
             itemBuilder: (context, index) {
-              return Image.network(
-                widget.imageUrls[index],
-                fit: BoxFit.cover,
-                width: double.infinity,
-                errorBuilder: (context, error, stack) => Container(
-                  color: Colors.grey[100],
-                  child: const Center(
-                    child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40),
-                  ),
-                ),
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
+              return Container(
+                color: const Color(0xFF1A1A2E),
+                child: CachedNetworkImage(
+                  imageUrl: widget.imageUrls[index],
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  placeholder: (context, url) => Container(
                     color: Colors.grey[100],
                     child: const Center(
                       child: CircularProgressIndicator(
@@ -56,8 +51,16 @@ class _DetailImagesState extends State<DetailImages> {
                         color: Color(0xFF7AB3FF),
                       ),
                     ),
-                  );
-                },
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey[100],
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40),
+                    ),
+                  ),
+                  imageBuilder: (context, imageProvider) =>
+                      Image(image: imageProvider, fit: BoxFit.contain, width: double.infinity),
+                ),
               );
             },
           ),

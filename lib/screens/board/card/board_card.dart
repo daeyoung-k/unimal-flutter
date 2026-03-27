@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/board/board_api_service.dart';
@@ -298,8 +299,9 @@ class _BoardCardState extends State<BoardCard> {
             if (images.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.zero,
-                child: SizedBox(
+                child: Container(
                   height: 220,
+                  color: const Color(0xFF1A1A2E),
                   child: Stack(
                     children: [
                       Positioned.fill(
@@ -309,33 +311,27 @@ class _BoardCardState extends State<BoardCard> {
                           onPageChanged: (i) =>
                               setState(() => _currentPage = i),
                           itemBuilder: (context, index) {
-                            final url = images[index];
-                            return Image.network(
-                              url,
-                              fit: BoxFit.cover,
+                            return CachedNetworkImage(
+                              imageUrl: images[index],
+                              fit: BoxFit.contain,
                               width: double.infinity,
-                              loadingBuilder: (context, child, progress) {
-                                if (progress == null) {
-                                  return child;
-                                }
-                                return Container(
-                                  color: Colors.grey[100],
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Color(0xFF7AB3FF),
-                                    ),
+                              placeholder: (context, url) => Container(
+                                color: Colors.grey[100],
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Color(0xFF7AB3FF),
                                   ),
-                                );
-                              },
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  color: Colors.grey[100],
-                                  child: const Center(
-                                      child: Icon(Icons.broken_image_outlined,
-                                          color: Colors.grey, size: 40)),
-                                );
-                              },
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: Colors.grey[100],
+                                child: const Center(
+                                    child: Icon(Icons.broken_image_outlined,
+                                        color: Colors.grey, size: 40)),
+                              ),
+                              imageBuilder: (context, imageProvider) =>
+                                  Image(image: imageProvider, fit: BoxFit.contain, width: double.infinity),
                             );
                           },
                         ),

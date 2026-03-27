@@ -57,6 +57,7 @@ dependencies:
   package_info_plus: ^9.0.0               # 앱 버전 정보
   url_launcher: ^6.3.2                    # URL 실행 (앱 스토어 이동)
   device_info_plus: ^10.1.0               # 디바이스 정보
+  cached_network_image: ^3.4.1            # 이미지 디스크 캐싱
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

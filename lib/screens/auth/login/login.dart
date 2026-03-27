@@ -375,7 +375,7 @@ class _SocialLoginSection extends StatelessWidget {
   }
 }
 
-class _LoginButton extends StatelessWidget {
+class _LoginButton extends StatefulWidget {
   final VoidCallback onPressed;
   final Color backgroundColor;
   final Widget child;
@@ -389,24 +389,45 @@ class _LoginButton extends StatelessWidget {
   });
 
   @override
+  State<_LoginButton> createState() => _LoginButtonState();
+}
+
+class _LoginButtonState extends State<_LoginButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        height: 54,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(14),
-          border: border,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        widget.onPressed();
+      },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        curve: Curves.easeOut,
+        child: AnimatedOpacity(
+          opacity: _pressed ? 0.75 : 1.0,
+          duration: const Duration(milliseconds: 80),
+          child: Container(
+            height: 54,
+            decoration: BoxDecoration(
+              color: widget.backgroundColor,
+              borderRadius: BorderRadius.circular(14),
+              border: widget.border,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(_pressed ? 0.03 : 0.06),
+                  blurRadius: _pressed ? 4 : 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
+            child: widget.child,
+          ),
         ),
-        child: child,
       ),
     );
   }

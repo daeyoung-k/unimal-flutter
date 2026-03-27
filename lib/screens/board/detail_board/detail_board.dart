@@ -319,7 +319,13 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    void goToBoard() => Get.offAllNamed('/board');
+    void goToBoard() {
+      if (Get.previousRoute.isNotEmpty) {
+        Get.back();
+      } else {
+        Get.offAllNamed('/board');
+      }
+    }
 
     // 로딩 중일 때 로딩 인디케이터 표시
     if (_isLoading) {
