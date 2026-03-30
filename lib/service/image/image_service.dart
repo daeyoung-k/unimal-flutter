@@ -26,14 +26,19 @@ class ImageService {
     const double size = 200.0;
 
     final center = Offset(size / 2, size / 2);
-    final radius = size / 2;
+    const double borderWidth = 8.0;
+    final outerRadius = size / 2;
+    final innerRadius = outerRadius - borderWidth;
 
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+    // 흰색 테두리 원
+    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.white);
+
+    // 이미지를 내부 원에 클립하여 그리기
     final clipPath = Path()
-      ..addOval(Rect.fromCircle(center: center, radius: radius));
+      ..addOval(Rect.fromCircle(center: center, radius: innerRadius));
     canvas.clipPath(clipPath);
 
-    final Rect dstRect = Rect.fromCircle(center: center, radius: radius);
+    final Rect dstRect = Rect.fromCircle(center: center, radius: innerRadius);
     final Rect srcRect = Rect.fromLTWH(
         0, 0, loadedImage.width.toDouble(), loadedImage.height.toDouble());
 

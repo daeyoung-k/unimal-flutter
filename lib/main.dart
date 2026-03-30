@@ -4,8 +4,10 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
+import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
@@ -67,6 +69,21 @@ Future<void> main() async {
     // await updateCheckService.checkAndHandleUpdate();
   });
 
+  await FlutterNaverMap().init(
+          clientId: '8uoy5cnetl',
+          onAuthFailed: (ex) {
+            switch (ex) {
+              case NQuotaExceededException(:final message):
+                print("사용량 초과 (message: $message)");
+                break;
+              case NUnauthorizedClientException() ||
+              NClientUnspecifiedException() ||
+              NAnotherAuthFailedException():
+                print("인증 실패: $ex");
+                break;
+            }
+          });
+
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
   runApp(MyApp(loginChecked: provider.value != LoginType.none));
 
@@ -83,8 +100,6 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
       home: loginChecked ? RootScreen() : LoginScreens(),
-      // home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 3),
-      // home: MarkerPreview(),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
