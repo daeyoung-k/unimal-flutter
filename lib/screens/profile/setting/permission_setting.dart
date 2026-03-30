@@ -60,8 +60,53 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
     } else {
-      await _openAppPermissionSettings();
+      await openAppSettings();
     }
+  }
+
+  Future<void> _requestLocation() async {
+    final current = await Geolocator.checkPermission();
+    if (current == LocationPermission.deniedForever) {
+      await _openAppPermissionSettings();
+      return;
+    }
+    if (current == LocationPermission.denied) {
+      await Geolocator.requestPermission();
+      await _loadStatuses();
+      return;
+    }
+    // 이미 허용 상태면 설정으로
+    await _openAppPermissionSettings();
+  }
+
+  Future<void> _requestPermission(Permission permission) async {
+    final status = await permission.status;
+    if (status.isPermanentlyDenied) {
+      await _openAppPermissionSettings();
+      return;
+    }
+    if (status.isDenied) {
+      await permission.request();
+      await _loadStatuses();
+      return;
+    }
+    // 이미 허용 상태면 설정으로
+    await _openAppPermissionSettings();
+  }
+
+  Future<void> _requestNotification() async {
+    final settings = await FirebaseMessaging.instance.getNotificationSettings();
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      await _openAppPermissionSettings();
+      return;
+    }
+    if (settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+      await FirebaseMessaging.instance.requestPermission();
+      await _loadStatuses();
+      return;
+    }
+    // 이미 허용 상태면 설정으로
+    await _openAppPermissionSettings();
   }
 
   Future<void> _loadStatuses() async {
@@ -165,10 +210,7 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
                           title: '위치',
                           description: '주변 게시글 및 지도 서비스 이용',
                           isGranted: _locationGranted,
-                          onTap: () {
-                            debugPrint('[PermissionSetting] 탭: 위치, 허용 여부: $_locationGranted');
-                            _openAppPermissionSettings();
-                          },
+                          onTap: _requestLocation,
                         );
                       }
                       // 마지막: 알림 (FirebaseMessaging)
@@ -178,10 +220,7 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
                           title: '알림',
                           description: '새 댓글, 좋아요 등 알림 수신',
                           isGranted: _notificationGranted,
-                          onTap: () {
-                            debugPrint('[PermissionSetting] 탭: 알림, 허용 여부: $_notificationGranted');
-                            _openAppPermissionSettings();
-                          },
+                          onTap: _requestNotification,
                         );
                       }
                       // 중간: 카메라, 사진 (permission_handler)
@@ -194,10 +233,7 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
                         isGranted: status != null &&
                             status != PermissionStatus.denied &&
                             status != PermissionStatus.permanentlyDenied,
-                        onTap: () {
-                          debugPrint('[PermissionSetting] 탭: ${item.title}, 현재 상태: $status');
-                          _openAppPermissionSettings();
-                        },
+                        onTap: () => _requestPermission(item.permission),
                       );
                     },
                   ),
