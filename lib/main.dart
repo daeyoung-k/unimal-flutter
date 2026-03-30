@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
+import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
@@ -29,7 +33,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 Future<void> main() async {
   // Flutter 바인딩 초기화 (비동기 작업 전에 필수)
-  WidgetsFlutterBinding.ensureInitialized();
+  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
   // Firebase 초기화 (다른 초기화 작업보다 먼저 수행)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
@@ -50,14 +56,11 @@ Future<void> main() async {
   final authState = await StateInit().stateInit();
   final provider = authState.provider;
 
-  // 알림, 위치 권한 요청
-  await PermissionService().requestNotificationAndLocationPermissions();
+  // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
+  await PermissionService().requestNotificationPermission();
 
   // 푸시 알림 서비스 초기화
   await PushNotificationService().initialize();
-
-  // WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  // FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // 앱 업데이트 체크
   WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -66,9 +69,25 @@ Future<void> main() async {
     // await updateCheckService.checkAndHandleUpdate();
   });
 
+  await FlutterNaverMap().init(
+          clientId: '8uoy5cnetl',
+          onAuthFailed: (ex) {
+            switch (ex) {
+              case NQuotaExceededException(:final message):
+                print("사용량 초과 (message: $message)");
+                break;
+              case NUnauthorizedClientException() ||
+              NClientUnspecifiedException() ||
+              NAnotherAuthFailedException():
+                print("인증 실패: $ex");
+                break;
+            }
+          });
+
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
   runApp(MyApp(loginChecked: provider.value != LoginType.none));
-  
+
+  FlutterNativeSplash.remove();
 }
 
 class MyApp extends StatelessWidget {
@@ -81,8 +100,16 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       getPages: AppRoutes().pages(),
       home: loginChecked ? RootScreen() : LoginScreens(),
-      // home: loginChecked ? RootScreen() : RootScreen(selectedIndex: 3),
-      // home: MarkerPreview(),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ko', 'KR'),
+        Locale('en', 'US'),
+      ],
+      locale: const Locale('ko', 'KR'),
     );
   }
 }

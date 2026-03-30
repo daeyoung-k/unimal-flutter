@@ -16,9 +16,10 @@ class GoogleLoginService {
     final customAlert = CustomAlert(); 
     try {
       var response = await _googleSignIn.signIn();
+      if (response == null) return; // 사용자가 취소
       var body = jsonEncode({
               "provider": "GOOGLE",
-              "email": response!.email,
+              "email": response.email,
               "name": response.displayName,
               "nickname": response.displayName,
               "profileImage": response.photoUrl

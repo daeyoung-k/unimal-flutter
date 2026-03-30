@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/board/widget/photo_arrow.dart';
 
@@ -6,7 +7,7 @@ class DetailImages extends StatefulWidget {
   final double screenHeight;
 
   const DetailImages({
-    super.key, 
+    super.key,
     required this.imageUrls,
     required this.screenHeight,
   });
@@ -27,51 +28,49 @@ class _DetailImagesState extends State<DetailImages> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: widget.screenHeight * 0.4,
+    return AspectRatio(
+      aspectRatio: 4 / 3,
       child: Stack(
         children: [
           PageView.builder(
             controller: _pageController,
             itemCount: widget.imageUrls.length,
-            onPageChanged: (index) {
-              setState(() {
-                _currentPage = index;
-              });
-            },
+            onPageChanged: (index) => setState(() => _currentPage = index),
             itemBuilder: (context, index) {
-              final url = widget.imageUrls[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFB8BFC8)),
-                    ),
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stack) => const Center(
-                        child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40),
+              return Container(
+                color: const Color(0xFF1A1A2E),
+                child: CachedNetworkImage(
+                  imageUrl: widget.imageUrls[index],
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  placeholder: (context, url) => Container(
+                    color: Colors.grey[100],
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF7AB3FF),
                       ),
-                      loadingBuilder: (context, child, progress) {
-                        if (progress == null) return child;
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      },
                     ),
                   ),
+                  errorWidget: (context, url, error) => Container(
+                    color: Colors.grey[100],
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 40),
+                    ),
+                  ),
+                  imageBuilder: (context, imageProvider) =>
+                      Image(image: imageProvider, fit: BoxFit.contain, width: double.infinity),
                 ),
               );
             },
           ),
-          if (_currentPage > 0) PhotoArrow(pageController: _pageController, direction: "previous"),
-          if (_currentPage < widget.imageUrls.length - 1) PhotoArrow(pageController: _pageController, direction: "next"),
+          if (_currentPage > 0)
+            PhotoArrow(pageController: _pageController, direction: "previous"),
+          if (_currentPage < widget.imageUrls.length - 1)
+            PhotoArrow(pageController: _pageController, direction: "next"),
           if (widget.imageUrls.length > 1)
             Positioned(
-              bottom: 10,
+              bottom: 12,
               left: 0,
               right: 0,
               child: Row(

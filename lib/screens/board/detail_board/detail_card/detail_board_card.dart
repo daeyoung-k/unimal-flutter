@@ -18,33 +18,30 @@ class DetailBoardCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withOpacity(0.07),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 프로필 영역
             DetailProfile(
               profileImageUrl: boardPost.profileImage,
               nickname: boardPost.nickname,
               location: boardPost.streetName,
             ),
             if (boardPost.fileInfoList.isNotEmpty)
-              // 이미지 영역
               DetailImages(
                 imageUrls: boardPost.fileInfoList.map((e) => e.fileUrl).toList(),
                 screenHeight: screenHeight,
               ),
-            // 콘텐츠 영역
             DetailContent(
               title: boardPost.title,
               content: boardPost.content,
@@ -60,6 +57,3 @@ class DetailBoardCard extends StatelessWidget {
     );
   }
 }
-
-
-

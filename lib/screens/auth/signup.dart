@@ -489,861 +489,361 @@ class _SignupScreensState extends State<SignupScreens> {
     super.dispose();
   }
 
+  static const Color _primary = Color(0xFF4D91FF);
+  static const Color _primaryDark = Color(0xFF3578E5);
+  static const Color _fieldBg = Color(0xFFF3F4F6);
+  static const Color _labelColor = Color(0xFF374151);
+  static const Color _hintColor = Color(0xFF9CA3AF);
+  static const Color _successColor = Color(0xFF10B981);
+  static const Color _errorColor = Color(0xFFEF4444);
+
+  InputDecoration _fieldDecoration(String hint, {IconData? prefixIcon, Widget? suffix}) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: _hintColor, fontSize: 15, fontFamily: 'Pretendard'),
+      filled: true,
+      fillColor: _fieldBg,
+      prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: _hintColor, size: 20) : null,
+      suffix: suffix,
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: _primary, width: 1.5)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    );
+  }
+
+  Widget _label(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _labelColor, fontFamily: 'Pretendard')),
+  );
+
+  Widget _successText(String text) => Row(
+    children: [
+      const Icon(Icons.check_circle_rounded, color: _successColor, size: 14),
+      const SizedBox(width: 5),
+      Text(text, style: const TextStyle(fontSize: 12, color: _successColor, fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+    ],
+  );
+
+  Widget _errorText(String text) => Text(text, style: const TextStyle(fontSize: 12, color: _errorColor, fontFamily: 'Pretendard'));
+  Widget _infoText(String text) => Text(text, style: const TextStyle(fontSize: 12, color: _hintColor, fontFamily: 'Pretendard'));
+
+  Widget _actionButton({required String label, required VoidCallback? onPressed, bool confirmed = false}) {
+    return SizedBox(
+      height: 50,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: confirmed ? _successColor : (onPressed != null ? _primary : _hintColor.withOpacity(0.3)),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 0,
+        ),
+        child: Text(label, style: const TextStyle(fontSize: 14, fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final allVerified = _isNicknameVerified && _isEmailVerified && _isPhoneVerified && _isPasswordVerified && _isPasswordCheckVerified;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF4D91FF),
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(
-          '회원가입',
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w700,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_primaryDark, _primary, Color(0xFFA8CCFF)],
           ),
         ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 닉네임
-                const Text('닉네임',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
-                    )),
-                const SizedBox(height: 8),
-                Row(
+        child: SafeArea(
+          child: Column(
+            children: [
+              // 앱바
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                child: Row(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _nicknameController,
-                        onChanged: _onNicknameChanged,
-                        decoration: InputDecoration(
-                          hintText: '닉네임',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                        ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                    const Expanded(
+                      child: Text(
+                        '회원가입',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white, fontSize: 18, fontFamily: 'Pretendard', fontWeight: FontWeight.w700),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isNicknameVerified
-                            ? null
-                            : _checkNicknameDuplicate,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _isNicknameVerified ? Colors.green : Colors.white,
-                          foregroundColor: _isNicknameVerified
-                              ? Colors.white
-                              : const Color(0xFF4D91FF),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: Text(
-                          _isNicknameVerified ? '✓ 확인됨' : '중복확인',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
+                    const SizedBox(width: 48),
                   ],
                 ),
-                const SizedBox(height: 4),
-                if (_isNicknameVerified)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+              // 폼 카드
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.white, size: 16),
-                        SizedBox(width: 8),
-                        Text(
-                          '닉네임 확인 완료',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w600,
-                          ),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: _primaryDark.withOpacity(0.2),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
                         ),
                       ],
                     ),
-                  )
-                else
-                  const Text(
-                    '3글자 이상 입력',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                const SizedBox(height: 20),
-
-                // 아이디
-                const Text('이메일 (아이디)',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
-                    )),
-                const SizedBox(height: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 이메일 입력란과 인증하기 버튼
-                    Row(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _emailController,
-                            onChanged: _onEmailChanged,
-                            decoration: InputDecoration(
-                              hintText: '이메일',
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                borderSide: BorderSide.none,
+
+                        // ── 닉네임 ──────────────────────────────────────
+                        _label('닉네임'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _nicknameController,
+                                onChanged: _onNicknameChanged,
+                                style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                decoration: _fieldDecoration('닉네임 (3글자 이상)'),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 12),
                             ),
-                          ),
+                            const SizedBox(width: 10),
+                            _actionButton(
+                              label: _isNicknameVerified ? '✓ 확인됨' : '중복확인',
+                              onPressed: _isNicknameVerified ? null : _checkNicknameDuplicate,
+                              confirmed: _isNicknameVerified,
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          height: 50,
-                          child: ElevatedButton(
-                            onPressed: _isEmailVerified
-                                ? null
-                                : (_isEmailVerificationLoading
-                                    ? null
-                                    : (_canSendEmailVerification()
-                                        ? _sendEmailVerification
-                                        : null)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _isEmailVerified
-                                  ? Colors.green
-                                  : Colors.white,
-                              foregroundColor: _isEmailVerified
-                                  ? Colors.white
-                                  : const Color(0xFF4D91FF),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 6),
+                        if (_isNicknameVerified)
+                          _successText('사용 가능한 닉네임입니다')
+                        else
+                          _infoText('3글자 이상, 숫자만 또는 자음만은 사용 불가'),
+                        const SizedBox(height: 20),
+
+                        // ── 이메일 ──────────────────────────────────────
+                        _label('이메일 (아이디)'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _emailController,
+                                onChanged: _onEmailChanged,
+                                style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                decoration: _fieldDecoration('이메일', prefixIcon: Icons.mail_outline_rounded),
                               ),
-                              elevation: 0,
                             ),
-                            child: _isEmailVerified
-                                ? const Text(
-                                    '✓ 확인됨',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  )
-                                : _isEmailVerificationLoading
-                                    ? SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                  const Color(0xFF4D91FF)),
-                                        ),
-                                      )
-                                    : Text(
-                                        _isEmailVerificationSent
-                                            ? '재전송'
-                                            : '인증하기',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontFamily: 'Pretendard',
-                                          fontWeight: FontWeight.w600,
+                            const SizedBox(width: 10),
+                            _actionButton(
+                              label: _isEmailVerified ? '✓ 확인됨' : (_isEmailVerificationLoading ? '발송중...' : (_isEmailVerificationSent ? '재전송' : '인증하기')),
+                              onPressed: _isEmailVerified ? null : (_isEmailVerificationLoading ? null : (_canSendEmailVerification() ? _sendEmailVerification : null)),
+                              confirmed: _isEmailVerified,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // @ 도메인
+                        Row(
+                          children: [
+                            const Text('@', style: TextStyle(fontSize: 15, color: _labelColor, fontFamily: 'Pretendard', fontWeight: FontWeight.w500)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _selectedEmailDomain == '직접입력'
+                                  ? Row(children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _emailInputController,
+                                          focusNode: _emailFocusNode,
+                                          onChanged: _onEmailChanged,
+                                          style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                          decoration: _fieldDecoration('도메인 입력'),
                                         ),
                                       ),
-                          ),
+                                      const SizedBox(width: 6),
+                                      PopupMenuButton<String>(
+                                        onSelected: (value) => setState(() { _emailInputController.text = value; }),
+                                        itemBuilder: (context) => _emailDomains
+                                            .where((d) => d != '직접입력')
+                                            .map((d) => PopupMenuItem(value: d, child: Text(d, style: const TextStyle(fontFamily: 'Pretendard'))))
+                                            .toList(),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(color: _fieldBg, borderRadius: BorderRadius.circular(12)),
+                                          child: const Icon(Icons.arrow_drop_down, color: _hintColor),
+                                        ),
+                                      ),
+                                    ])
+                                  : DropdownButtonFormField<String>(
+                                      value: _selectedEmailDomain,
+                                      items: _emailDomains.map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontFamily: 'Pretendard', fontSize: 14)))).toList(),
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _selectedEmailDomain = value;
+                                          if (value == '직접입력') _emailFocusNode.requestFocus();
+                                          else if (value != null) _emailInputController.text = value;
+                                        });
+                                        _onEmailChanged('');
+                                      },
+                                      decoration: InputDecoration(
+                                        filled: true, fillColor: _fieldBg,
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                      ),
+                                    ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    // 골뱅이와 도메인 부분
-                    Row(
-                      children: [
-                        const Text('@',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.white,
-                              fontFamily: 'Pretendard',
-                            )),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Row(
+                        if (_isEmailVerificationSent && !_isEmailVerified) ...[
+                          const SizedBox(height: 8),
+                          Row(
                             children: [
                               Expanded(
-                                child: _selectedEmailDomain == '직접입력'
-                                    ? TextField(
-                                        controller: _emailInputController,
-                                        focusNode: _emailFocusNode,
-                                        onChanged: _onEmailChanged,
-                                        decoration: InputDecoration(
-                                          hintText: '도메인 입력',
-                                          filled: true,
-                                          fillColor: Colors.white,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            borderSide: BorderSide.none,
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 16, vertical: 12),
-                                        ),
-                                      )
-                                    : DropdownButtonFormField<String>(
-                                        value: _selectedEmailDomain,
-                                        items: _emailDomains
-                                            .map((domain) => DropdownMenuItem(
-                                                  value: domain,
-                                                  child: Text(
-                                                    domain,
-                                                    style: const TextStyle(
-                                                      fontFamily: 'Pretendard',
-                                                    ),
-                                                  ),
-                                                ))
-                                            .toList(),
-                                        onChanged: (value) {
-                                          setState(() {
-                                            _selectedEmailDomain = value;
-                                            if (value == '직접입력') {
-                                              _emailFocusNode.requestFocus();
-                                            } else if (value != null) {
-                                              _emailInputController.text =
-                                                  value;
-                                            }
-                                          });
-                                          _onEmailChanged(
-                                              ''); // 도메인 변경 시 이메일 입력 감지
-                                        },
-                                        decoration: InputDecoration(
-                                          filled: true,
-                                          fillColor: Colors.white,
-                                          border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            borderSide: BorderSide.none,
-                                          ),
-                                          contentPadding:
-                                              const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 12),
-                                        ),
-                                      ),
-                              ),
-                              if (_selectedEmailDomain == '직접입력')
-                                Container(
-                                  margin: const EdgeInsets.only(left: 5),
-                                  child: PopupMenuButton<String>(
-                                    onSelected: (value) {
-                                      setState(() {
-                                        if (value != '직접입력') {
-                                          _emailInputController.text = value;
-                                        }
-                                      });
-                                    },
-                                    itemBuilder: (context) => _emailDomains
-                                        .where((domain) => domain != '직접입력')
-                                        .map((domain) => PopupMenuItem(
-                                              value: domain,
-                                              child: Text(
-                                                domain,
-                                                style: const TextStyle(
-                                                  fontFamily: 'Pretendard',
-                                                ),
-                                              ),
-                                            ))
-                                        .toList(),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(12),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Icon(
-                                        Icons.arrow_drop_down,
-                                        color: Colors.grey,
-                                      ),
-                                    ),
-                                  ),
+                                child: TextField(
+                                  onChanged: (v) => setState(() => _emailVerificationCode = v),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                                  style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                  decoration: _fieldDecoration('인증번호 6자리',
+                                    suffix: _isTimerRunning
+                                        ? Text(_formatTime(_remainingSeconds), style: const TextStyle(color: _primary, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w600))
+                                        : null),
                                 ),
+                              ),
+                              const SizedBox(width: 10),
+                              _actionButton(
+                                label: '확인',
+                                onPressed: (_isTimerRunning && _emailVerificationCode.length >= 6) ? _verifyEmailCode : null,
+                              ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                // 인증번호 입력란 (인증 발송 후에만 표시)
-                if (_isEmailVerificationSent && !_isEmailVerified)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [                      
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              onChanged: (value) {
-                                setState(() {
-                                  _emailVerificationCode = value;
-                                });
-                              },
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(6),
-                              ],
-                              decoration: InputDecoration(
-                                hintText: '인증번호 6자리',
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                suffix: _isTimerRunning
-                                    ? Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 12),
-                                        child: Text(
-                                          _formatTime(_remainingSeconds),
-                                          style: const TextStyle(
-                                            color: Color(0xFF4D91FF),
-                                            fontSize: 14,
-                                            fontFamily: 'Pretendard',
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: (_isTimerRunning &&
-                                      _emailVerificationCode.length >= 6)
-                                  ? _verifyEmailCode
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: (_isTimerRunning &&
-                                        _emailVerificationCode.length >= 6)
-                                    ? Colors.white
-                                    : Colors.grey[300],
-                                foregroundColor: (_isTimerRunning &&
-                                        _emailVerificationCode.length >= 6)
-                                    ? const Color(0xFF4D91FF)
-                                    : Colors.grey[600],
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: const Text(
-                                '확인',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
                         ],
-                      ),
-                    ],
-                  ),
-                // 인증 완료 표시
-                if (_isEmailVerified)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(8),
+                        const SizedBox(height: 6),
+                        if (_isEmailVerified)
+                          _successText('이메일 인증 완료')
+                        else if (_isEmailVerificationSent)
+                          _infoText('이메일로 발송된 인증번호를 입력하세요'),
+                        const SizedBox(height: 20),
+
+                        // ── 비밀번호 ────────────────────────────────────
+                        _label('비밀번호'),
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          onChanged: _onPasswordChanged,
+                          style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                          decoration: _fieldDecoration('비밀번호',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            suffix: _passwordController.text.isNotEmpty
+                                ? Icon(_isPasswordVerified ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                    color: _isPasswordVerified ? _successColor : _errorColor, size: 18)
+                                : null),
                         ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _passwordCheckController,
+                          obscureText: true,
+                          onChanged: _onPasswordCheckChanged,
+                          style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                          decoration: _fieldDecoration('비밀번호 확인',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            suffix: _passwordCheckController.text.isNotEmpty
+                                ? Icon(_isPasswordCheckVerified ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                                    color: _isPasswordCheckVerified ? _successColor : _errorColor, size: 18)
+                                : null),
+                        ),
+                        const SizedBox(height: 6),
+                        if (_passwordController.text.isNotEmpty && _isPasswordVerified && _isPasswordCheckVerified)
+                          _successText('비밀번호가 일치합니다')
+                        else if (_passwordController.text.isNotEmpty && !_isPasswordVerified)
+                          _errorText('영어, 숫자, 특수문자 포함 8~20자')
+                        else if (_passwordCheckController.text.isNotEmpty && !_isPasswordCheckVerified)
+                          _errorText('비밀번호가 일치하지 않습니다')
+                        else
+                          _infoText('영어, 숫자, 특수문자 포함 8~20자'),
+                        const SizedBox(height: 20),
+
+                        // ── 휴대폰 번호 ─────────────────────────────────
+                        _label('휴대폰 번호'),
+                        Row(
                           children: [
-                            Icon(Icons.check_circle,
-                                color: Colors.white, size: 16),
-                            SizedBox(width: 8),
-                            Text(
-                              '이메일 인증 완료',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w600,
+                            Expanded(
+                              child: TextField(
+                                controller: _phoneController,
+                                keyboardType: TextInputType.phone,
+                                inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(11)],
+                                style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                decoration: _fieldDecoration('숫자만 입력', prefixIcon: Icons.phone_outlined),
                               ),
+                            ),
+                            const SizedBox(width: 10),
+                            _actionButton(
+                              label: _isPhoneVerified ? '✓ 확인됨' : (_isPhoneVerificationLoading ? '발송중...' : (_isPhoneVerificationSent ? '재전송' : '인증번호 받기')),
+                              onPressed: _isPhoneVerified ? null : (_isPhoneVerificationLoading ? null : _sendPhoneVerification),
+                              confirmed: _isPhoneVerified,
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 20),
-
-                // 비밀번호
-                const Text('비밀번호',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
-                    )),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  onChanged: _onPasswordChanged,
-                  decoration: InputDecoration(
-                    hintText: '비밀번호',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    suffixIcon: _passwordController.text.isNotEmpty
-                        ? Icon(
-                            _isPasswordVerified
-                                ? Icons.check_circle
-                                : Icons.error,
-                            color:
-                                _isPasswordVerified ? Colors.green : Colors.red,
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _passwordCheckController,
-                  obscureText: true,
-                  onChanged: _onPasswordCheckChanged,
-                  decoration: InputDecoration(
-                    hintText: '비밀번호 확인',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                    suffixIcon: _passwordCheckController.text.isNotEmpty
-                        ? Icon(
-                            _isPasswordCheckVerified
-                                ? Icons.check_circle
-                                : Icons.error,
-                            color: _isPasswordCheckVerified
-                                ? Colors.green
-                                : Colors.red,
-                          )
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                if (_passwordController.text.isNotEmpty && _isPasswordVerified)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.white, size: 16),
-                        SizedBox(width: 8),
-                        Text(
-                          '올바른 비밀번호 형식입니다',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_passwordController.text.isNotEmpty &&
-                    !_isPasswordVerified)
-                  Text(
-                    '영어, 숫자, 특수문자를 포함하여 8~20자로 입력해주세요',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.red,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w400,
-                    ),
-                  )
-                else
-                  Text(
-                    '영어, 숫자, 특수문자를 포함하여 8~20자로 입력해주세요',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                const SizedBox(height: 4),
-                if (_passwordCheckController.text.isNotEmpty)
-                  _isPasswordCheckVerified
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
+                        if (_isPhoneVerificationSent && !_isPhoneVerified) ...[
+                          const SizedBox(height: 8),
+                          Row(
                             children: [
-                              Icon(Icons.check_circle,
-                                  color: Colors.white, size: 16),
-                              SizedBox(width: 8),
-                              Text(
-                                '비밀번호가 일치합니다',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w400,
+                              Expanded(
+                                child: TextField(
+                                  onChanged: (v) => setState(() => _phoneVerificationCode = v),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
+                                  style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: _labelColor),
+                                  decoration: _fieldDecoration('인증번호 6자리',
+                                    suffix: _isPhoneTimerRunning
+                                        ? Text(_formatTime(_phoneRemainingSeconds), style: const TextStyle(color: _primary, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w600))
+                                        : null),
                                 ),
+                              ),
+                              const SizedBox(width: 10),
+                              _actionButton(
+                                label: '확인',
+                                onPressed: (_isPhoneTimerRunning && _phoneVerificationCode.length >= 6) ? _verifyPhoneCode : null,
                               ),
                             ],
                           ),
-                        )
-                      : Text(
-                          '비밀번호가 일치하지 않습니다',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.red,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                const SizedBox(height: 20),
-
-                // 휴대폰 번호
-                const Text('휴대폰 번호',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Pretendard',
-                    )),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(11),
                         ],
-                        decoration: InputDecoration(
-                          hintText: '휴대폰 번호',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    SizedBox(
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _isPhoneVerified
-                            ? null
-                            : (_isPhoneVerificationLoading
-                                ? null
-                                : _sendPhoneVerification),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor:
-                              _isPhoneVerified ? Colors.green : Colors.white,
-                          foregroundColor: _isPhoneVerified
-                              ? Colors.white
-                              : const Color(0xFF4D91FF),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          elevation: 0,
-                        ),
-                        child: _isPhoneVerified
-                            ? const Text(
-                                '✓ 확인됨',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              )
-                            : _isPhoneVerificationLoading
-                                ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                          const Color(0xFF4D91FF)),
-                                    ),
-                                  )
-                                : Text(
-                                    _isPhoneVerificationSent
-                                        ? '재전송'
-                                        : '인증번호 받기',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                      ),
-                    ),
-                  ],
-                ),
-                // 휴대폰 인증번호 입력란 (인증 발송 후에만 표시)
-                if (_isPhoneVerificationSent && !_isPhoneVerified)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [                      
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              onChanged: (value) {
-                                setState(() {
-                                  _phoneVerificationCode = value;
-                                });
-                              },
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(6),
-                              ],
-                              decoration: InputDecoration(
-                                hintText: '인증번호 6자리',
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 12),
-                                suffix: _isPhoneTimerRunning
-                                    ? Padding(
-                                        padding:
-                                            const EdgeInsets.only(right: 12),
-                                        child: Text(
-                                          _formatTime(_phoneRemainingSeconds),
-                                          style: const TextStyle(
-                                            color: Color(0xFF4D91FF),
-                                            fontSize: 14,
-                                            fontFamily: 'Pretendard',
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          SizedBox(
-                            height: 50,
-                            child: ElevatedButton(
-                              onPressed: (_isPhoneTimerRunning &&
-                                      _phoneVerificationCode.length >= 6)
-                                  ? _verifyPhoneCode
-                                  : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: (_isPhoneTimerRunning &&
-                                        _phoneVerificationCode.length >= 6)
-                                    ? Colors.white
-                                    : Colors.grey[300],
-                                foregroundColor: (_isPhoneTimerRunning &&
-                                        _phoneVerificationCode.length >= 6)
-                                    ? const Color(0xFF4D91FF)
-                                    : Colors.grey[600],
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: const Text(
-                                '확인',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                // 휴대폰 인증 완료 표시
-                if (_isPhoneVerified)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle,
-                                color: Colors.white, size: 16),
-                            SizedBox(width: 8),
-                            Text(
-                              '휴대폰 인증 완료',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                const SizedBox(height: 32),
+                        const SizedBox(height: 6),
+                        if (_isPhoneVerified)
+                          _successText('휴대폰 인증 완료')
+                        else if (_isPhoneVerificationSent)
+                          _infoText('문자로 발송된 인증번호를 입력하세요'),
+                        const SizedBox(height: 28),
 
-                // 가입하기 버튼
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: (_isSignupLoading ||
-                            !(_isNicknameVerified &&
-                                _isEmailVerified &&
-                                _isPhoneVerified &&
-                                _isPasswordVerified &&
-                                _isPasswordCheckVerified))
-                        ? null
-                        : _signup,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: (_isNicknameVerified &&
-                              _isEmailVerified &&
-                              _isPhoneVerified &&
-                              _isPasswordVerified &&
-                              _isPasswordCheckVerified &&
-                              !_isSignupLoading)
-                          ? Colors.white
-                          : Colors.grey[300],
-                      foregroundColor: (_isNicknameVerified &&
-                              _isEmailVerified &&
-                              _isPhoneVerified &&
-                              _isPasswordVerified &&
-                              _isPasswordCheckVerified &&
-                              !_isSignupLoading)
-                          ? const Color(0xFF4D91FF)
-                          : Colors.grey[600],
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isSignupLoading
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  const Color(0xFF4D91FF)),
+                        // ── 가입하기 ────────────────────────────────────
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: (_isSignupLoading || !allVerified) ? null : _signup,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: allVerified && !_isSignupLoading ? _primary : _hintColor.withOpacity(0.3),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                              elevation: 0,
                             ),
-                          )
-                        : Text(
-                            '가입하기',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w600,
-                            ),
+                            child: _isSignupLoading
+                                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                : const Text('가입하기', style: TextStyle(fontSize: 16, fontFamily: 'Pretendard', fontWeight: FontWeight.w700)),
                           ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

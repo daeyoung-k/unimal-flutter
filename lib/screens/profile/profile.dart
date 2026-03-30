@@ -1,12 +1,19 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:unimal/screens/profile/mypage/mypage.dart';
+import 'package:unimal/screens/profile/setting/setting.dart';
+import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/state/nav_controller.dart';
 
 class ProfileScreens extends StatefulWidget {
   const ProfileScreens({super.key});
@@ -15,20 +22,81 @@ class ProfileScreens extends StatefulWidget {
   State<ProfileScreens> createState() => _ProfileScreensState();
 }
 
-class _ProfileScreensState extends State<ProfileScreens> {
+class _ProfileScreensState extends State<ProfileScreens>
+    with SingleTickerProviderStateMixin {
   final _authState = Get.find<AuthState>();
   final _accountService = AccountService();
   final _userInfoService = UserInfoService();
+  final _boardApiService = BoardApiService();
 
   UserInfoModel? _userInfo;
+  int _myPostCount = 0;
+  int _myLikeCount = 0;
+  List<BoardPost> _myPosts = [];
   bool _isLoading = true;
+  bool _isPostsLoading = false;
   bool _isUploadingImage = false;
+  bool _isSearchFocused = false;
+  String _keyword = '';
+  String _sortType = 'LATEST';
+  Timer? _debounceTimer;
+  final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   final _picker = ImagePicker();
+
+  bool _lastTickerEnabled = false;
+  late AnimationController _ctrl;
+  late Animation<Offset> _headerSlide;
+  late Animation<double> _headerFade;
+  late Animation<Offset> _statsSlide;
+  late Animation<double> _statsFade;
+  late Animation<double> _contentFade;
 
   @override
   void initState() {
     super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _headerSlide = Tween(begin: const Offset(0, -0.3), end: Offset.zero).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
+    );
+    _headerFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.45, curve: Curves.easeOut)),
+    );
+    _statsSlide = Tween(begin: const Offset(0, 0.4), end: Offset.zero).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.25, 0.65, curve: Curves.easeOut)),
+    );
+    _statsFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.25, 0.6, curve: Curves.easeOut)),
+    );
+    _contentFade = Tween(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _ctrl, curve: const Interval(0.5, 1.0, curve: Curves.easeOut)),
+    );
+    _searchFocusNode.addListener(() {
+      setState(() => _isSearchFocused = _searchFocusNode.hasFocus);
+    });
     _loadUserInfo();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final tickerEnabled = TickerMode.of(context);
+    if (tickerEnabled && !_lastTickerEnabled && !_isLoading) {
+      _ctrl.forward(from: 0);
+    }
+    _lastTickerEnabled = tickerEnabled;
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    _debounceTimer?.cancel();
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
   }
 
   /// 네비게이션 탭 재탭 시 외부에서 호출되는 새로고침 메서드
@@ -36,39 +104,184 @@ class _ProfileScreensState extends State<ProfileScreens> {
     _loadUserInfo();
   }
 
-  /// GET /user/member/info 호출 후 결과를 _userInfo에 저장
+  /// GET /user/member/info, /board/post/total, /board/post/total/like, /board/post/my/list 병렬 호출
   Future<void> _loadUserInfo() async {
-    final info = await _userInfoService.getMemberInfo(_authState.accessToken.value);
+    final results = await Future.wait([
+      _userInfoService.getMemberInfo(_authState.accessToken.value),
+      _boardApiService.getMyPostTotal(),
+      _boardApiService.getMyLikeTotal(),
+      _boardApiService.getMyPostList(
+        keyword: _keyword.isNotEmpty ? _keyword : null,
+        sortType: _sortType,
+      ),
+    ]);
     if (mounted) {
       setState(() {
-        _userInfo = info;
+        _userInfo = results[0] as UserInfoModel?;
+        _myPostCount = (results[1] as int?) ?? 0;
+        _myLikeCount = (results[2] as int?) ?? 0;
+        _myPosts = results[3] as List<BoardPost>;
         _isLoading = false;
+      });
+      _ctrl.forward(from: 0);
+    }
+  }
+
+  Future<void> _loadMyPosts() async {
+    if (_isPostsLoading) return;
+    setState(() => _isPostsLoading = true);
+    final posts = await _boardApiService.getMyPostList(
+      keyword: _keyword.isNotEmpty ? _keyword : null,
+      sortType: _sortType,
+    );
+    if (mounted) {
+      setState(() {
+        _myPosts = posts;
+        _isPostsLoading = false;
       });
     }
   }
 
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      setState(() => _keyword = query);
+      _loadMyPosts();
+    });
+  }
+
+  void _onSortChanged(String label) {
+    const map = {'최신순': 'LATEST', '좋아요순': 'LIKES', '댓글순': 'REPLYS'};
+    final sortType = map[label] ?? 'LATEST';
+    setState(() => _sortType = sortType);
+    _loadMyPosts();
+  }
+
+  static const Color _primary = Color(0xFF7AB3FF);
+  static const Color _primaryDark = Color(0xFF3578E5);
+  static const Color _accent = Color(0xFFFF6B6B);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF4D91FF),
-      body: SafeArea(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: Colors.white))
-            : Column(
-                children: [
-                  // 프로필 헤더
-                  _buildProfileHeader(),
-                  const SizedBox(height: 20),
-                  // 내 소식 탭 헤더
-                  _buildTabBar(),
-                  const SizedBox(height: 20),
-                  // 내 소식 콘텐츠
-                  Expanded(
-                    child: _buildContent(),
-                  ),
-                ],
-              ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_primaryDark, _primary, Color(0xFFA8CCFF)],
+          ),
+        ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: Colors.white))
+              : Column(
+                  children: [
+                    FadeTransition(
+                      opacity: _headerFade,
+                      child: SlideTransition(
+                        position: _headerSlide,
+                        child: _buildProfileHeader(),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    FadeTransition(
+                      opacity: _statsFade,
+                      child: SlideTransition(
+                        position: _statsSlide,
+                        child: _buildStatsCard(),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: FadeTransition(
+                        opacity: _contentFade,
+                        child: _buildContent(),
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
+    );
+  }
+
+  Widget _buildStatsCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.95),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildStatItem(
+                icon: Icons.location_on_rounded,
+                iconColor: _primary,
+                value: _myPostCount.toString(),
+                label: '내 스토리',
+              ),
+            ),
+            Container(width: 1, height: 20, color: const Color(0xFFE8E8E8)),
+            Expanded(
+              child: _buildStatItem(
+                icon: Icons.favorite_rounded,
+                iconColor: _accent,
+                value: _myLikeCount.toString(),
+                label: '받은 좋아요',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required Color iconColor,
+    required String value,
+    required String label,
+  }) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            fontFamily: 'Pretendard',
+            color: Color(0xFF1A1A2E),
+          ),
+        ),
+        const SizedBox(height: 3),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: iconColor, size: 12),
+            const SizedBox(width: 3),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+                fontFamily: 'Pretendard',
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -115,7 +328,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                             child: const Center(
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFF4D91FF),
+                                color: _primary,
                               ),
                             ),
                           )
@@ -141,12 +354,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFF4D91FF), width: 1.5),
+                        border: Border.all(color: _primary, width: 1.5),
                       ),
                       child: const Icon(
                         Icons.camera_alt,
                         size: 13,
-                        color: Color(0xFF4D91FF),
+                        color: _primary,
                       ),
                     ),
                   ),
@@ -212,7 +425,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
           style: const TextStyle(
             fontSize: 32,
             fontWeight: FontWeight.bold,
-            color: Color(0xFF4D91FF),
+            color: _primary,
             fontFamily: 'Pretendard',
           ),
         ),
@@ -220,79 +433,306 @@ class _ProfileScreensState extends State<ProfileScreens> {
     );
   }
 
-  // 내 소식 탭 헤더
-  Widget _buildTabBar() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: Colors.white.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
-      ),
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 12),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Colors.white, width: 2),
-          ),
-        ),
-        child: const Text(
-          '내 소식',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-            fontFamily: 'Pretendard',
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 내 소식 콘텐츠 위젯
+  // 내 스토리 콘텐츠 위젯
   Widget _buildContent() {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: _isSearchFocused
+                        ? Colors.white.withOpacity(0.95)
+                        : Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _isSearchFocused ? Colors.white : Colors.white.withOpacity(0.4),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.search_rounded,
+                          size: 18,
+                          color: _isSearchFocused ? _primary : Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          onChanged: _onSearchChanged,
+                          onSubmitted: _onSearchChanged,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontFamily: 'Pretendard',
+                            color: _isSearchFocused ? const Color(0xFF1F2937) : Colors.white,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '내 스토리 검색',
+                            hintStyle: TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'Pretendard',
+                              color: _isSearchFocused
+                                  ? const Color(0xFF9CA3AF)
+                                  : Colors.white.withOpacity(0.7),
+                            ),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ),
+                      if (_keyword.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            _onSearchChanged('');
+                          },
+                          child: Icon(Icons.close_rounded,
+                              size: 16,
+                              color: _isSearchFocused ? const Color(0xFF9CA3AF) : Colors.white),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    for (final entry in const [
+                      ('최신순', 'LATEST'),
+                      ('좋아요순', 'LIKES'),
+                      ('댓글순', 'REPLYS'),
+                    ])
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () => _onSortChanged(entry.$1),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: _sortType == entry.$2
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: _sortType == entry.$2
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.4),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              entry.$1,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                                color: _sortType == entry.$2 ? _primary : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isPostsLoading
+                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                : _myPosts.isEmpty
+                    ? _buildEmptyPostsState()
+                    : GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                          childAspectRatio: 0.72,
+                        ),
+                        itemCount: _myPosts.length,
+                        itemBuilder: (_, i) => _buildMyPostCard(_myPosts[i]),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyPostsState() {
+    final isSearching = _keyword.isNotEmpty;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text(
-            '발길 닿은 곳의 이야기를 기록해보세요',
-            style: TextStyle(
+          Text(
+            isSearching ? '검색 결과가 없어요' : '발길 닿은 곳의 이야기를 기록해보세요',
+            style: const TextStyle(
               fontSize: 16,
               color: Colors.white,
               fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              // 첫 발자국 남기기 기능 (추후 구현)
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 32,
-                vertical: 14,
-              ),
+          if (isSearching) ...[
+            const SizedBox(height: 8),
+            Text(
+              '다른 검색어로 다시 찾아보세요',
+              style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.7), fontFamily: 'Pretendard'),
             ),
-            child: const Text(
-              '첫 발자국 남기기',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Pretendard',
+          ] else ...[
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () => Get.find<NavController>().selectedIndex.value = 1,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
               ),
+              child: const Text('첫 스토리 남기기',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, fontFamily: 'Pretendard')),
             ),
-          ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildMyPostCard(BoardPost post) {
+    final hasImage = post.fileInfoList.isNotEmpty;
+    return GestureDetector(
+      onTap: () => Get.toNamed('/detail-board', parameters: {'id': post.boardId}),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.95),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 대표 사진
+            Expanded(
+              flex: 5,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                child: hasImage
+                    ? Container(
+                        color: const Color(0xFF1A1A2E),
+                        child: CachedNetworkImage(
+                          imageUrl: post.fileInfoList.first.fileUrl,
+                          width: double.infinity,
+                          fit: BoxFit.contain,
+                          placeholder: (context, url) => const Center(
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7AB3FF)),
+                          ),
+                          errorWidget: (context, url, error) => _buildNoImageBox(),
+                          imageBuilder: (context, imageProvider) =>
+                              Image(image: imageProvider, fit: BoxFit.contain, width: double.infinity),
+                        ),
+                      )
+                    : _buildNoImageBox(),
+              ),
+            ),
+            // 텍스트 영역
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 타이틀
+                    Text(
+                      post.title.isNotEmpty ? post.title : '제목 없음',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1A1A2E),
+                        fontFamily: 'Pretendard',
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    // 좋아요, 댓글 수
+                    Row(
+                      children: [
+                        const Icon(Icons.favorite_rounded, size: 12, color: _accent),
+                        const SizedBox(width: 3),
+                        Text(
+                          post.likeCount.toString(),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Icon(Icons.chat_bubble_rounded, size: 12, color: _primary),
+                        const SizedBox(width: 3),
+                        Text(
+                          post.replyCount.toString(),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                            fontFamily: 'Pretendard',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+            // 수정 버튼 (우상단)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: GestureDetector(
+                onTap: () => Get.toNamed('/edit-board', arguments: post),
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.edit_rounded, size: 15, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoImageBox() {
+    return Container(
+      color: const Color(0xFFE8F0FF),
+      child: const Center(
+        child: Icon(Icons.image_not_supported_outlined, color: _primary, size: 28),
       ),
     );
   }
@@ -411,7 +851,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                               await _updateNickname(nickname);
                             },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4D91FF),
+                        backgroundColor: _primary,
                         disabledBackgroundColor: Colors.grey[300],
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -512,7 +952,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     _updateIntroduction(controller.text);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4D91FF),
+                    backgroundColor: _primary,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -578,9 +1018,10 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     fontFamily: 'Pretendard',
                   ),
                 ),
-                onTap: () {
+                onTap: () async {
                   Get.back();
-                  // 내 개인정보 화면 (추후 구현)
+                  await Get.to(() => const MyPageScreen());
+                  _loadUserInfo();
                 },
               ),
               ListTile(
@@ -594,7 +1035,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                 ),
                 onTap: () {
                   Get.back();
-                  // 설정 화면 (추후 구현)
+                  Get.to(() => const SettingScreen());
                 },
               ),
               const Divider(height: 1),

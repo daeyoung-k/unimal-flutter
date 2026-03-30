@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 
 class BoardSearch extends StatefulWidget {
   final Function(bool) onFocusChange;
@@ -22,18 +21,15 @@ class _BoardSearchState extends State<BoardSearch> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   String _selectedSort = '최신순';
+  bool _isFocused = false;
 
-  // 정렬 필터 옵션
-  final List<String> _sortOptions = [
-    '최신순',    
-    '좋아요순',
-    '댓글순',    
-  ];
+  final List<String> _sortOptions = ['최신순', '좋아요순', '댓글순'];
 
   @override
   void initState() {
     super.initState();
     _focusNode.addListener(() {
+      setState(() => _isFocused = _focusNode.hasFocus);
       widget.onFocusChange(_focusNode.hasFocus);
     });
   }
@@ -46,114 +42,178 @@ class _BoardSearchState extends State<BoardSearch> {
   }
 
   void _onSearch(String query) {
-    setState(() {
-      _searchQuery = query;
-    });
+    setState(() => _searchQuery = query);
     widget.onSearchChanged(query);
   }
 
   void _onSortSelected(String? sort) {
     if (sort != null) {
-      setState(() {
-        _selectedSort = sort;
-      });
+      setState(() => _selectedSort = sort);
       widget.onSortChanged(sort);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    double screenWidth = MediaQuery.of(context).size.width;
-    
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Center(
-          child: Container(
-            width: screenWidth * 0.9,
-            height: 35,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: ShapeDecoration(
-              color: Colors.white,
-              shape: RoundedRectangleBorder(
-                side: BorderSide(
-                  width: 1,
-                  color: const Color(0xFFB8BFC8),
-                ),
-                borderRadius: BorderRadius.circular(16),
+        // 검색바
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(16),
+            border: _isFocused
+                ? Border.all(color: const Color(0xFF7AB3FF).withOpacity(0.5), width: 1.5)
+                : Border.all(color: Colors.transparent, width: 1.5),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.search_rounded,
+                color: _isFocused ? const Color(0xFF7AB3FF) : const Color(0xFF9CA3AF),
+                size: 20,
               ),
-            ),
-            child: Row(
-              children: [
-                SvgPicture.asset('assets/icon/svg/search_gray.svg', width: 20, height: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    focusNode: _focusNode,
-                    onChanged: _onSearch,
-                    onSubmitted: _onSearch,
-                    decoration: const InputDecoration(
-                      hintText: '검색',
-                      hintStyle: TextStyle(
-                        color: Color(0xFFB8BFC8),
-                        fontSize: 14,
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w400,
-                        height: 1.12,
-                      ),
-                      border: InputBorder.none,
-                      isDense: true,
-                    ),
-                    style: const TextStyle(
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _focusNode,
+                  onChanged: _onSearch,
+                  onSubmitted: _onSearch,
+                  decoration: const InputDecoration(
+                    hintText: '검색',
+                    hintStyle: TextStyle(
+                      color: Color(0xFF9CA3AF),
                       fontSize: 14,
-                      fontFamily: 'Poppins',
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w400,
                     ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Pretendard',
+                    color: Color(0xFF1F2937),
                   ),
                 ),
-                if (_searchQuery.isNotEmpty)                  
-                  IconButton(
-                    icon: const Icon(Icons.clear, size: 15,  color: Color(0xFFB8BFC8)),
-                    onPressed: () {
-                      _searchController.clear();
-                      _onSearch('');
-                    },
-                  ),
-              ],
-            ),
+              ),
+              if (_searchQuery.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _searchController.clear();
+                    _onSearch('');
+                  },
+                  child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF9CA3AF)),
+                ),
+            ],
           ),
         ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Container(
-            width: screenWidth * 0.28,
-            height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(
-                color: const Color(0xFFB8BFC8),
-                width: 0.5,
-              ),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedSort,
-                isExpanded: true,
-                icon: const Icon(Icons.keyboard_arrow_down, size: 15),
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF333333),
+        const SizedBox(height: 10),
+        // 정렬 버튼 (탭 시 바텀시트)
+        GestureDetector(
+          onTap: () {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Colors.transparent,
+              builder: (_) => Container(
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
                 ),
-                items: _sortOptions.map((String sort) {
-                  return DropdownMenuItem<String>(
-                    value: sort,
-                    child: Text(sort),
-                  );
-                }).toList(),
-                onChanged: _onSortSelected,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '정렬',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F2937),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ..._sortOptions.map((sort) {
+                      final isSelected = _selectedSort == sort;
+                      return InkWell(
+                        onTap: () {
+                          _onSortSelected(sort);
+                          Navigator.pop(context);
+                        },
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          margin: const EdgeInsets.only(bottom: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected ? const Color(0xFFEEF6FF) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                sort,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                                  color: isSelected ? const Color(0xFF7AB3FF) : const Color(0xFF374151),
+                                ),
+                              ),
+                              const Spacer(),
+                              if (isSelected)
+                                const Icon(Icons.check_rounded, size: 18, color: Color(0xFF7AB3FF)),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
               ),
+            );
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7AB3FF),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _selectedSort,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: Colors.white),
+              ],
             ),
           ),
         ),

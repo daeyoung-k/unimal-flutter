@@ -10,7 +10,7 @@ import 'package:unimal/screens/auth/signup.dart';
 import 'package:unimal/screens/board/detail_board/detail_board.dart';
 import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
-import 'package:unimal/screens/map/map.dart';
+import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile/profile.dart';
@@ -18,10 +18,9 @@ class AppRoutes {
   // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
   // State 타입을 명시적으로 지정하기 위해 dynamic 사용
   final GlobalKey boardScreenKey = GlobalKey();
-  // 지도 화면의 GlobalKey (새로고침을 위해 사용)
   final GlobalKey mapScreenKey = GlobalKey();
-  // 프로필 화면의 GlobalKey (새로고침을 위해 사용)
   final GlobalKey profileScreenKey = GlobalKey();
+  final GlobalKey addItemScreenKey = GlobalKey();
 
   List<GetPage> pages() {
     return [
@@ -54,14 +53,14 @@ class AppRoutes {
   // 하단 네비게이션 바 아이템 (getter로 변경하여 boardScreenKey 사용 가능)
   List<Map<String, dynamic>> get _bottomNavigationItems => [
     {
-      "page": MapScreens(key: mapScreenKey),
+      "page": MapNaverScreens(key: mapScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/map_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/map_bold_icon.svg'),
         label: '지도')
     },
     {
-      "page": AddItemScreens(),
+      "page": AddItemScreens(key: addItemScreenKey),
       "bottomNavigationIcon": BottomNavigationBarItem(
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),

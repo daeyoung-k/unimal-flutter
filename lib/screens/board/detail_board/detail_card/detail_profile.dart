@@ -4,28 +4,40 @@ class DetailProfile extends StatelessWidget {
   final String? profileImageUrl;
   final String nickname;
   final String location;
-  
+
   const DetailProfile({
-    super.key, 
+    super.key,
     required this.profileImageUrl,
     required this.nickname,
     required this.location,
   });
 
-  // 이니셜 아바타 (프로필 이미지 없거나 로드 실패 시 폴백)
-  Widget _buildInitial() {
-    final letter = nickname.isNotEmpty ? nickname[0] : '?';
+  Widget _buildInitialAvatar(String letter) {
     return Container(
-      width: 36,
-      height: 36,
-      color: Colors.grey[200],
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF7AB3FF), Color(0xFF5A9FFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7AB3FF).withOpacity(0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
       child: Center(
         child: Text(
           letter,
           style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF4D91FF),
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
             fontFamily: 'Pretendard',
           ),
         ),
@@ -33,72 +45,56 @@ class DetailProfile extends StatelessWidget {
     );
   }
 
+  Widget _buildAvatar() {
+    final letter = nickname.isNotEmpty ? nickname[0] : '?';
+    if (profileImageUrl != null && profileImageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Image.network(
+          profileImageUrl!,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildInitialAvatar(letter),
+        ),
+      );
+    }
+    return _buildInitialAvatar(letter);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
-      padding: const EdgeInsets.only(left: 12, right: 0, top: 5, bottom: 5),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.grey[200],
-            child: ClipOval(
-              child: profileImageUrl != null && profileImageUrl!.isNotEmpty
-                  ? Image.network(
-                      profileImageUrl!,
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _buildInitial(),
-                    )
-                  : _buildInitial(),
-            ),
-          ),
+          _buildAvatar(),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   nickname,
                   style: const TextStyle(
                     fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: Color(0xFF2C3E50),
+                    fontSize: 15,
+                    color: Color(0xFF1F2937),
                     fontFamily: 'Pretendard',
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 12,
-                      color: Colors.grey[600],
-                    ),
-                    const SizedBox(width: 4),
+                    const Icon(Icons.location_on_rounded, size: 12, color: Color(0xFF9CA3AF)),
+                    const SizedBox(width: 3),
                     Expanded(
                       child: Text(
                         location,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
-                          color: Colors.grey[600],
+                          color: Color(0xFF9CA3AF),
                           fontFamily: 'Pretendard',
                         ),
                       ),
@@ -107,7 +103,7 @@ class DetailProfile extends StatelessWidget {
                 ),
               ],
             ),
-          ),      
+          ),
         ],
       ),
     );
