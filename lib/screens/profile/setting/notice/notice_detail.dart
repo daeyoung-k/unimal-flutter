@@ -55,9 +55,9 @@ class NoticeDetailScreen extends StatelessWidget {
                     color: const Color(0xFFEEF4FF),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
-                    '공지',
-                    style: TextStyle(
+                  child: Text(
+                    notice.typeLabel,
+                    style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF4D91FF),

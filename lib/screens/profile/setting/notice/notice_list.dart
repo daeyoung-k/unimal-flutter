@@ -23,23 +23,10 @@ class _NoticeListScreenState extends State<NoticeListScreen> {
   }
 
   Future<void> _loadNotices() async {
-    // TODO: API 연동 후 아래 더미데이터 제거
-    await Future.delayed(const Duration(milliseconds: 300));
+    final notices = await _noticeService.getNoticeList();
     if (mounted) {
       setState(() {
-        _notices = [
-          NoticeModel(
-            noticeId: '1',
-            title: '유니멀 아틀라스 서비스 오픈 안내',
-            content: '안녕하세요, 유니멀 아틀라스입니다.\n\n'
-                '유니멀 아틀라스 서비스가 정식 오픈되었습니다.\n\n'
-                '유니멀 아틀라스는 위치 기반 커뮤니티 서비스로, 내 주변 이웃들과 다양한 이야기를 나눌 수 있는 공간입니다.\n\n'
-                '서비스 이용 중 불편한 점이나 문의사항이 있으시면 support@unimal.co.kr 로 연락해 주시기 바랍니다.\n\n'
-                '앞으로도 더 나은 서비스를 위해 최선을 다하겠습니다.\n\n'
-                '감사합니다.',
-            createdAt: '2026-05-17',
-          ),
-        ];
+        _notices = notices;
         _isLoading = false;
       });
     }
@@ -107,9 +94,9 @@ class _NoticeListScreenState extends State<NoticeListScreen> {
                           color: const Color(0xFFEEF4FF),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: const Text(
-                          '공지',
-                          style: TextStyle(
+                        child: Text(
+                          notice.typeLabel,
+                          style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
                             color: Color(0xFF4D91FF),
