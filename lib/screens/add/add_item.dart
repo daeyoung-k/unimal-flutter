@@ -3,9 +3,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:unimal/screens/profile/setting/permission_setting.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/board/board_api_service.dart';
-import 'package:unimal/state/nav_controller.dart';
 import 'dart:io';
 
 import 'package:unimal/service/map/geocoding_api_service.dart';
@@ -123,7 +123,7 @@ class _AddItemScreensState extends State<AddItemScreens>
     try {
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 10),
+        timeLimit: const Duration(seconds: 3),
       );
       GeocodingModel geocoding = await GeocodingApiService().getGeocoding(
         position.latitude.toString(),
@@ -169,10 +169,10 @@ class _AddItemScreensState extends State<AddItemScreens>
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Get.find<NavController>().selectedIndex.value = 0;
+              Get.to(() => const PermissionSettingScreen());
             },
             child: const Text(
-              '지도로 이동',
+              '권한설정으로 이동',
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontWeight: FontWeight.w700,
@@ -767,8 +767,7 @@ class _AddItemScreensState extends State<AddItemScreens>
     return _titleController.text.trim().isNotEmpty &&
         _contentController.text.trim().isNotEmpty &&
         _myLocation != null &&
-        _myLocation!.streetName.isNotEmpty &&
-        _myLocation!.postalCode.isNotEmpty;
+        _myLocation!.streetName.isNotEmpty;
   }
 
   void _clearForm() {
