@@ -3,8 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:get/get.dart';
-import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
+import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 
@@ -19,6 +20,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   NaverMapController? _mapController;
   final ImageService _imageService = ImageService();
   final NaverSearchService _searchService = NaverSearchService();
+  final BoardApiService _boardApiService = BoardApiService();
+  final List<String> _mapMarkerIds = [];
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -32,7 +35,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   bool _isLoadingPlace = false;
 
   // 커스텀 마커 탭 관련 상태
-  BoardPost? _selectedPost;
+  MapPost? _selectedPost;
 
   // 카드 드래그 관련 상태
   double _cardDragOffset = 0.0;
@@ -63,59 +66,66 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     );
   }
 
-  Future<void> _addImageMarker(NaverMapController controller) async {
-    const position = NLatLng(37.5666, 126.979);
+  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
+    if (_mapController == null) return;
 
-    final stream = await _imageService.getImageStream();
-    final bytes = await _imageService.createMarkerImage(stream);
-    final icon = await NOverlayImage.fromByteArray(bytes);
+    // 기존 마커 제거
+    for (final id in _mapMarkerIds) {
+      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: id));
+    }
+    _mapMarkerIds.clear();
 
-    // 더미 게시글 데이터 (추후 API 연동 시 교체)
-    final dummyPost = BoardPost(
-      boardId: 'city_hall_post',
-      profileImage: '',
-      email: '',
-      nickname: '스토맵',
-      title: '서울시청 앞 광장',
-      content: '서울의 중심, 시청 광장입니다. 광장에선 여러 시위가 일어난다고 하지 그 시위속에 난 아무것도 아니지',
-      streetName: '중구 태평로1가 어디론가 사라질 그런 주소 아닌건가 맞는건데 이런건가',
-      show: 'PUBLIC',
-      mapShow: 'PUBLIC',
-      fileInfoList: [],
-      createdAt: '',
-      likeCount: 128,
-      replyCount: 34,
-      reply: [],
-      isLike: false,
-      isOwner: false,
+    final posts = await _boardApiService.getMapLocationPosts(
+      latitude: latitude,
+      longitude: longitude,
+      zoom: zoom,
     );
 
-    final marker = NMarker(
-      id: "city_hall",
-      position: position,
-      icon: icon,
-      size: const Size(45, 45),
-      caption: NOverlayCaption(
-        text: _truncateMarkerTitle("서울시청 서울시청"),
-        textSize: 12,
-        color: Colors.black,
-        haloColor: Colors.white,
-      ),
-      // subCaption: 추후 해시태그 정보로 변경 예정
-    );
+    for (final post in posts) {
+      final position = NLatLng(post.latitude, post.longitude);
 
-    marker.setOnTapListener((_) {
-      _focusNode.unfocus();
-      setState(() {
-        _searchResults = [];
-        _selectedSymbol = null;
-        _selectedPlace = null;
-        _isLoadingPlace = false;
-        _selectedPost = dummyPost;
+      NOverlayImage? icon;
+      if (post.fileUrl.isNotEmpty) {
+        try {
+          final stream = await _imageService.getImageStream(post.fileUrl);
+          final bytes = await _imageService.createMarkerImage(stream);
+          icon = await NOverlayImage.fromByteArray(bytes);
+        } catch (_) {
+          icon = null;
+        }
+      }
+
+      final marker = NMarker(
+        id: post.id,
+        position: position,
+        icon: icon,
+        size: const Size(45, 45),
+        caption: NOverlayCaption(
+          text: _truncateMarkerTitle(post.title),
+          textSize: 12,
+          color: Colors.black,
+          haloColor: Colors.white,
+        ),
+        // subCaption: 추후 해시태그 정보로 변경 예정
+      );
+
+      marker.setGlobalZIndex(200000 + post.score.toInt());
+
+      marker.setOnTapListener((_) {
+        _focusNode.unfocus();
+        setState(() {
+          _searchResults = [];
+          _selectedSymbol = null;
+          _selectedPlace = null;
+          _isLoadingPlace = false;
+          _selectedPost = post;
+        });
       });
-    });
 
-    controller.addOverlay(marker);
+      if (!mounted) return;
+      _mapController!.addOverlay(marker);
+      _mapMarkerIds.add(post.id);
+    }
   }
 
   Future<void> _onSearch(String query) async {
@@ -222,7 +232,11 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _lastQueriedTarget = camera.target;
       _lastQueriedZoom = camera.zoom;
     });
-    // TODO: API 호출 — camera.target(lat/lng), camera.zoom.round() 전달
+    _loadMapMarkers(
+      camera.target.latitude,
+      camera.target.longitude,
+      camera.zoom.round(),
+    );
   }
 
   String _truncateMarkerTitle(String title) =>
@@ -270,7 +284,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);
-              _addImageMarker(controller);
+              _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
             },
             onMapTapped: (point, latLng) => _closeAllCards(),
             onSymbolTapped: _onSymbolTapped,
@@ -646,7 +660,7 @@ class _PlaceInfoCard extends StatelessWidget {
 }
 
 class _PostInfoCard extends StatelessWidget {
-  final BoardPost? post;
+  final MapPost? post;
   final double safeAreaBottom;
   final VoidCallback onClose;
   final GestureDragUpdateCallback onDragUpdate;
@@ -659,6 +673,7 @@ class _PostInfoCard extends StatelessWidget {
     required this.onDragUpdate,
     required this.onDragEnd,
   });
+
 
   @override
   Widget build(BuildContext context) {
@@ -706,39 +721,17 @@ class _PostInfoCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 제목 + 닉네임
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            post!.title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A2E),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Row(
-                          children: [
-                            const Icon(Icons.person_outline, size: 13, color: Color(0xFF9E9E9E)),
-                            const SizedBox(width: 3),
-                            Text(
-                              post!.nickname,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                color: Color(0xFF9E9E9E),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    // 제목
+                    Text(
+                      post!.title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     // 주소
@@ -813,7 +806,7 @@ class _PostInfoCard extends StatelessWidget {
               const Spacer(),
               // 자세히 보기 버튼
               GestureDetector(
-                onTap: () => Get.toNamed('/detail-board', parameters: {'id': post!.boardId}),
+                onTap: () => Get.toNamed('/detail-board', parameters: {'id': post!.id}),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                   decoration: BoxDecoration(

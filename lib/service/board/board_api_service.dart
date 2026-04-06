@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
+import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/api_client.dart';
 import 'package:unimal/utils/api_uri.dart';
@@ -298,6 +299,31 @@ class BoardApiService {
 
     _logger.e('받은 좋아요 수 조회 실패: ${response.statusCode}');
     return null;
+  }
+
+  // ── 지도 마커 조회 ──────────────────────────────────────────────────
+  Future<List<MapPost>> getMapLocationPosts({
+    required double latitude,
+    required double longitude,
+    int zoom = 14,
+  }) async {
+    final url = ApiUri.resolve('board/map/location/post', {
+      'latitude': latitude.toString(),
+      'longitude': longitude.toString(),
+      'zoom': zoom.toString(),
+    });
+    final headers = await _authHeaders();
+    final response = await ApiClient.get(url, headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      return (body['data'] as List)
+          .map((e) => MapPost.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+
+    _logger.e('지도 마커 조회 실패: ${response.statusCode}');
+    return [];
   }
 
   // ── 좋아요 요청 ─────────────────────────────────────────────────────

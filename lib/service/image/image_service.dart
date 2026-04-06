@@ -5,8 +5,8 @@ import 'dart:typed_data';
 
 class ImageService {
 
-  Future<ImageStream> getImageStream() async {
-    final NetworkImage assetImage = NetworkImage("https://i.pravatar.cc/300");
+  Future<ImageStream> getImageStream(String url) async {
+    final NetworkImage assetImage = NetworkImage(url);
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
     return stream;
   }

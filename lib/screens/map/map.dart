@@ -67,7 +67,7 @@ class MapStateScreens extends State<MapScreens> {
   }
 
   Future<void> _loadCustomMarkerIcon() async {
-    final ImageStream stream = await imageService.getImageStream();
+    final ImageStream stream = await imageService.getImageStream('https://i.pravatar.cc/300');
     final Uint8List bytes = await imageService.createMarkerImage(stream);
     _customMarkerIcon = BitmapDescriptor.bytes(bytes, width: 50, height: 50);
   }
