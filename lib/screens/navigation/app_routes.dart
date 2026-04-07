@@ -14,6 +14,8 @@ import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile/profile.dart';
+import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
+import 'package:unimal/screens/web/web_view_screen.dart';
 class AppRoutes {
   // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
   // State 타입을 명시적으로 지정하기 위해 dynamic 사용
@@ -47,6 +49,8 @@ class AppRoutes {
       GetPage(name: '/signup', page: () => SignupScreens()),
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
       GetPage(name: '/edit-board', page: () => EditBoardScreen()),
+      GetPage(name: '/notice-list', page: () => const NoticeListScreen()),
+      GetPage(name: '/webview', page: () => const WebViewScreen()),
     ];
   }
 
