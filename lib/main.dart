@@ -28,7 +28,6 @@ import 'package:unimal/state/state_init.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase가 초기화되어 있어야 하므로 여기서는 로깅만 수행
   // 실제 처리는 PushNotificationService에서 수행됩니다.
-  print('백그라운드에서 알림 수신: ${message.messageId}');
 }
 
 Future<void> main() async {

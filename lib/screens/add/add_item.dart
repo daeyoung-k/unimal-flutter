@@ -121,19 +121,27 @@ class _AddItemScreensState extends State<AddItemScreens>
     setState(() => _isLoadingLocation = true);
 
     try {
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-        timeLimit: const Duration(seconds: 3),
-      );
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 5),
+        );
+      } catch (e) {
+        position = await Geolocator.getLastKnownPosition();
+        if (position == null) rethrow;
+      }
+
       GeocodingModel geocoding = await GeocodingApiService().getGeocoding(
-        position.latitude.toString(),
+        position!.latitude.toString(),
         position.longitude.toString(),
       );
+
       if (!mounted) return;
       setState(() {
         _myLocation = geocoding;
-        _myLocation?.latitude = position.latitude.toDouble();
-        _myLocation?.longitude = position.longitude.toDouble();
+        _myLocation?.latitude = position!.latitude.toDouble();
+        _myLocation?.longitude = position!.longitude.toDouble();
         _isLoadingLocation = false;
       });
     } catch (e) {
