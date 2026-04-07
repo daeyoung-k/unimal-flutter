@@ -115,6 +115,45 @@ dev_dependencies:
 
 ## ✅ 주요 변경 이력
 
+### 2026-04-07
+
+- **앱 푸시 라우팅 구현** (`push_notification_service.dart`)
+  - 알림 클릭 시 `type` 필드 기반으로 화면 이동 처리
+  - `LIKE` / `REPLY` → 게시글 상세 (`/detail-board?id=target_id`)
+  - `NOTICE` → 공지사항 목록 (`/notice-list`)
+  - `EVENT` → 인앱 웹뷰 (`/webview?url=...&title=...`)
+  - 포그라운드 로컬 알림 클릭도 동일하게 처리 (`onDidReceiveNotificationResponse`)
+  - payload `jsonEncode` 적용으로 포그라운드 알림 데이터 파싱 가능하도록 수정
+  - 포그라운드 / 백그라운드 / 종료 상태 3가지 경로 모두 처리
+
+- **웹뷰 화면 추가** (`screens/web/web_view_screen.dart`)
+  - `url`, `title` 파라미터로 동작 (`/webview` 라우트)
+  - 로딩 중 상단 파란 프로그레스바 표시
+  - 이전 화면 없을 시 (푸시 알림 직접 진입) 지도 화면으로 이동
+  - 이벤트 / 공지 외부 링크 / 약관 등 범용 사용 가능
+
+- **공지사항 목록 라우트 등록** (`/notice-list`)
+
+- **지도 마커 API 연동** (`map_naver.dart`, `board_api_service.dart`)
+  - `GET /board/map/location/post` 연동 — `latitude`, `longitude`, `zoom` 파라미터
+  - `MapPost` 모델 추가 (`service/map/models/map_post.dart`)
+  - `score` 기반 `globalZIndex` 자동 적용 (`200000 + score.toInt()`)
+  - "이 주변 스토리 조회" 버튼 탭 시 API 호출
+
+- **같은 위치 마커 그룹핑** (`map_naver.dart`)
+  - 소수점 3자리 기준 (~111m 반경) 동일 좌표 마커 묶음
+  - 같은 위치 여러 게시글 → 하단 카드 가로 스와이프 (`PageView`)
+  - 도트 인디케이터 + `n / N` 카운터 표시
+
+- **이미지 로드 실패 처리** (`image_service.dart`, `map_naver.dart`)
+  - `ImageStreamListener` `onError` 핸들러 추가
+  - 이미지 로드 실패 시 해당 마커 표시 생략
+
+- **공유하기 화면 버그 수정** (`add_item.dart`)
+  - 업로드 버튼 활성화 조건에서 `postalCode` 체크 제거
+  - 위치 타임아웃 10초 → 3초
+  - 위치 오류 시 권한설정 화면으로 이동
+
 ### 2026-03-30
 
 - **지도 화면 개편** (`map_naver.dart`) — Naver Maps 기반 주 지도 화면으로 확정, `map.dart`(Google Maps)는 레퍼런스용 보관
