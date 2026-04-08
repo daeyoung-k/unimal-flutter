@@ -15,7 +15,7 @@ class GoogleLoginService {
   Future<void> login() async {
     final customAlert = CustomAlert(); 
     try {
-      var response = await _googleSignIn.signIn();
+      var response = await googleSignIn.signIn();
       if (response == null) return; // 사용자가 취소
       var body = jsonEncode({
               "provider": "GOOGLE",
@@ -61,6 +61,6 @@ const List<String> scopes = <String>[
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
-GoogleSignIn _googleSignIn = GoogleSignIn(
+final googleSignIn = GoogleSignIn(
   scopes: scopes,
 );

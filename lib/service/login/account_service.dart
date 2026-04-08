@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:get/get.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:unimal/service/login/google_login_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:kakao_flutter_sdk/kakao_flutter_sdk.dart';
 import 'package:logger/logger.dart';
@@ -101,14 +101,27 @@ class AccountService {
   }
 
   _naverLogout() async {
-    await NaverLoginSDK.release(callback: OAuthLoginCallback(onSuccess: () {}));
+    try {
+      await NaverLoginSDK.release(callback: OAuthLoginCallback(onSuccess: () {}));
+    } catch (e) {
+      logger.w("네이버 로그아웃 실패 (무시): $e");
+    }
   }
 
   _kakaoLogout() async {
-    await UserApi.instance.logout();
+    try {
+      await UserApi.instance.logout();
+    } catch (e) {
+      // 토큰이 이미 만료/삭제된 경우 무시하고 로컬 상태 초기화 진행
+      logger.w("카카오 로그아웃 실패 (무시): $e");
+    }
   }
 
   _googleLogout() async {
-    await GoogleSignIn().signOut();
+    try {
+      await googleSignIn.signOut();
+    } catch (e) {
+      logger.w("구글 로그아웃 실패 (무시): $e");
+    }
   }
 }
