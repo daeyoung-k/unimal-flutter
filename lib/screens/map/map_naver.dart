@@ -46,6 +46,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   NLatLng? _lastQueriedTarget;
   double _lastQueriedZoom = 14;
 
+  Worker? _pendingLocationWorker;
+
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   static const _zoomChangeTrigger = 3;
@@ -53,7 +55,32 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
   @override
+  void initState() {
+    super.initState();
+    _pendingLocationWorker = ever(
+      Get.find<NavController>().pendingMapLat,
+      (_) => _applyPendingLocation(),
+    );
+  }
+
+  void _applyPendingLocation() {
+    final nav = Get.find<NavController>();
+    final lat = nav.pendingMapLat.value;
+    final lng = nav.pendingMapLng.value;
+    if (lat == null || lng == null) return;
+    if (_mapController != null) {
+      _mapController!.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: NLatLng(lat, lng), zoom: 16),
+      );
+      _loadMapMarkers(lat, lng, 16);
+    }
+    nav.pendingMapLat.value = null;
+    nav.pendingMapLng.value = null;
+  }
+
+  @override
   void dispose() {
+    _pendingLocationWorker?.dispose();
     _debounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
