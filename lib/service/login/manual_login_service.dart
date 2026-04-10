@@ -31,7 +31,7 @@ class ManualLoginService {
           var accessToken = res.headers['x-unimal-access-token'].toString();
           var refreshToken = res.headers['x-unimal-refresh-token'].toString();
           var email = res.headers['x-unimal-email'].toString();
-          accountService.login(accessToken, refreshToken, email, LoginType.manual);
+          await accountService.login(accessToken, refreshToken, email, LoginType.manual);
 
         Get.offAllNamed("/map");
       } else {
