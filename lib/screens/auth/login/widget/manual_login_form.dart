@@ -20,6 +20,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
   final CustomAlert customAlert = CustomAlert();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   static const Color _primary = Color(0xFF4D91FF);
   static const Color _fieldBg = Color(0xFFF3F4F6);
@@ -39,7 +40,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
     return emailRegex.hasMatch(email);
   }
 
-  void _manualLogin() async {
+  Future<void> _manualLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       customAlert.showTextAlert("오류", "이메일과 비밀번호를 입력해주세요.");
       return;
@@ -48,7 +49,12 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
       customAlert.showTextAlert("이메일 형식 오류", "올바른 이메일 형식을 입력해주세요.");
       return;
     }
-    await manualLoginService.login(_emailController.text, _passwordController.text);
+    setState(() => _isLoading = true);
+    try {
+      await manualLoginService.login(_emailController.text, _passwordController.text);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -137,23 +143,33 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
         SizedBox(
           height: 50,
           child: ElevatedButton(
-            onPressed: _manualLogin,
+            onPressed: _isLoading ? null : _manualLogin,
             style: ElevatedButton.styleFrom(
               backgroundColor: _primary,
+              disabledBackgroundColor: _primary.withOpacity(0.6),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
               elevation: 0,
             ),
-            child: const Text(
-              '로그인',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Pretendard',
-              ),
-            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : const Text(
+                    '로그인',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Pretendard',
+                    ),
+                  ),
           ),
         ),
         const SizedBox(height: 16),
@@ -221,7 +237,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
 
         // 소셜 로그인으로 돌아가기
         TextButton(
-          onPressed: widget.onBackPressed,
+          onPressed: _isLoading ? null : widget.onBackPressed,
           child: const Text(
             '← 소셜 로그인으로 돌아가기',
             style: TextStyle(

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
@@ -91,6 +92,58 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     _mapController?.updateCamera(
       NCameraUpdate.withParams(zoom: 14),
     );
+  }
+
+  Future<void> _moveToCurrentLocationOrDefault() async {
+    const seoulCityHall = NLatLng(37.5666, 126.979);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        try {
+          permission = await Geolocator.requestPermission();
+        } on PermissionRequestInProgressException {
+          permission = await Geolocator.checkPermission();
+        }
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        return;
+      }
+
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 5),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (!mounted) return;
+      if (position != null) {
+        _mapController?.updateCamera(
+          NCameraUpdate.scrollAndZoomTo(
+            target: NLatLng(position.latitude, position.longitude),
+            zoom: 14,
+          ),
+        );
+        _loadMapMarkers(position.latitude, position.longitude, 14);
+      } else {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+      }
+    } catch (_) {
+      if (mounted) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+      }
+    }
   }
 
   Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
@@ -321,7 +374,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);
-              _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+              _moveToCurrentLocationOrDefault();
             },
             onMapTapped: (point, latLng) => _closeAllCards(),
             onSymbolTapped: _onSymbolTapped,

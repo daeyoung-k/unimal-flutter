@@ -166,15 +166,32 @@ class _LoginScreensState extends State<LoginScreens>
                             ),
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 24, vertical: 32),
-                            child: _showEmailLogin
-                                ? _EmailLoginSection(
-                                    onBack: () =>
-                                        setState(() => _showEmailLogin = false),
-                                  )
-                                : _SocialLoginSection(
-                                    onEmailLogin: () =>
-                                        setState(() => _showEmailLogin = true),
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 280),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              transitionBuilder: (child, animation) {
+                                return FadeTransition(
+                                  opacity: animation,
+                                  child: ScaleTransition(
+                                    scale: Tween<double>(begin: 0.97, end: 1.0)
+                                        .animate(animation),
+                                    child: child,
                                   ),
+                                );
+                              },
+                              child: _showEmailLogin
+                                  ? _EmailLoginSection(
+                                      key: const ValueKey('email'),
+                                      onBack: () =>
+                                          setState(() => _showEmailLogin = false),
+                                    )
+                                  : _SocialLoginSection(
+                                      key: const ValueKey('social'),
+                                      onEmailLogin: () =>
+                                          setState(() => _showEmailLogin = true),
+                                    ),
+                            ),
                           ),
                         ),
                       ),
@@ -247,13 +264,31 @@ class _AppIcon extends StatelessWidget {
   }
 }
 
-class _SocialLoginSection extends StatelessWidget {
+class _SocialLoginSection extends StatefulWidget {
   final VoidCallback onEmailLogin;
 
-  const _SocialLoginSection({required this.onEmailLogin});
+  const _SocialLoginSection({super.key, required this.onEmailLogin});
+
+  @override
+  State<_SocialLoginSection> createState() => _SocialLoginSectionState();
+}
+
+class _SocialLoginSectionState extends State<_SocialLoginSection> {
+  String? _loadingType; // 'kakao' | 'naver' | 'google'
+
+  Future<void> _login(String type, Future<void> Function() loginFn) async {
+    if (_loadingType != null) return;
+    setState(() => _loadingType = type);
+    try {
+      await loginFn();
+    } finally {
+      if (mounted) setState(() => _loadingType = null);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final busy = _loadingType != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -269,8 +304,9 @@ class _SocialLoginSection extends StatelessWidget {
         ),
         const SizedBox(height: 24),
         _LoginButton(
-          onPressed: () => KakaoLoginService().login(),
+          onPressed: busy ? null : () => _login('kakao', KakaoLoginService().login),
           backgroundColor: const Color(0xFFFEE500),
+          isLoading: _loadingType == 'kakao',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: const [
@@ -290,8 +326,9 @@ class _SocialLoginSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         _LoginButton(
-          onPressed: () => NaverLoginService().login(),
+          onPressed: busy ? null : () => _login('naver', NaverLoginService().login),
           backgroundColor: const Color(0xFF03C75A),
+          isLoading: _loadingType == 'naver',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -329,9 +366,10 @@ class _SocialLoginSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         _LoginButton(
-          onPressed: () => GoogleLoginService().login(),
+          onPressed: busy ? null : () => _login('google', GoogleLoginService().login),
           backgroundColor: Colors.white,
           border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
+          isLoading: _loadingType == 'google',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -352,7 +390,7 @@ class _SocialLoginSection extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         TextButton(
-          onPressed: onEmailLogin,
+          onPressed: busy ? null : widget.onEmailLogin,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: const [
@@ -376,16 +414,18 @@ class _SocialLoginSection extends StatelessWidget {
 }
 
 class _LoginButton extends StatefulWidget {
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color backgroundColor;
   final Widget child;
   final BoxBorder? border;
+  final bool isLoading;
 
   const _LoginButton({
     required this.onPressed,
     required this.backgroundColor,
     required this.child,
     this.border,
+    this.isLoading = false,
   });
 
   @override
@@ -397,19 +437,22 @@ class _LoginButtonState extends State<_LoginButton> {
 
   @override
   Widget build(BuildContext context) {
+    final disabled = widget.onPressed == null;
     return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        widget.onPressed();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
+      onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
+      onTapUp: disabled
+          ? null
+          : (_) {
+              setState(() => _pressed = false);
+              widget.onPressed!();
+            },
+      onTapCancel: disabled ? null : () => setState(() => _pressed = false),
       child: AnimatedScale(
         scale: _pressed ? 0.96 : 1.0,
         duration: const Duration(milliseconds: 80),
         curve: Curves.easeOut,
         child: AnimatedOpacity(
-          opacity: _pressed ? 0.75 : 1.0,
+          opacity: disabled ? 0.55 : (_pressed ? 0.75 : 1.0),
           duration: const Duration(milliseconds: 80),
           child: Container(
             height: 54,
@@ -425,7 +468,22 @@ class _LoginButtonState extends State<_LoginButton> {
                 ),
               ],
             ),
-            child: widget.child,
+            child: widget.isLoading
+                ? Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          widget.backgroundColor == Colors.white
+                              ? const Color(0xFF4D91FF)
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                  )
+                : widget.child,
           ),
         ),
       ),
@@ -436,7 +494,7 @@ class _LoginButtonState extends State<_LoginButton> {
 class _EmailLoginSection extends StatelessWidget {
   final VoidCallback onBack;
 
-  const _EmailLoginSection({required this.onBack});
+  const _EmailLoginSection({super.key, required this.onBack});
 
   @override
   Widget build(BuildContext context) {
