@@ -36,7 +36,7 @@ class KakaoLoginService {
         var accessToken = res.headers['x-unimal-access-token'].toString();
         var refreshToken = res.headers['x-unimal-refresh-token'].toString();
         var email = res.headers['x-unimal-email'].toString();
-        accountService.login(accessToken, refreshToken, email, LoginType.kakao);
+        await accountService.login(accessToken, refreshToken, email, LoginType.kakao);
         
         Get.offAllNamed("/map");
       } else if (bodyData['code'] == 1009) {
