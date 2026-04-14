@@ -163,7 +163,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             SizedBox(height: 16),
             _Body('부칙'),
             SizedBox(height: 4),
-            _Body('본 개인정보처리방침은 2026년 5월 17일부터 시행합니다.'),
+            _Body('본 개인정보처리방침은 2026년 4월 15일부터 시행합니다.'),
             SizedBox(height: 40),
           ],
         ),

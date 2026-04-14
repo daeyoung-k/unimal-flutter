@@ -145,7 +145,7 @@ class DeviceInfoService {
 
       return {
         'appName': packageInfo.appName,           // 앱 이름
-        'packageName': packageInfo.packageName,   // 패키지명 (com.unimal.android)
+        'packageName': packageInfo.packageName,   // 패키지명 (com.unimal.android.stomap)
         'version': packageInfo.version,           // 앱 버전 (1.0.0)
         'buildNumber': packageInfo.buildNumber,   // 빌드 번호 (1)
       };

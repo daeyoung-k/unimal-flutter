@@ -203,7 +203,7 @@ class UpdateCheckService {
       if (Platform.isAndroid) {
         // Google Play Store URL
         // TODO: 실제 패키지 이름으로 변경 필요
-        url = 'https://play.google.com/store/apps/details?id=com.unimal.android';
+        url = 'https://play.google.com/store/apps/details?id=com.unimal.android.stomap';
       } else if (Platform.isIOS) {
         // App Store URL
         // TODO: 실제 앱 ID로 변경 필요
