@@ -276,7 +276,9 @@ class _AddItemScreensState extends State<AddItemScreens>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
       resizeToAvoidBottomInset: true,
       body: Container(
         decoration: const BoxDecoration(
@@ -749,6 +751,7 @@ class _AddItemScreensState extends State<AddItemScreens>
           ),
         ),
       ),
+    ),
     );
   }
 
