@@ -36,9 +36,11 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // Firebase 초기화 (다른 초기화 작업보다 먼저 수행)
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
   // 백그라운드 메시지 핸들러 등록 (Firebase 초기화 후 바로 설정)
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
