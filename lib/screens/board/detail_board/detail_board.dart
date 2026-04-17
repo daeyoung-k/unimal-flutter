@@ -173,7 +173,9 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         'parentId': reply.replyId ?? '',
         'author': reply.nickname,
         'content': reply.comment,
-        'profileImageUrl': _boardPost?.profileImage ?? 'https://via.placeholder.com/150',
+        'profileImageUrl': (reply.profileImage != null && reply.profileImage!.isNotEmpty)
+              ? reply.profileImage
+              : null,
         'createdAt': createdAt,
         'isOwner': reply.isOwner,
       };

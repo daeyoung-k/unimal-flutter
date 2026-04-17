@@ -5,6 +5,7 @@ class ReplyInfo {
   final bool reReplyYn;
   final String email;
   final String nickname;
+  final String? profileImage;
   final String comment;
   final String createdAt;
   final bool isOwner;
@@ -17,6 +18,7 @@ class ReplyInfo {
     required this.reReplyYn,
     required this.email,
     required this.nickname,
+    this.profileImage,
     required this.comment,
     required this.createdAt,
     required this.isOwner,
@@ -31,6 +33,7 @@ class ReplyInfo {
       reReplyYn: json['reReplyYn'] as bool? ?? false,
       email: json['email'] as String? ?? '',
       nickname: json['nickname'] as String? ?? '',
+      profileImage: json['profile_image'] as String?,
       comment: json['comment'] as String? ?? '',
       createdAt: json['createdAt'] as String? ?? '',
       isOwner: json['isOwner'] as bool? ?? false,
@@ -46,6 +49,7 @@ class ReplyInfo {
       'reReplyYn': reReplyYn,
       'email': email,
       'nickname': nickname,
+      'profile_image': profileImage,
       'comment': comment,
       'createdAt': createdAt,
       'isOwner': isOwner,
