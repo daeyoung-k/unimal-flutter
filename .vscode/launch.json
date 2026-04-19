@@ -18,5 +18,13 @@
             "program": "lib/main.dart",
             "args": ["--dart-define=ENV=prod"]
         },
+        {
+            "name": "Flutter (prod - release)",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "args": ["--dart-define=ENV=prod"]
+        },
     ]
 }

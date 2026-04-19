@@ -51,6 +51,13 @@ class PushNotificationService {
       // 로컬 알림 초기화
       await _initializeLocalNotifications();
 
+      // iOS 포그라운드 알림 표시 설정
+      await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _deviceInfoService.getFCMToken();
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
