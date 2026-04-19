@@ -7,11 +7,9 @@ import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
-import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
-import 'package:unimal/service/auth/device_info_service.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
@@ -72,7 +70,7 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final updateCheckService = UpdateCheckService();
     await updateCheckService.initialize();
-    // await updateCheckService.checkAndHandleUpdate();
+    await updateCheckService.checkAndHandleUpdate();
   });
 
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인

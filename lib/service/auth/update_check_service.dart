@@ -76,8 +76,8 @@ class UpdateCheckService {
   Future<UpdateInfo?> checkLatestVersion() async {
     // 임시: 테스트용 고정 값 (실제 서버 API 연동 시 아래 주석 해제)
     return UpdateInfo.fromJson({
-      'version': '1.0.1',
-      'buildNumber': 2,
+      'version': '1.0.0',
+      'buildNumber': 1,
       'isForceUpdate': false,
       'updateMessage': '새로운 버전이 출시되었습니다.',
       'releaseNotes': '버그 수정 및 성능 개선',
