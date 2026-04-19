@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/screens/board/detail_board/comment/comment_input.dart';
 import 'package:unimal/screens/board/detail_board/comment/comment_section.dart';
 import 'package:unimal/screens/board/detail_board/detail_card/detail_board_card.dart';
@@ -172,11 +173,23 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         'parentId': reply.replyId ?? '',
         'author': reply.nickname,
         'content': reply.comment,
-        'profileImageUrl': _boardPost?.profileImage ?? 'https://via.placeholder.com/150',
+        'profileImageUrl': (reply.profileImage != null && reply.profileImage!.isNotEmpty)
+              ? reply.profileImage
+              : null,
         'createdAt': createdAt,
         'isOwner': reply.isOwner,
       };
     }).toList();
+  }
+
+  void _goToBoard() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (Get.previousRoute.isNotEmpty) {
+        Get.back();
+      } else {
+        Get.offAllNamed('/board');
+      }
+    });
   }
 
   Future<void> _deleteComment(String replyId) async {
@@ -299,7 +312,13 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
     final success = await _boardApiService.deleteBoard(_boardPost!.boardId);
     if (success) {
-      Get.offAllNamed('/board');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // 새 RootScreen을 만들지 않고 기존 루트로 돌아가서 탭만 전환
+        Get.until((route) => route.isFirst);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Get.find<NavController>().selectedIndex.value = 2;
+        });
+      });
     } else {
       Get.dialog(
         AlertDialog(
@@ -319,19 +338,11 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    void goToBoard() {
-      if (Get.previousRoute.isNotEmpty) {
-        Get.back();
-      } else {
-        Get.offAllNamed('/board');
-      }
-    }
-
     // 로딩 중일 때 로딩 인디케이터 표시
     if (_isLoading) {
       return PopScope(
         canPop: false,
-        onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+        onPopInvokedWithResult: (didPop, _) { if (!didPop) _goToBoard(); },
         child: Scaffold(
           backgroundColor: const Color(0xFFF0F7FF),
           appBar: AppBar(
@@ -340,7 +351,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
             surfaceTintColor: Colors.transparent,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF374151), size: 20),
-              onPressed: goToBoard,
+              onPressed: _goToBoard,
             ),
           ),
           body: const Center(
@@ -352,7 +363,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, _) { if (!didPop) goToBoard(); },
+      onPopInvokedWithResult: (didPop, _) { if (!didPop) _goToBoard(); },
       child: Scaffold(
       backgroundColor: const Color(0xFFF0F7FF),
       resizeToAvoidBottomInset: true,
@@ -363,7 +374,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF374151), size: 20),
-          onPressed: goToBoard,
+          onPressed: _goToBoard,
         ),
         actions: [
           if (_boardPost?.isOwner == true)

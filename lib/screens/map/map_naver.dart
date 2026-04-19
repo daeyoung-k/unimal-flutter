@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
-import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
+import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 
@@ -19,6 +21,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   NaverMapController? _mapController;
   final ImageService _imageService = ImageService();
   final NaverSearchService _searchService = NaverSearchService();
+  final BoardApiService _boardApiService = BoardApiService();
+  final List<String> _mapMarkerIds = [];
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -32,7 +36,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   bool _isLoadingPlace = false;
 
   // 커스텀 마커 탭 관련 상태
-  BoardPost? _selectedPost;
+  List<MapPost> _selectedPosts = [];
 
   // 카드 드래그 관련 상태
   double _cardDragOffset = 0.0;
@@ -43,14 +47,41 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   NLatLng? _lastQueriedTarget;
   double _lastQueriedZoom = 14;
 
+  Worker? _pendingLocationWorker;
+
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   static const _zoomChangeTrigger = 3;
 
-  bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPost != null;
+  bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
+
+  @override
+  void initState() {
+    super.initState();
+    _pendingLocationWorker = ever(
+      Get.find<NavController>().pendingMapLat,
+      (_) => _applyPendingLocation(),
+    );
+  }
+
+  void _applyPendingLocation() {
+    final nav = Get.find<NavController>();
+    final lat = nav.pendingMapLat.value;
+    final lng = nav.pendingMapLng.value;
+    if (lat == null || lng == null) return;
+    if (_mapController != null) {
+      _mapController!.updateCamera(
+        NCameraUpdate.scrollAndZoomTo(target: NLatLng(lat, lng), zoom: 16),
+      );
+      _loadMapMarkers(lat, lng, 16);
+    }
+    nav.pendingMapLat.value = null;
+    nav.pendingMapLng.value = null;
+  }
 
   @override
   void dispose() {
+    _pendingLocationWorker?.dispose();
     _debounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
@@ -63,59 +94,128 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     );
   }
 
-  Future<void> _addImageMarker(NaverMapController controller) async {
-    const position = NLatLng(37.5666, 126.979);
+  Future<void> _moveToCurrentLocationOrDefault() async {
+    const seoulCityHall = NLatLng(37.5666, 126.979);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        return;
+      }
 
-    final stream = await _imageService.getImageStream();
-    final bytes = await _imageService.createMarkerImage(stream);
-    final icon = await NOverlayImage.fromByteArray(bytes);
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        try {
+          permission = await Geolocator.requestPermission();
+        } on PermissionRequestInProgressException {
+          permission = await Geolocator.checkPermission();
+        }
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        return;
+      }
 
-    // 더미 게시글 데이터 (추후 API 연동 시 교체)
-    final dummyPost = BoardPost(
-      boardId: 'city_hall_post',
-      profileImage: '',
-      email: '',
-      nickname: '스토맵',
-      title: '서울시청 앞 광장',
-      content: '서울의 중심, 시청 광장입니다. 광장에선 여러 시위가 일어난다고 하지 그 시위속에 난 아무것도 아니지',
-      streetName: '중구 태평로1가 어디론가 사라질 그런 주소 아닌건가 맞는건데 이런건가',
-      show: 'PUBLIC',
-      mapShow: 'PUBLIC',
-      fileInfoList: [],
-      createdAt: '',
-      likeCount: 128,
-      replyCount: 34,
-      reply: [],
-      isLike: false,
-      isOwner: false,
+      Position? position;
+      try {
+        position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.medium,
+          timeLimit: const Duration(seconds: 5),
+        );
+      } catch (_) {
+        position = await Geolocator.getLastKnownPosition();
+      }
+
+      if (!mounted) return;
+      if (position != null) {
+        _mapController?.updateCamera(
+          NCameraUpdate.scrollAndZoomTo(
+            target: NLatLng(position.latitude, position.longitude),
+            zoom: 14,
+          ),
+        );
+        _loadMapMarkers(position.latitude, position.longitude, 14);
+      } else {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+      }
+    } catch (_) {
+      if (mounted) {
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+      }
+    }
+  }
+
+  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
+    if (_mapController == null) return;
+
+    // 기존 마커 제거
+    for (final id in _mapMarkerIds) {
+      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: id));
+    }
+    _mapMarkerIds.clear();
+
+    final posts = await _boardApiService.getMapLocationPosts(
+      latitude: latitude,
+      longitude: longitude,
+      zoom: zoom,
     );
 
-    final marker = NMarker(
-      id: "city_hall",
-      position: position,
-      icon: icon,
-      size: const Size(45, 45),
-      caption: NOverlayCaption(
-        text: _truncateMarkerTitle("서울시청 서울시청"),
-        textSize: 12,
-        color: Colors.black,
-        haloColor: Colors.white,
-      ),
-      // subCaption: 추후 해시태그 정보로 변경 예정
-    );
+    // 같은 좌표끼리 그룹핑
+    final Map<String, List<MapPost>> grouped = {};
+    for (final post in posts) {
+      final key = '${post.latitude.toStringAsFixed(3)},${post.longitude.toStringAsFixed(3)}';
+      grouped.putIfAbsent(key, () => []).add(post);
+    }
 
-    marker.setOnTapListener((_) {
-      _focusNode.unfocus();
-      setState(() {
-        _searchResults = [];
-        _selectedSymbol = null;
-        _selectedPlace = null;
-        _isLoadingPlace = false;
-        _selectedPost = dummyPost;
+    for (final postsAtLocation in grouped.values) {
+      // score 내림차순 정렬 → 맨 위 post가 마커 대표
+      postsAtLocation.sort((a, b) => b.score.compareTo(a.score));
+      final topPost = postsAtLocation.first;
+      final position = NLatLng(topPost.latitude, topPost.longitude);
+
+      NOverlayImage? icon;
+      if (topPost.fileUrl.isNotEmpty) {
+        try {
+          final stream = await _imageService.getImageStream(topPost.fileUrl);
+          final bytes = await _imageService.createMarkerImage(stream);
+          icon = await NOverlayImage.fromByteArray(bytes);
+        } catch (_) {
+          continue; // 이미지 로드 실패 시 마커 표시 생략
+        }
+      }
+
+      final marker = NMarker(
+        id: topPost.id,
+        position: position,
+        icon: icon,
+        size: const Size(45, 45),
+        caption: NOverlayCaption(
+          text: _truncateMarkerTitle(topPost.title),
+          textSize: 12,
+          color: Colors.black,
+          haloColor: Colors.white,
+        ),
+        // subCaption: 추후 해시태그 정보로 변경 예정
+      );
+
+      marker.setGlobalZIndex(200000 + topPost.score.toInt());
+
+      marker.setOnTapListener((_) {
+        _focusNode.unfocus();
+        setState(() {
+          _searchResults = [];
+          _selectedSymbol = null;
+          _selectedPlace = null;
+          _isLoadingPlace = false;
+          _selectedPosts = postsAtLocation;
+        });
       });
-    });
 
-    controller.addOverlay(marker);
+      if (!mounted) return;
+      _mapController!.addOverlay(marker);
+      _mapMarkerIds.add(topPost.id);
+    }
   }
 
   Future<void> _onSearch(String query) async {
@@ -169,7 +269,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     _focusNode.unfocus();
     setState(() {
       _searchResults = [];
-      _selectedPost = null;
+      _selectedPosts = [];
       _selectedSymbol = symbolInfo;
       _selectedPlace = null;
       _isLoadingPlace = true;
@@ -222,7 +322,11 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _lastQueriedTarget = camera.target;
       _lastQueriedZoom = camera.zoom;
     });
-    // TODO: API 호출 — camera.target(lat/lng), camera.zoom.round() 전달
+    _loadMapMarkers(
+      camera.target.latitude,
+      camera.target.longitude,
+      camera.zoom.round(),
+    );
   }
 
   String _truncateMarkerTitle(String title) =>
@@ -233,7 +337,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _selectedSymbol = null;
       _selectedPlace = null;
       _isLoadingPlace = false;
-      _selectedPost = null;
+      _selectedPosts = [];
       _cardDragOffset = 0.0;
     });
   }
@@ -270,7 +374,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);
-              _addImageMarker(controller);
+              _moveToCurrentLocationOrDefault();
             },
             onMapTapped: (point, latLng) => _closeAllCards(),
             onSymbolTapped: _onSymbolTapped,
@@ -504,9 +608,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
             curve: Curves.easeOut,
             left: 0,
             right: 0,
-            bottom: _selectedPost != null ? -_cardDragOffset : -260,
+            bottom: _selectedPosts.isNotEmpty ? -_cardDragOffset : -260,
             child: _PostInfoCard(
-              post: _selectedPost,
+              posts: _selectedPosts,
               safeAreaBottom: safeAreaPadding.bottom,
               onClose: _closeAllCards,
               onDragUpdate: _onCardDragUpdate,
@@ -645,15 +749,15 @@ class _PlaceInfoCard extends StatelessWidget {
   }
 }
 
-class _PostInfoCard extends StatelessWidget {
-  final BoardPost? post;
+class _PostInfoCard extends StatefulWidget {
+  final List<MapPost> posts;
   final double safeAreaBottom;
   final VoidCallback onClose;
   final GestureDragUpdateCallback onDragUpdate;
   final GestureDragEndCallback onDragEnd;
 
   const _PostInfoCard({
-    required this.post,
+    required this.posts,
     required this.safeAreaBottom,
     required this.onClose,
     required this.onDragUpdate,
@@ -661,8 +765,42 @@ class _PostInfoCard extends StatelessWidget {
   });
 
   @override
+  State<_PostInfoCard> createState() => _PostInfoCardState();
+}
+
+class _PostInfoCardState extends State<_PostInfoCard> {
+  late final PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void didUpdateWidget(_PostInfoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 다른 마커 탭 시 첫 페이지로 리셋
+    if (oldWidget.posts != widget.posts) {
+      _currentPage = 0;
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (post == null) return const SizedBox.shrink();
+    if (widget.posts.isEmpty) return const SizedBox.shrink();
+
+    final total = widget.posts.length;
 
     return Container(
       decoration: const BoxDecoration(
@@ -676,14 +814,13 @@ class _PostInfoCard extends StatelessWidget {
           ),
         ],
       ),
-      padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + safeAreaBottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // 핸들 바
           GestureDetector(
-            onVerticalDragUpdate: onDragUpdate,
-            onVerticalDragEnd: onDragEnd,
+            onVerticalDragUpdate: widget.onDragUpdate,
+            onVerticalDragEnd: widget.onDragEnd,
             behavior: HitTestBehavior.translucent,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -697,148 +834,177 @@ class _PostInfoCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          // 제목 + 닫기
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 제목 + 닉네임
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            post!.title,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF1A1A2E),
+          // n/N 인디케이터 + 닫기 (여러 개일 때만)
+          if (total > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 12, 0),
+              child: Row(
+                children: [
+                  Row(
+                    children: List.generate(total, (i) => Container(
+                      width: i == _currentPage ? 16 : 6,
+                      height: 6,
+                      margin: const EdgeInsets.only(right: 4),
+                      decoration: BoxDecoration(
+                        color: i == _currentPage
+                            ? const Color(0xFF4D91FF)
+                            : const Color(0xFFE0E0E0),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    )),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${_currentPage + 1} / $total',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Pretendard',
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.onClose,
+                    icon: const Icon(Icons.close, color: Color(0xFF9E9E9E), size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ),
+            ),
+          // 게시글 PageView
+          SizedBox(
+            height: 155 + widget.safeAreaBottom,
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: total,
+              onPageChanged: (i) => setState(() => _currentPage = i),
+              itemBuilder: (context, index) {
+                final post = widget.posts[index];
+                return Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 16 + widget.safeAreaBottom),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 제목 + 닫기 (단일일 때만 닫기 버튼 여기)
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              post.title,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF1A1A2E),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                        const SizedBox(width: 8),
+                          if (total == 1) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: widget.onClose,
+                              icon: const Icon(Icons.close, color: Color(0xFF9E9E9E), size: 20),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // 주소
+                      if (post.streetName.isNotEmpty)
                         Row(
                           children: [
-                            const Icon(Icons.person_outline, size: 13, color: Color(0xFF9E9E9E)),
-                            const SizedBox(width: 3),
-                            Text(
-                              post!.nickname,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                color: Color(0xFF9E9E9E),
+                            const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF9E9E9E)),
+                            const SizedBox(width: 2),
+                            Expanded(
+                              child: Text(
+                                post.streetName,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  color: Color(0xFF9E9E9E),
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // 주소
-                    if (post!.streetName.isNotEmpty)
+                      const SizedBox(height: 4),
+                      // 내용 (20자 제한)
+                      if (post.content.isNotEmpty)
+                        Text(
+                          post.content.length > 20
+                              ? '${post.content.substring(0, 20)}...'
+                              : post.content,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Pretendard',
+                            color: Color(0xFF374151),
+                          ),
+                        ),
+                      const Spacer(),
+                      // 좋아요 · 댓글 · 자세히 보기
                       Row(
                         children: [
-                          const Icon(Icons.location_on_outlined, size: 13, color: Color(0xFF9E9E9E)),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            child: Text(
-                              post!.streetName,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                color: Color(0xFF9E9E9E),
+                          const Icon(Icons.favorite_outline, size: 15, color: Color(0xFFFF6B6B)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${post.likeCount}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Pretendard',
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF4D91FF)),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${post.replyCount}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontFamily: 'Pretendard',
+                              color: Color(0xFF9E9E9E),
+                            ),
+                          ),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => Get.toNamed('/detail-board', parameters: {'id': post.id}),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF4D91FF),
+                                borderRadius: BorderRadius.circular(20),
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '자세히 보기',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.white),
+                                ],
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    const SizedBox(height: 4),
-                    // 내용 (20자 제한)
-                    if (post!.content.isNotEmpty)
-                      Text(
-                        post!.content.length > 20
-                            ? '${post!.content.substring(0, 20)}...'
-                            : post!.content,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'Pretendard',
-                          color: Color(0xFF374151),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: onClose,
-                icon: const Icon(Icons.close, color: Color(0xFF9E9E9E), size: 20),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // 좋아요 · 댓글
-          Row(
-            children: [
-              const Icon(Icons.favorite_outline, size: 15, color: Color(0xFFFF6B6B)),
-              const SizedBox(width: 4),
-              Text(
-                '${post!.likeCount}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  color: Color(0xFF9E9E9E),
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF4D91FF)),
-              const SizedBox(width: 4),
-              Text(
-                '${post!.replyCount}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  color: Color(0xFF9E9E9E),
-                ),
-              ),
-              const Spacer(),
-              // 자세히 보기 버튼
-              GestureDetector(
-                onTap: () => Get.toNamed('/detail-board', parameters: {'id': post!.boardId}),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF4D91FF),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '자세히 보기',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(width: 4),
-                      Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.white),
                     ],
                   ),
-                ),
-              ),
-            ],
+                );
+              },
+            ),
           ),
         ],
       ),

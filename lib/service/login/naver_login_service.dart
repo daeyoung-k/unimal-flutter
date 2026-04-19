@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
@@ -23,7 +25,20 @@ class NaverLoginService {
   }
 
   Future<void> login() async {
-    final customAlert = CustomAlert();   
+    final customAlert = CustomAlert();
+    final completer = Completer<void>();
+
+    // 취소 시 SDK 콜백이 안 불리는 경우를 대비해
+    // 앱이 포그라운드로 돌아오면 자동으로 로딩을 해제
+    late final AppLifecycleListener lifecycleListener;
+    lifecycleListener = AppLifecycleListener(
+      onResume: () {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (!completer.isCompleted) completer.complete();
+        });
+      },
+    );
+
     NaverLoginSDK.authenticate(
         callback: OAuthLoginCallback(onSuccess: () {
       NaverLoginSDK.profile(
@@ -48,10 +63,11 @@ class NaverLoginService {
           var accessToken = res.headers['x-unimal-access-token'].toString();
           var refreshToken = res.headers['x-unimal-refresh-token'].toString();
           var email = res.headers['x-unimal-email'].toString();
-          accountService.login(accessToken, refreshToken, email, LoginType.naver);
-          
+          await accountService.login(accessToken, refreshToken, email, LoginType.naver);
+          if (!completer.isCompleted) completer.complete();
           Get.offAllNamed("/map");
         } else if (bodyData['code'] == 1009) {
+          if (!completer.isCompleted) completer.complete();
           // 번호 인증 페이지로 이동
           Get.toNamed("/tel-verification", arguments: {
             'email': bodyData["data"],
@@ -59,24 +75,33 @@ class NaverLoginService {
         } else {
           logger.e("네이버 로그인 실패.. code: ${bodyData['code']} message: ${bodyData['message']}");
           customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+          if (!completer.isCompleted) completer.complete();
         }
       }, onFailure: (httpStatus, message) {
         logger.e("네이버 로그인 프로필 조회 실패.. httpsStatus: $httpStatus, message: $message");
         customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+        if (!completer.isCompleted) completer.complete();
       }, onError: (errorCode, message) {
         logger.e("네이버 로그인 프로필 조회 에러.. message: $message");
         customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+        if (!completer.isCompleted) completer.complete();
       }));
     }, onFailure: (httpStatus, message) {
       final msg = message.toLowerCase();
-      if (msg.contains('cancel') || msg.contains('user_cancel')) return;
-      logger.e("네이버 로그인 실패.. httpStatus: $httpStatus, message: $message");
-      customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+      if (!msg.contains('cancel') && !msg.contains('user_cancel')) {
+        logger.e("네이버 로그인 실패.. httpStatus: $httpStatus, message: $message");
+        customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+      }
+      if (!completer.isCompleted) completer.complete();
     }, onError: (errorCode, message) {
       final msg = message.toLowerCase();
-      if (msg.contains('cancel') || msg.contains('user_cancel')) return;
-      logger.e("네이버 로그인 에러.. errorCode: $errorCode, message: $message");
-      customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+      if (!msg.contains('cancel') && !msg.contains('user_cancel')) {
+        logger.e("네이버 로그인 에러.. errorCode: $errorCode, message: $message");
+        customAlert.showTextAlert("로그인 오류", "네이버 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
+      }
+      if (!completer.isCompleted) completer.complete();
     }));
+
+    return completer.future.whenComplete(lifecycleListener.dispose);
   }
 }

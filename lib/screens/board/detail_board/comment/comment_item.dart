@@ -37,25 +37,21 @@ class CommentItem extends StatelessWidget {
   }
 
   Widget _buildInitialAvatar(String letter, double size) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF9AC5FF), Color(0xFF7AB3FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(isNested ? 8 : 10),
-      ),
-      child: Center(
-        child: Text(
-          letter,
-          style: TextStyle(
-            fontSize: size * 0.42,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-            fontFamily: 'Pretendard',
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(isNested ? 8 : 10),
+      child: Container(
+        width: size,
+        height: size,
+        color: Colors.grey[200],
+        child: Center(
+          child: Text(
+            letter,
+            style: TextStyle(
+              fontSize: size * 0.42,
+              fontWeight: FontWeight.bold,
+              color: const Color(0xFF5B9FEF),
+              fontFamily: 'Pretendard',
+            ),
           ),
         ),
       ),

@@ -4,12 +4,14 @@ class DetailProfile extends StatelessWidget {
   final String? profileImageUrl;
   final String nickname;
   final String location;
+  final VoidCallback? onMapTap;
 
   const DetailProfile({
     super.key,
     required this.profileImageUrl,
     required this.nickname,
     required this.location,
+    this.onMapTap,
   });
 
   Widget _buildInitialAvatar(String letter) {
@@ -104,6 +106,19 @@ class DetailProfile extends StatelessWidget {
               ],
             ),
           ),
+          if (onMapTap != null)
+            GestureDetector(
+              onTap: onMapTap,
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEBF3FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.map_outlined, size: 18, color: Color(0xFF4D91FF)),
+              ),
+            ),
         ],
       ),
     );

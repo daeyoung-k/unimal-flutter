@@ -21,7 +21,7 @@ class _MarkerPreviewState extends State<MarkerPreview> {
   }
 
   Future<void> _loadMarkerImage() async {
-    final ImageStream stream = await imageService.getImageStream();
+    final ImageStream stream = await imageService.getImageStream('https://i.pravatar.cc/300');
     final Uint8List bytes = await imageService.createMarkerImage(stream);
     setState(() {
       markerBytes = bytes;

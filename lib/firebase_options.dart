@@ -65,6 +65,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'unimal-project.firebasestorage.app',
     androidClientId: '394531314157-6u944tq0nbsfe4clfo8r3189cta59j48.apps.googleusercontent.com',
     iosClientId: '394531314157-3ou1pqr5fofilses1e7tro8obl19hoea.apps.googleusercontent.com',
-    iosBundleId: 'com.unimal.ios',
+    iosBundleId: 'com.unimal.ios.stomap',
   );
 }

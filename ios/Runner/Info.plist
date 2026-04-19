@@ -59,13 +59,15 @@
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSCameraUsageDescription</key>
-		<string>Privacy - Camera Usage Description in the visual editor.</string>
+		<string>스토리에 사진을 촬영하거나 프로필 사진을 설정하는 데 사용됩니다.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>현재 위치를 지도에 표시하고 주변 스토리를 확인하기 위해 사용됩니다.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>This app needs access to location when open.</string>
+		<string>현재 위치를 지도에 표시하고 주변 스토리를 확인하기 위해 사용됩니다.</string>
 		<key>NSMicrophoneUsageDescription</key>
-		<string>Privacy - Microphone Usage Description in the visual editor.</string>
+		<string>스토리 동영상 촬영 시 오디오 녹음에 사용됩니다.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
-		<string>Privacy - Photo Library Usage Description in the visual editor.</string>
+		<string>스토리에 사진을 첨부하거나 프로필 사진을 설정하는 데 사용됩니다.</string>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIBackgroundModes</key>

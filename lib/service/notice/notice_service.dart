@@ -19,7 +19,7 @@ class NoticeService {
   }
 
   Future<List<NoticeModel>> getNoticeList() async {
-    final url = ApiUri.resolve('/admin/notice/list');
+    final url = ApiUri.resolve('/board/notice');
     final response = await ApiClient.get(url, await _authHeaders());
 
     if (response.statusCode == 200) {
@@ -35,7 +35,7 @@ class NoticeService {
   }
 
   Future<NoticeModel?> getNoticeDetail(String noticeId) async {
-    final url = ApiUri.resolve('/admin/notice/$noticeId');
+    final url = ApiUri.resolve('/board/notice/$noticeId');
     final response = await ApiClient.get(url, await _authHeaders());
 
     if (response.statusCode == 200) {

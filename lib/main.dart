@@ -4,14 +4,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:unimal/service/map/naver_map_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
-import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
-import 'package:unimal/service/auth/device_info_service.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
@@ -28,7 +26,6 @@ import 'package:unimal/state/state_init.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase가 초기화되어 있어야 하므로 여기서는 로깅만 수행
   // 실제 처리는 PushNotificationService에서 수행됩니다.
-  print('백그라운드에서 알림 수신: ${message.messageId}');
 }
 
 Future<void> main() async {
@@ -37,9 +34,13 @@ Future<void> main() async {
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   // Firebase 초기화 (다른 초기화 작업보다 먼저 수행)
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } on FirebaseException catch (e) {
+    if (e.code != 'duplicate-app') rethrow;
+  }
   // 백그라운드 메시지 핸들러 등록 (Firebase 초기화 후 바로 설정)
   FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
@@ -51,6 +52,9 @@ Future<void> main() async {
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화
   NaverLoginService().naverInit();
+
+  // 네이버 지도 초기화
+  await NaverMapService().naverMapInit();
 
   // 상태관리 초기화 (토큰 로드 완료까지 대기)
   final authState = await StateInit().stateInit();
@@ -66,23 +70,8 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     final updateCheckService = UpdateCheckService();
     await updateCheckService.initialize();
-    // await updateCheckService.checkAndHandleUpdate();
+    await updateCheckService.checkAndHandleUpdate();
   });
-
-  await FlutterNaverMap().init(
-          clientId: '8uoy5cnetl',
-          onAuthFailed: (ex) {
-            switch (ex) {
-              case NQuotaExceededException(:final message):
-                print("사용량 초과 (message: $message)");
-                break;
-              case NUnauthorizedClientException() ||
-              NClientUnspecifiedException() ||
-              NAnotherAuthFailedException():
-                print("인증 실패: $ex");
-                break;
-            }
-          });
 
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
   runApp(MyApp(loginChecked: provider.value != LoginType.none));

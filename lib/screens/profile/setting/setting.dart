@@ -1,12 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
 import 'package:unimal/screens/profile/setting/privacy_policy.dart';
 import 'package:unimal/screens/profile/setting/terms_of_service.dart';
 
-class SettingScreen extends StatelessWidget {
+class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
+
+  @override
+  State<SettingScreen> createState() => _SettingScreenState();
+}
+
+class _SettingScreenState extends State<SettingScreen> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    setState(() {
+      _version = 'v${info.version}';
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,9 +68,9 @@ class SettingScreen extends StatelessWidget {
           _buildItem(
             icon: Icons.info_outline,
             title: '버전정보',
-            trailing: const Text(
-              'v1.0.0',
-              style: TextStyle(
+            trailing: Text(
+              _version,
+              style: const TextStyle(
                 fontSize: 14,
                 color: Colors.black45,
                 fontFamily: 'Pretendard',
@@ -68,7 +89,7 @@ class SettingScreen extends StatelessWidget {
           _buildDivider(),
           _buildItem(
             icon: Icons.lock_outline,
-            title: '개인정보 취급방침',
+            title: '개인정보 처리방침',
             onTap: () => Get.to(() => const PrivacyPolicyScreen()),
           ),
         ],

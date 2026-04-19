@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:unimal/service/auth/device_info_service.dart';
 
@@ -48,6 +50,13 @@ class PushNotificationService {
     try {
       // 로컬 알림 초기화
       await _initializeLocalNotifications();
+
+      // iOS 포그라운드 알림 표시 설정
+      await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _deviceInfoService.getFCMToken();
@@ -111,6 +120,12 @@ class PushNotificationService {
       initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         _logger.i('로컬 알림이 클릭되었습니다: ${response.payload}');
+        if (response.payload != null) {
+          try {
+            final data = jsonDecode(response.payload!) as Map<String, dynamic>;
+            _routeFromData(data);
+          } catch (_) {}
+        }
       },
     );
 
@@ -177,7 +192,7 @@ class PushNotificationService {
       message.notification?.title ?? '알림',
       message.notification?.body ?? '',
       notificationDetails,
-      payload: message.data.toString(),
+      payload: jsonEncode(message.data),
     );
   }
 
@@ -187,24 +202,32 @@ class PushNotificationService {
   /// 예: 특정 화면으로 이동, 딥링크 처리 등
   void _handleNotificationClick(RemoteMessage message) {
     _logger.i('알림 클릭 처리: ${message.data}');
+    _routeFromData(message.data);
+  }
 
-    // 알림 데이터에서 화면 이동 정보 추출
-    final data = message.data;
+  void _routeFromData(Map<String, dynamic> data) {
+    final type = data['type'] as String?;
+    final targetId = data['target_id'] as String? ?? '';
 
-    // 예시: 게시글 상세 화면으로 이동
-    if (data.containsKey('boardId')) {
-      final boardId = data['boardId'];
-      _logger.i('게시글 상세 화면으로 이동: $boardId');
-      // TODO: GetX나 Navigator를 사용하여 화면 이동
-      // Get.toNamed('/board/detail', arguments: {'boardId': boardId});
-    }
-
-    // 예시: 프로필 화면으로 이동
-    if (data.containsKey('userId')) {
-      final userId = data['userId'];
-      _logger.i('프로필 화면으로 이동: $userId');
-      // TODO: GetX나 Navigator를 사용하여 화면 이동
-      // Get.toNamed('/profile', arguments: {'userId': userId});
+    switch (type) {
+      case 'LIKE':
+      case 'REPLY':
+        if (targetId.isNotEmpty) {
+          Get.toNamed('/detail-board', parameters: {'id': targetId});
+        }
+        break;
+      case 'NOTICE':
+        Get.toNamed('/notice-list');
+        break;
+      case 'EVENT':
+        final url = data['url'] as String? ?? '';
+        final title = data['title'] as String? ?? '이벤트';
+        if (url.isNotEmpty) {
+          Get.toNamed('/webview', parameters: {'url': url, 'title': title});
+        }
+        break;
+      default:
+        _logger.w('알 수 없는 알림 타입: $type');
     }
   }
 

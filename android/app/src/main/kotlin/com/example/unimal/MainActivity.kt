@@ -1,4 +1,4 @@
-package com.unimal.android
+package com.unimal.android.stomap
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/board/detail_board/detail_card/datail_content.dart';
 import 'package:unimal/screens/board/detail_board/detail_card/detail_images.dart';
 import 'package:unimal/screens/board/detail_board/detail_card/detail_profile.dart';
+import 'package:unimal/state/nav_controller.dart';
 
 class DetailBoardCard extends StatelessWidget {
   final BoardPost boardPost;
@@ -36,6 +38,19 @@ class DetailBoardCard extends StatelessWidget {
               profileImageUrl: boardPost.profileImage,
               nickname: boardPost.nickname,
               location: boardPost.streetName,
+              onMapTap: (boardPost.show == 'PUBLIC' &&
+                      boardPost.latitude != null &&
+                      boardPost.longitude != null &&
+                      boardPost.latitude != 0.0 &&
+                      boardPost.longitude != 0.0)
+                  ? () {
+                      final nav = Get.find<NavController>();
+                      nav.pendingMapLng.value = boardPost.longitude;
+                      nav.pendingMapLat.value = boardPost.latitude;
+                      nav.selectedIndex.value = 0;
+                      Get.back();
+                    }
+                  : null,
             ),
             if (boardPost.fileInfoList.isNotEmpty)
               DetailImages(

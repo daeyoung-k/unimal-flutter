@@ -5,8 +5,8 @@ import 'dart:typed_data';
 
 class ImageService {
 
-  Future<ImageStream> getImageStream() async {
-    final NetworkImage assetImage = NetworkImage("https://i.pravatar.cc/300");
+  Future<ImageStream> getImageStream(String url) async {
+    final NetworkImage assetImage = NetworkImage(url);
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
     return stream;
   }
@@ -14,9 +14,14 @@ class ImageService {
   Future<Uint8List> createMarkerImage(ImageStream stream) async {
     final Completer<ui.Image> completer = Completer<ui.Image>();
 
-    stream.addListener(ImageStreamListener((ImageInfo info, bool _) {
-      completer.complete(info.image);
-    }));
+    stream.addListener(ImageStreamListener(
+      (ImageInfo info, bool _) {
+        if (!completer.isCompleted) completer.complete(info.image);
+      },
+      onError: (exception, stackTrace) {
+        if (!completer.isCompleted) completer.completeError(exception, stackTrace);
+      },
+    ));
 
     final loadedImage = await completer.future;
 

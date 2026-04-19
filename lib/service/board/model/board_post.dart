@@ -9,6 +9,8 @@ class BoardPost {
   final String title;
   final String content;
   final String streetName;
+  final double? latitude;
+  final double? longitude;
   final String show;
   final String mapShow;
   final List<FileInfo> fileInfoList;
@@ -16,8 +18,8 @@ class BoardPost {
   final int replyCount;
   final String createdAt;
   final List<ReplyInfo> reply;
-  final bool isLike;  
-  final bool isOwner;  
+  final bool isLike;
+  final bool isOwner;
 
   BoardPost({
     required this.boardId,
@@ -27,6 +29,8 @@ class BoardPost {
     required this.title,
     required this.content,
     required this.streetName,
+    this.latitude,
+    this.longitude,
     required this.show,
     required this.mapShow,
     required this.fileInfoList,
@@ -48,6 +52,8 @@ class BoardPost {
       title: json['title'] as String? ?? '',
       content: json['content'] as String? ?? '',
       streetName: json['streetName'] as String? ?? '',
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       show: json['show'] as String? ?? '',
       mapShow: json['mapShow'] as String? ?? '',
       // fileInfoList는 FileInfo 객체 리스트로 파싱
@@ -82,6 +88,8 @@ class BoardPost {
       'title': title,
       'content': content,
       'streetName': streetName,
+      'latitude': latitude,
+      'longitude': longitude,
       'show': show,
       'mapShow': mapShow,
       'fileInfoList': fileInfoList.map((e) => e.toJson()).toList(),

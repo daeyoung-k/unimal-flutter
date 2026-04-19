@@ -15,7 +15,7 @@ class GoogleLoginService {
   Future<void> login() async {
     final customAlert = CustomAlert(); 
     try {
-      var response = await _googleSignIn.signIn();
+      var response = await googleSignIn.signIn();
       if (response == null) return; // 사용자가 취소
       var body = jsonEncode({
               "provider": "GOOGLE",
@@ -35,7 +35,7 @@ class GoogleLoginService {
         var accessToken = res.headers['x-unimal-access-token'].toString();
         var refreshToken = res.headers['x-unimal-refresh-token'].toString();
         var email = res.headers['x-unimal-email'].toString();
-        accountService.login(accessToken, refreshToken, email, LoginType.google);
+        await accountService.login(accessToken, refreshToken, email, LoginType.google);
 
         Get.offAllNamed("/map");
       } else if (bodyData['code'] == 1009) {
@@ -61,6 +61,6 @@ const List<String> scopes = <String>[
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
-GoogleSignIn _googleSignIn = GoogleSignIn(
+final googleSignIn = GoogleSignIn(
   scopes: scopes,
 );

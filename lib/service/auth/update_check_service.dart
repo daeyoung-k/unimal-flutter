@@ -76,8 +76,8 @@ class UpdateCheckService {
   Future<UpdateInfo?> checkLatestVersion() async {
     // 임시: 테스트용 고정 값 (실제 서버 API 연동 시 아래 주석 해제)
     return UpdateInfo.fromJson({
-      'version': '1.0.1',
-      'buildNumber': 2,
+      'version': '1.0.0',
+      'buildNumber': 1,
       'isForceUpdate': false,
       'updateMessage': '새로운 버전이 출시되었습니다.',
       'releaseNotes': '버그 수정 및 성능 개선',
@@ -203,7 +203,7 @@ class UpdateCheckService {
       if (Platform.isAndroid) {
         // Google Play Store URL
         // TODO: 실제 패키지 이름으로 변경 필요
-        url = 'https://play.google.com/store/apps/details?id=com.unimal.android';
+        url = 'https://play.google.com/store/apps/details?id=com.unimal.android.stomap';
       } else if (Platform.isIOS) {
         // App Store URL
         // TODO: 실제 앱 ID로 변경 필요
