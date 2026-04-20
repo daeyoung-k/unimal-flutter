@@ -15,6 +15,7 @@ class SettingScreen extends StatefulWidget {
 
 class _SettingScreenState extends State<SettingScreen> {
   String _version = '';
+  bool _isCenterExpanded = false;
 
   @override
   void initState() {
@@ -87,19 +88,71 @@ class _SettingScreenState extends State<SettingScreen> {
             onTap: () => Get.to(() => const TermsOfServiceScreen()),
           ),
           _buildDivider(),
-          _buildItem(
+          _buildExpandableItem(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandableItem() {
+    return Column(
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+          leading: const Icon(Icons.headset_mic_outlined, color: Color(0xFF4D91FF), size: 22),
+          title: const Text(
+            '고객센터',
+            style: TextStyle(fontSize: 15, color: Colors.black87, fontFamily: 'Pretendard'),
+          ),
+          trailing: Icon(
+            _isCenterExpanded ? Icons.expand_less : Icons.expand_more,
+            color: Colors.black26,
+            size: 20,
+          ),
+          onTap: () => setState(() => _isCenterExpanded = !_isCenterExpanded),
+        ),
+        if (_isCenterExpanded) ...[
+          _buildSubItem(
+            icon: Icons.support_agent_outlined,
+            title: '고객 지원',
+            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/support', 'title': '고객 지원'}),
+          ),
+          _buildSubItem(
             icon: Icons.lock_outline,
             title: '개인정보 처리방침',
             onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/privacy', 'title': '개인정보 처리방침'}),
           ),
-          _buildDivider(),
-          _buildItem(
+          _buildSubItem(
             icon: Icons.manage_accounts_outlined,
             title: '계정 삭제 관리',
             onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/delete-account', 'title': '계정 삭제 관리'}),
+            showDivider: false,
           ),
         ],
-      ),
+      ],
+    );
+  }
+
+  Widget _buildSubItem({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+    bool showDivider = true,
+  }) {
+    return Column(
+      children: [
+        Divider(height: 1, indent: 56, endIndent: 20, color: Colors.grey[200]),
+        ListTile(
+          contentPadding: const EdgeInsets.only(left: 40, right: 20, top: 2, bottom: 2),
+          leading: Icon(icon, color: const Color(0xFF4D91FF), size: 20),
+          title: Text(
+            title,
+            style: const TextStyle(fontSize: 14, color: Colors.black54, fontFamily: 'Pretendard'),
+          ),
+          trailing: const Icon(Icons.chevron_right, color: Colors.black26, size: 18),
+          onTap: onTap,
+        ),
+      ],
     );
   }
 
