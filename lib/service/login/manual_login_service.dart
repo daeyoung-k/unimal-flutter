@@ -34,6 +34,8 @@ class ManualLoginService {
           await accountService.login(accessToken, refreshToken, email, LoginType.manual);
 
         Get.offAllNamed("/map");
+      } else if (bodyData['code'] == 1001) {
+        customAlert.showTextAlert("재가입 안내", "탈퇴한 계정입니다.\n재가입 문의는 support@unimal.co.kr 으로 연락해 주세요.");
       } else {
         logger.e("이메일 로그인 실패.. code: ${bodyData['code']} message: ${bodyData['message']}");
         customAlert.showTextAlert("로그인 오류", "이메일 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
