@@ -61,7 +61,6 @@ class PushNotificationService {
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _deviceInfoService.getFCMToken();
       _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        _logger.i('FCM 토큰이 갱신되었습니다: $newToken');
         _deviceInfoService.setFCMToken(newToken);
       });
 

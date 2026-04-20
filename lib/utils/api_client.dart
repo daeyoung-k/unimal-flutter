@@ -1,5 +1,6 @@
+import 'dart:async';
+
 import 'package:http/http.dart' as http;
-import 'package:logger/logger.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/custom_alert.dart';
@@ -8,24 +9,38 @@ import 'package:unimal/utils/custom_alert.dart';
 /// 401 응답 시 자동으로 토큰을 재발급하고 동일 요청을 1회 재시도한다.
 /// 재발급도 실패하면 경고창을 띄우고 /login 으로 이동시킨다.
 class ApiClient {
-  static final _logger = Logger();
   static final _secureStorage = SecureStorage();
   static final _customAlert = CustomAlert();
+
+  // 동시에 여러 401이 와도 재발급은 1회만 실행 — 나머지는 완료를 기다린 뒤 같은 토큰 사용
+  static Completer<String?>? _refreshCompleter;
 
   // ── 토큰 재발급 ─────────────────────────────────────────────────────
   /// 재발급 성공 → 새 accessToken 반환
   /// 재발급 실패 → 경고창 + /login 이동 후 null 반환
   static Future<String?> _refresh() async {
-    final success = await AccountService().tokenReIssue();
-    if (!success) {
-      _customAlert.pageMovingWithshowTextAlert(
-        '인증 만료',
-        '로그인이 만료되었습니다.\n다시 로그인해주세요.',
-        '/login',
-      );
-      return null;
+    if (_refreshCompleter != null) {
+      return _refreshCompleter!.future;
     }
-    return await _secureStorage.getAccessToken();
+
+    _refreshCompleter = Completer<String?>();
+    try {
+      final success = await AccountService().tokenReIssue();
+      if (!success) {
+        _customAlert.pageMovingWithshowTextAlert(
+          '인증 만료',
+          '로그인이 만료되었습니다.\n다시 로그인해주세요.',
+          '/login',
+        );
+        _refreshCompleter!.complete(null);
+        return null;
+      }
+      final newToken = await _secureStorage.getAccessToken();
+      _refreshCompleter!.complete(newToken);
+      return newToken;
+    } finally {
+      _refreshCompleter = null;
+    }
   }
 
   // ── GET ─────────────────────────────────────────────────────────────

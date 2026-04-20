@@ -52,7 +52,6 @@ class NaverSearchService {
         'X-Naver-Client-Id': dotenv.env['NAVER_LOGIN_CLIENT_ID']!,
         'X-Naver-Client-Secret': dotenv.env['NAVER_LOGIN_CLIENT_SECRET']!,
       });
-      _logger.d('[장소검색] status: ${res.statusCode}, body: ${utf8.decode(res.bodyBytes)}');
       if (res.statusCode != 200) return [];
 
       final items = jsonDecode(utf8.decode(res.bodyBytes))['items'] as List? ?? [];
@@ -83,7 +82,6 @@ class NaverSearchService {
         'X-NCP-APIGW-API-KEY-ID': dotenv.env['NAVER_GEOCODING_CLIENT_ID']!,
         'X-NCP-APIGW-API-KEY': dotenv.env['NAVER_GEOCODING_CLIENT_SECRET']!,
       });
-      _logger.d('[주소검색] status: ${res.statusCode}, body: ${utf8.decode(res.bodyBytes)}');
       if (res.statusCode != 200) return [];
 
       final data = jsonDecode(utf8.decode(res.bodyBytes));
@@ -100,7 +98,6 @@ class NaverSearchService {
         );
       }).toList();
     } catch (e) {
-      _logger.e('[주소검색] 오류: $e');
       return [];
     }
   }
