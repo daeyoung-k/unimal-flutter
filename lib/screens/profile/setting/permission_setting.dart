@@ -116,7 +116,6 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
     final Map<Permission, PermissionStatus> result = {};
     for (final item in _items) {
       final status = await item.permission.status;
-      debugPrint('[PermissionSetting] ${item.title} 상태: $status');
       result[item.permission] = status;
     }
 
@@ -124,13 +123,10 @@ class _PermissionSettingScreenState extends State<PermissionSettingScreen> with 
     final locPerm = await Geolocator.checkPermission();
     final locGranted = locPerm == LocationPermission.whileInUse ||
         locPerm == LocationPermission.always;
-    debugPrint('[PermissionSetting] 위치 권한 상태: $locPerm');
-
     // 알림 권한은 FirebaseMessaging으로 체크
     final notifSettings = await FirebaseMessaging.instance.getNotificationSettings();
     final notifGranted = notifSettings.authorizationStatus == AuthorizationStatus.authorized ||
         notifSettings.authorizationStatus == AuthorizationStatus.provisional;
-    debugPrint('[PermissionSetting] 알림 권한 상태: ${notifSettings.authorizationStatus}');
 
     if (mounted) {
       setState(() {

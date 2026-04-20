@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
-import 'package:unimal/screens/profile/setting/privacy_policy.dart';
+
 import 'package:unimal/screens/profile/setting/terms_of_service.dart';
 
 class SettingScreen extends StatefulWidget {
@@ -90,7 +90,13 @@ class _SettingScreenState extends State<SettingScreen> {
           _buildItem(
             icon: Icons.lock_outline,
             title: '개인정보 처리방침',
-            onTap: () => Get.to(() => const PrivacyPolicyScreen()),
+            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/privacy', 'title': '개인정보 처리방침'}),
+          ),
+          _buildDivider(),
+          _buildItem(
+            icon: Icons.manage_accounts_outlined,
+            title: '계정 삭제 관리',
+            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/delete-account', 'title': '계정 삭제 관리'}),
           ),
         ],
       ),
