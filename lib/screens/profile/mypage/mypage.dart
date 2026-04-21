@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
@@ -27,7 +26,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
   UserInfoModel? _userInfo;
   bool _isLoading = true;
   bool _isSaving = false;
-  bool _isReissuing = false;
 
   // 편집용 컨트롤러
   late TextEditingController _nameController;
@@ -61,67 +59,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
         _gender = info?.gender ?? '';
         _isLoading = false;
       });
-    }
-  }
-
-  void _showTokenDialog(String title, String token) {
-    Get.dialog(
-      AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, fontFamily: 'Pretendard')),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: SelectableText(
-                token.isEmpty ? '(없음)' : token,
-                style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.black87),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: token));
-              Get.back();
-              Get.snackbar('복사됨', '$title 복사되었습니다',
-                  snackPosition: SnackPosition.BOTTOM,
-                  backgroundColor: Colors.green[50],
-                  colorText: Colors.green[800]);
-            },
-            child: const Text('복사', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFF4D91FF))),
-          ),
-          TextButton(
-            onPressed: () => Get.back(),
-            child: const Text('닫기', style: TextStyle(fontFamily: 'Pretendard', color: Colors.grey)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _reissueToken() async {
-    setState(() => _isReissuing = true);
-    final success = await _accountService.tokenReIssue();
-    setState(() => _isReissuing = false);
-    if (success) {
-      Get.snackbar('성공', '토큰 재발급 완료',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green[50],
-          colorText: Colors.green[800]);
-    } else {
-      Get.snackbar('실패', '토큰 재발급 실패',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red[50],
-          colorText: Colors.red);
     }
   }
 
@@ -422,74 +359,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
           valueColor: _gender.isNotEmpty ? Colors.black87 : Colors.black38,
           onTap: _showGenderSheet,
         ),
-        // ── [DEV] 임시 토큰 디버그 섹션 ──────────────────
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.orange[50],
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.orange[200]!),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '[DEV] 토큰 디버그',
-                style: TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w700, color: Colors.orange, fontFamily: 'Pretendard'),
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: _buildDevButton(
-                      label: 'Access Token',
-                      color: const Color(0xFF4D91FF),
-                      onTap: () => _showTokenDialog('Access Token', _authState.accessToken.value),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _buildDevButton(
-                      label: 'Refresh Token',
-                      color: const Color(0xFF3578E5),
-                      onTap: () => _showTokenDialog('Refresh Token', _authState.refreshToken.value),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _buildDevButton(
-                label: _isReissuing ? '재발급 중...' : '토큰 재발급',
-                color: Colors.green[700]!,
-                onTap: _isReissuing ? null : _reissueToken,
-              ),
-            ],
-          ),
-        ),
-        // ─────────────────────────────────────────────────
       ],
-    );
-  }
-
-  Widget _buildDevButton({required String label, required Color color, VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: onTap == null ? Colors.grey[300] : color,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(
-          child: Text(
-            label,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white, fontFamily: 'Pretendard'),
-          ),
-        ),
-      ),
     );
   }
 
