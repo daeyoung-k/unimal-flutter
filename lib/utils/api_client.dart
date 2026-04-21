@@ -23,7 +23,8 @@ class ApiClient {
       return _refreshCompleter!.future;
     }
 
-    _refreshCompleter = Completer<String?>();
+    final completer = Completer<String?>();
+    _refreshCompleter = completer;
     try {
       final success = await AccountService().tokenReIssue();
       if (!success) {
@@ -32,12 +33,16 @@ class ApiClient {
           '로그인이 만료되었습니다.\n다시 로그인해주세요.',
           '/login',
         );
-        _refreshCompleter!.complete(null);
+        completer.complete(null);
         return null;
       }
       final newToken = await _secureStorage.getAccessToken();
-      _refreshCompleter!.complete(newToken);
+      completer.complete(newToken);
       return newToken;
+    } catch (e) {
+      // 예외 발생 시 대기 중인 모든 요청이 null을 받고 unblock 되도록 보장
+      if (!completer.isCompleted) completer.complete(null);
+      return null;
     } finally {
       _refreshCompleter = null;
     }

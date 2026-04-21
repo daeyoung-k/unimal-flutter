@@ -50,8 +50,8 @@ android {
         versionName = flutter.versionName
 
         // 추가 변수
-        manifestPlaceholders["googleMapsApiKey"] = keystoreProperties['google.maps.apiKey'] ?: localProperties.getProperty('google.maps.apiKey')
-        manifestPlaceholders["kakaoLoginAppKey"] = keystoreProperties['kakao.login.appKey'] ?: localProperties.getProperty('kakao.login.appKey')
+        manifestPlaceholders["googleMapsApiKey"] = localProperties.getProperty('google.maps.apiKey')
+        manifestPlaceholders["kakaoLoginAppKey"] = localProperties.getProperty('kakao.login.appKey')
     }
 
     signingConfigs {
@@ -66,6 +66,8 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }

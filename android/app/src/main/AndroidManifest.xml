@@ -71,5 +71,12 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- 네이버 앱 로그인 -->
+        <package android:name="com.nhn.android.search" />
+        <!-- 이메일 앱 -->
+        <intent>
+            <action android:name="android.intent.action.SENDTO"/>
+            <data android:scheme="mailto"/>
+        </intent>
     </queries>
 </manifest>

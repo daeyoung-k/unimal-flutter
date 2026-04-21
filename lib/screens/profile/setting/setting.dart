@@ -105,7 +105,7 @@ class _SettingScreenState extends State<SettingScreen> {
             style: TextStyle(fontSize: 15, color: Colors.black87, fontFamily: 'Pretendard'),
           ),
           trailing: Icon(
-            _isCenterExpanded ? Icons.expand_less : Icons.expand_more,
+            _isCenterExpanded ? Icons.expand_more : Icons.chevron_right,
             color: Colors.black26,
             size: 20,
           ),
