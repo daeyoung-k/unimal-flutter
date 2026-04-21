@@ -52,7 +52,7 @@ class GoogleLoginService {
       
     } catch (error) {
       logger.e("구글 로그인 오류 - ${error.toString()}");
-      customAlert.showTextAlert("로그인 오류", "구글 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");      
+      customAlert.showTextAlert("로그인 오류", "구글 로그인 오류 입니다.\n잠시후에 다시 시도 해주세요.");
     }
   }
 }

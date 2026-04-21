@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -63,6 +64,12 @@ class PushNotificationService with WidgetsBindingObserver {
 
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _deviceInfoService.getFCMToken();
+      // 이미 로그인된 상태라면 앱 시작 시마다 현재 토큰을 서버에 동기화
+      // (TestFlight/재설치 등으로 토큰이 바뀌어도 onTokenRefresh가 미발생할 수 있음)
+      final authState = Get.find<AuthState>();
+      if (authState.accessToken.value.isNotEmpty) {
+        await _syncTokenToServer();
+      }
       _firebaseMessaging.onTokenRefresh.listen((newToken) async {
         await _deviceInfoService.setFCMToken(newToken);
         await _syncTokenToServer();
@@ -161,8 +168,8 @@ class PushNotificationService with WidgetsBindingObserver {
     _logger.d('알림 제목: ${message.notification?.title}');
     _logger.d('알림 본문: ${message.notification?.body}');
 
-    // 로컬 알림으로 표시
-    if (message.notification != null) {
+    // iOS는 setForegroundNotificationPresentationOptions가 자동으로 표시하므로 로컬 알림 중복 방지
+    if (message.notification != null && !Platform.isIOS) {
       await _showLocalNotification(message);
     }
   }

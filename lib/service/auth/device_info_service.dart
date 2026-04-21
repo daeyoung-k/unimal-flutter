@@ -77,8 +77,11 @@ class DeviceInfoService {
         }
       }
       final token = await _firebaseMessaging.getToken();
+      if (token == null) {
+        return null;
+      }
       _logger.i('FCM 토큰 획득 성공');
-      _authState.setFCMToken(token!);
+      _authState.setFCMToken(token);
       return token;
     } catch (e, stackTrace) {
       _logger.e('FCM 토큰 획득 실패', error: e, stackTrace: stackTrace);
