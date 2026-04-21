@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
-
+import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/screens/profile/setting/terms_of_service.dart';
 
 class SettingScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class SettingScreen extends StatefulWidget {
 class _SettingScreenState extends State<SettingScreen> {
   String _version = '';
   bool _isCenterExpanded = false;
+  int _versionTapCount = 0;
 
   @override
   void initState() {
@@ -28,6 +30,41 @@ class _SettingScreenState extends State<SettingScreen> {
     setState(() {
       _version = 'v${info.version}';
     });
+  }
+
+  void _onVersionTap() {
+    _versionTapCount++;
+    if (_versionTapCount >= 5) {
+      _versionTapCount = 0;
+      final token = Get.find<AuthState>().fcmToken.value;
+      final display = token.isEmpty ? '(토큰 없음)' : token;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('FCM 토큰', style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
+          content: SelectableText(
+            display,
+            style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: display));
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('클립보드에 복사됐습니다')),
+                );
+              },
+              child: const Text('복사'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('닫기'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   @override
@@ -77,7 +114,7 @@ class _SettingScreenState extends State<SettingScreen> {
                 fontFamily: 'Pretendard',
               ),
             ),
-            onTap: () {},
+            onTap: _onVersionTap,
           ),
           const SizedBox(height: 8),
           _buildSectionDivider(),
@@ -86,6 +123,12 @@ class _SettingScreenState extends State<SettingScreen> {
             icon: Icons.description_outlined,
             title: '이용약관',
             onTap: () => Get.to(() => const TermsOfServiceScreen()),
+          ),
+          _buildDivider(),
+          _buildItem(
+            icon: Icons.lock_outline,
+            title: '개인정보 처리방침',
+            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/privacy', 'title': '개인정보 처리방침'}),
           ),
           _buildDivider(),
           _buildExpandableItem(),
@@ -116,11 +159,6 @@ class _SettingScreenState extends State<SettingScreen> {
             icon: Icons.support_agent_outlined,
             title: '고객 지원',
             onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/support', 'title': '고객 지원'}),
-          ),
-          _buildSubItem(
-            icon: Icons.lock_outline,
-            title: '개인정보 처리방침',
-            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/privacy', 'title': '개인정보 처리방침'}),
           ),
           _buildSubItem(
             icon: Icons.manage_accounts_outlined,

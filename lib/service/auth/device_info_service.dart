@@ -173,9 +173,9 @@ class DeviceInfoService {
   /// - Map<String, dynamic>: 간단한 디바이스 정보
   Future<Map<String, dynamic>> getSimpleDeviceInfo() async {
     try {
-      final Map<String, dynamic> info = {
-        'fcmToken': await getFCMToken(),
-      };
+      final token = await getFCMToken();
+      final Map<String, dynamic> info = {};
+      if (token != null) info['fcmToken'] = token;
 
       if (Platform.isAndroid) {
         final AndroidDeviceInfo androidInfo = await _deviceInfo.androidInfo;

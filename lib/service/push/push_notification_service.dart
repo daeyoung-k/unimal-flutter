@@ -280,25 +280,30 @@ class PushNotificationService with WidgetsBindingObserver {
   Future<void> _retryFCMTokenIfNeeded() async {
     try {
       final authState = Get.find<AuthState>();
-      if (authState.fcmToken.value.isNotEmpty) return;
+      if (authState.accessToken.value.isEmpty) return;
 
       final settings = await _firebaseMessaging.getNotificationSettings();
       final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
           settings.authorizationStatus == AuthorizationStatus.provisional;
       if (!granted) return;
 
-      final token = await _deviceInfoService.getFCMToken();
-      if (token != null) {
-        await _syncTokenToServer();
-      }
+      await _deviceInfoService.getFCMToken();
+      await _syncTokenToServer();
     } catch (_) {}
   }
 
   Future<void> _syncTokenToServer() async {
     try {
       final deviceInfo = await _deviceInfoService.getSimpleDeviceInfo();
+      if (deviceInfo.isEmpty || !deviceInfo.containsKey('fcmToken')) {
+        _logger.w('FCM 토큰 없음 - 서버 동기화 건너뜀');
+        return;
+      }
       await UserInfoService().updateDeviceInfo(deviceInfo);
-    } catch (_) {}
+      _logger.i('FCM 토큰 서버 동기화 완료');
+    } catch (e, stackTrace) {
+      _logger.e('FCM 토큰 서버 동기화 실패', error: e, stackTrace: stackTrace);
+    }
   }
 
   /// 리소스 정리
