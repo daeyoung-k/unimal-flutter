@@ -34,7 +34,7 @@ class MapBottomCard extends StatefulWidget {
   State<MapBottomCard> createState() => _MapBottomCardState();
 }
 
-class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProviderStateMixin {
+class _MapBottomCardState extends State<MapBottomCard> {
   static const double _peekRatio = 0.30;
   static const double _fullRatio = 0.55;
   static const double _peekDragThreshold = 60;
@@ -95,13 +95,13 @@ class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProvider
       if (result == true) {
         widget.onCameraMove(NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude));
       }
-      setState(() {});
+      setState(() {}); // _nav mutated synchronously above; rebuild for new currentPost/currentImageIndex
     } else if (isDownSwipe) {
       final result = _nav.prev();
       if (result == true) {
         widget.onCameraMove(NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude));
       }
-      setState(() {});
+      setState(() {}); // _nav mutated synchronously above; rebuild for new currentPost/currentImageIndex
     }
   }
 
@@ -115,7 +115,8 @@ class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
+    final size = MediaQuery.sizeOf(context);
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final height = (_state == _SheetState.peek ? _peekRatio : _fullRatio) * size.height;
     final post = _nav.currentPost;
 
@@ -134,6 +135,7 @@ class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProvider
         behavior: HitTestBehavior.opaque,
         onVerticalDragUpdate: _onVerticalDragUpdate,
         onVerticalDragEnd: _onVerticalDragEnd,
+        onVerticalDragCancel: () => _accumulatedDrag = 0,
         onTap: _handleCardTap,
         child: Column(
           children: [
@@ -164,7 +166,10 @@ class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProvider
                       initialIndex: _nav.currentImageIndex,
                       onIndexChanged: (i) => _nav.updateImageIndex(i),
                     ),
-                    PostInfoSection(post: post),
+                    PostInfoSection(
+                      post: post,
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, 20 + safeBottom),
+                    ),
                   ],
                 ),
               ),
