@@ -59,7 +59,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
   static const _hSwipeMinVelocity = 300.0;
   static const _handleDragThreshold = 60.0;
   static const _handleVelocityThreshold = 300.0;
-  static const _stripHeight = 50.0;
+  static const _stripHeight = 250.0;
   static const _stripCardGap = 8.0;
 
   late PostGroupNavigator _nav;
@@ -100,7 +100,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
     final maxCardH = screenHeight - widget.minTopMargin - _stripHeight - _stripCardGap;
     final ratio = _cardState == _CardState.default_
         ? (_isImagePost ? _defaultImageRatio : _defaultTextRatio)
-        : 1.0; // expanded fills available space
+        : 1.0;
     return (screenHeight * ratio).clamp(0.0, maxCardH);
   }
 

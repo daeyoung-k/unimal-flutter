@@ -572,7 +572,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           // 공유하기 버튼
           Positioned(
             right: 16,
-            bottom: _isAnyCardOpen ? MediaQuery.sizeOf(context).height * 0.63 + 56 : 40 + 56,
+            bottom: 40 + 56,
             child: GestureDetector(
               onTap: () => Get.find<NavController>().selectedIndex.value = 1,
               child: Container(
@@ -596,7 +596,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           // 내 위치 버튼
           Positioned(
             right: 16,
-            bottom: _isAnyCardOpen ? MediaQuery.sizeOf(context).height * 0.63 : 40,
+            bottom: 40,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
