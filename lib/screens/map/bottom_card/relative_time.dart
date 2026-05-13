@@ -5,8 +5,11 @@
 /// - `< 1분` → "방금 전"
 /// - `< 60분` → "N분 전"
 /// - `< 24시간` → "N시간 전"
-/// - `< 7일` → "N일 전"
+/// - `< 7일` → "N일 전" (Duration.inDays 기준 — 총 시간(hour) 단위, 달력 자정 경계가 아님)
 /// - 그 외 → "YYYY-MM-DD"
+///
+/// Assumes [when] is in the past relative to [reference].
+/// Future timestamps (clock skew) are not defined behaviour.
 String relativeTime(DateTime when, {DateTime? reference}) {
   final now = reference ?? DateTime.now();
   final diff = now.difference(when);
