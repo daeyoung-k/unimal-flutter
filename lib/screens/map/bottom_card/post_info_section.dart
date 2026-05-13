@@ -11,11 +11,13 @@ import 'package:unimal/service/map/models/map_post.dart';
 class PostInfoSection extends StatelessWidget {
   final MapPost post;
   final EdgeInsets padding;
+  final bool showDetailButton;
 
   const PostInfoSection({
     super.key,
     required this.post,
     this.padding = const EdgeInsets.fromLTRB(20, 16, 20, 20),
+    this.showDetailButton = true,
   });
 
   @override
@@ -118,35 +120,37 @@ class PostInfoSection extends StatelessWidget {
             ],
           ),
           // 자세히 보기 — 전체 너비 큰 파란 버튼
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton(
-              onPressed: () => Get.toNamed('/detail-board', parameters: {'id': post.id}),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF4D91FF),
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '자세히 보기',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w700,
+          if (showDetailButton) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: () => Get.toNamed('/detail-board', parameters: {'id': post.id}),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF4D91FF),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '자세히 보기',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(Icons.arrow_forward_ios_rounded, size: 14),
-                ],
+                    SizedBox(width: 4),
+                    Icon(Icons.arrow_forward_ios_rounded, size: 14),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
