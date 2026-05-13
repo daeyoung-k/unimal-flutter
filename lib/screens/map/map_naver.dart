@@ -233,16 +233,14 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _mapMarkerIds.add(topPost.id);
     }
 
-    _postGroups = visibleGroups;
-
-    // Fix 2: 새 로드 후 stale index가 범위 밖이면 카드 자동 닫힘 (RangeError 방지)
-    if (_selectedGroupIndex != null && _selectedGroupIndex! >= _postGroups.length) {
-      if (mounted) {
-        setState(() {
-          _selectedGroupIndex = null;
-        });
+    if (!mounted) return;
+    setState(() {
+      _postGroups = visibleGroups;
+      // stale index가 범위 밖이면 카드 자동 닫힘 (RangeError 방지)
+      if (_selectedGroupIndex != null && _selectedGroupIndex! >= _postGroups.length) {
+        _selectedGroupIndex = null;
       }
-    }
+    });
   }
 
   Future<void> _onSearch(String query) async {

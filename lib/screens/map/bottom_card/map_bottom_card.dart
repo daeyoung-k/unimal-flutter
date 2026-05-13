@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/screens/map/bottom_card/post_group_navigator.dart';
 import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
@@ -94,12 +95,16 @@ class _MapBottomCardState extends State<MapBottomCard> {
       final result = _nav.next();
       if (result == true) {
         widget.onCameraMove(NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude));
+      } else if (result == null) {
+        HapticFeedback.lightImpact(); // 끝 도달 — 약한 bounce 피드백
       }
       setState(() {}); // _nav mutated synchronously above; rebuild for new currentPost/currentImageIndex
     } else if (isDownSwipe) {
       final result = _nav.prev();
       if (result == true) {
         widget.onCameraMove(NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude));
+      } else if (result == null) {
+        HapticFeedback.lightImpact(); // 처음 도달 — 약한 bounce 피드백
       }
       setState(() {}); // _nav mutated synchronously above; rebuild for new currentPost/currentImageIndex
     }

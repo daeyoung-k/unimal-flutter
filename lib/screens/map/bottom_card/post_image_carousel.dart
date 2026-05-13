@@ -66,12 +66,12 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
   @override
   Widget build(BuildContext context) {
     if (widget.images.isEmpty) {
-      return const AspectRatio(aspectRatio: 1, child: _placeholder);
+      return const SizedBox(height: 220, child: _placeholder);
     }
 
     final total = widget.images.length;
-    return AspectRatio(
-      aspectRatio: 1,
+    return SizedBox(
+      height: 220,
       child: Stack(
         children: [
           PageView.builder(
