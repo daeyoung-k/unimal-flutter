@@ -175,9 +175,10 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       final position = NLatLng(topPost.latitude, topPost.longitude);
 
       NOverlayImage? icon;
-      if (topPost.fileUrl.isNotEmpty) {
+      if (topPost.fileInfoList.isNotEmpty) {
         try {
-          final stream = await _imageService.getImageStream(topPost.fileUrl);
+          final firstUrl = topPost.fileInfoList.first.fileUrl;
+          final stream = await _imageService.getImageStream(firstUrl);
           final bytes = await _imageService.createMarkerImage(stream);
           icon = await NOverlayImage.fromByteArray(bytes);
         } catch (_) {
