@@ -136,6 +136,45 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
                 }),
               ),
             ),
+          // 좌우 탭 존 — 탭으로 이미지 전환, 스와이프는 PageView로 통과
+          if (total > 1) ...[
+            // 왼쪽 탭 존
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 44,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  if (_current > 0) {
+                    _controller.previousPage(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                },
+              ),
+            ),
+            // 오른쪽 탭 존
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: 44,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  if (_current < total - 1) {
+                    _controller.nextPage(
+                      duration: const Duration(milliseconds: 200),
+                      curve: Curves.easeInOut,
+                    );
+                  }
+                },
+              ),
+            ),
+          ],
         ],
       ),
     );
