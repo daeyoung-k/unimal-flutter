@@ -37,7 +37,7 @@ class MapThumbnailStrip extends StatelessWidget {
         children: indices.map((i) {
           final isActive = i == currentGroupIndex;
           final isTextPost = groups[i].isEmpty || groups[i].first.fileInfoList.isEmpty;
-          final size = isActive ? 36.0 : 26.0;
+          final size = isActive ? 70.0 : 50.0;
           final opacity = () {
             final dist = (i - currentGroupIndex).abs();
             return dist == 0 ? 1.0 : dist == 1 ? 0.65 : 0.45;

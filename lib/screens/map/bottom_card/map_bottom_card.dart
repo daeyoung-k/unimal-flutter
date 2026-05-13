@@ -59,7 +59,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
   static const _hSwipeMinVelocity = 300.0;
   static const _handleDragThreshold = 60.0;
   static const _handleVelocityThreshold = 300.0;
-  static const _stripHeight = 250.0;
+  static const _stripHeight = 60.0;
   static const _stripCardGap = 8.0;
 
   late PostGroupNavigator _nav;
