@@ -60,7 +60,7 @@ class MapThumbnailStrip extends StatelessWidget {
                         ? const Color(0xFF4D91FF)
                         : isTextPost
                             ? const Color(0xFFFF9F43)
-                            : const Color(0xFF555555),
+                            : const Color(0xFFBBBBBB),
                     width: isActive ? 2.0 : 1.5,
                   ),
                   boxShadow: isActive
@@ -76,7 +76,7 @@ class MapThumbnailStrip extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6.5),
                   child: isTextPost
                       ? Container(
-                          color: const Color(0xFF1E1E2E),
+                          color: const Color(0xFFF5F5F5),
                           child: Center(
                             child: Text(
                               '💬',
@@ -88,10 +88,10 @@ class MapThumbnailStrip extends StatelessWidget {
                           imageUrl: groups[i].first.fileInfoList.first.fileUrl,
                           fit: BoxFit.cover,
                           placeholder: (_, __) => const ColoredBox(
-                            color: Color(0xFF2A2A3E),
+                            color: Color(0xFFF5F5F5),
                           ),
                           errorWidget: (_, __, ___) => const ColoredBox(
-                            color: Color(0xFF2A2A3E),
+                            color: Color(0xFFF5F5F5),
                           ),
                         ),
                 ),

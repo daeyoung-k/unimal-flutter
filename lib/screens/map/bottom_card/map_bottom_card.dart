@@ -220,10 +220,10 @@ class _MapBottomCardState extends State<MapBottomCard> {
           curve: Curves.easeOutCubic,
           height: cardH,
           decoration: const BoxDecoration(
-            color: Color(0xFF1A1A2E),
+            color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
-              BoxShadow(color: Color(0x44000000), blurRadius: 20, offset: Offset(0, -4)),
+              BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4)),
             ],
           ),
           child: GestureDetector(
@@ -246,7 +246,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
                         width: 40,
                         height: 4,
                         decoration: BoxDecoration(
-                          color: const Color(0xFF444455),
+                          color: const Color(0xFFDDDDDD),
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
@@ -306,11 +306,11 @@ class _MapBottomCardState extends State<MapBottomCard> {
               Container(
                 width: 32,
                 height: 32,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF2A2A3E)),
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFF5F5F5)),
                 clipBehavior: Clip.antiAlias,
                 child: post.profileImage != null && post.profileImage!.isNotEmpty
                     ? CachedNetworkImage(imageUrl: post.profileImage!, fit: BoxFit.cover)
-                    : const Icon(Icons.person_outline, size: 18, color: Color(0xFF555555)),
+                    : const Icon(Icons.person_outline, size: 18, color: Color(0xFFBBBBBB)),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -322,7 +322,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
                             fontSize: 13,
                             fontFamily: 'Pretendard',
                             fontWeight: FontWeight.w600,
-                            color: Colors.white)),
+                            color: Color(0xFF374151))),
                     Text(relativeTimeFromString(post.createdAt),
                         style: const TextStyle(fontSize: 11, fontFamily: 'Pretendard', color: Color(0xFF6B7280))),
                   ],
@@ -347,7 +347,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
               style: const TextStyle(
                   fontSize: 14,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFFD1D5DB),
+                  color: Color(0xFF4B5563),
                   height: 1.5),
               overflow: TextOverflow.fade,
             ),

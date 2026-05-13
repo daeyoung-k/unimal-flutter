@@ -63,7 +63,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               children: [
                 _buildPostInfo(),
                 const SizedBox(height: 16),
-                const Divider(color: Color(0xFF2A2A3E), height: 1),
+                const Divider(color: Color(0xFFE5E7EB), height: 1),
                 const SizedBox(height: 12),
                 _buildComments(),
               ],
@@ -92,7 +92,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   fontSize: 17,
                   fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  color: Color(0xFF1A1A2E),
                 ),
               ),
             ),
@@ -134,7 +134,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             style: const TextStyle(
               fontSize: 14,
               fontFamily: 'Pretendard',
-              color: Color(0xFFD1D5DB),
+              color: Color(0xFF4B5563),
               height: 1.5,
             ),
           ),
@@ -189,7 +189,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             style: TextStyle(
               fontSize: 13,
               fontFamily: 'Pretendard',
-              color: Color(0xFF555555),
+              color: Color(0xFF9E9E9E),
             ),
           ),
         ),
@@ -233,7 +233,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                         fontSize: 12,
                         fontFamily: 'Pretendard',
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFFE5E7EB),
+                        color: Color(0xFF374151),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -253,7 +253,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   style: const TextStyle(
                     fontSize: 13,
                     fontFamily: 'Pretendard',
-                    color: Color(0xFFD1D5DB),
+                    color: Color(0xFF4B5563),
                     height: 1.4,
                   ),
                 ),
@@ -270,8 +270,8 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + safeBottom),
       decoration: const BoxDecoration(
-        color: Color(0xFF1A1A2E),
-        border: Border(top: BorderSide(color: Color(0xFF252535))),
+        color: Colors.white,
+        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
       ),
       child: Row(
         children: [
@@ -281,7 +281,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF252535),
+                color: const Color(0xFFF0F0F0),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: TextField(
@@ -289,12 +289,12 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 style: const TextStyle(
                   fontSize: 13,
                   fontFamily: 'Pretendard',
-                  color: Colors.white,
+                  color: Color(0xFF1A1A2E),
                 ),
                 decoration: const InputDecoration.collapsed(
                   hintText: '나도 한 마디...',
                   hintStyle: TextStyle(
-                    color: Color(0xFF555555),
+                    color: Color(0xFF9E9E9E),
                     fontFamily: 'Pretendard',
                   ),
                 ),
@@ -335,12 +335,12 @@ class _Avatar extends StatelessWidget {
       height: size,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFF2A2A3E),
+        color: Color(0xFFF5F5F5),
       ),
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null && imageUrl!.isNotEmpty
           ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
-          : Icon(Icons.person_outline, size: size * 0.6, color: const Color(0xFF555555)),
+          : Icon(Icons.person_outline, size: size * 0.6, color: const Color(0xFFBBBBBB)),
     );
   }
 }

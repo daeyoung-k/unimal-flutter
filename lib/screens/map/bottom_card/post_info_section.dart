@@ -39,7 +39,7 @@ class PostInfoSection extends StatelessWidget {
                     fontSize: 17,
                     fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: Color(0xFF1A1A2E),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -51,7 +51,7 @@ class PostInfoSection extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 12,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFF9E9E9E),
+                  color: Color(0xFF6B7280),
                 ),
               ),
             ],
@@ -61,7 +61,7 @@ class PostInfoSection extends StatelessWidget {
             const SizedBox(height: 6),
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF9E9E9E)),
+                const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF6B7280)),
                 const SizedBox(width: 2),
                 Expanded(
                   child: Text(
@@ -69,7 +69,7 @@ class PostInfoSection extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 12,
                       fontFamily: 'Pretendard',
-                      color: Color(0xFF9E9E9E),
+                      color: Color(0xFF6B7280),
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -87,7 +87,7 @@ class PostInfoSection extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 14,
                 fontFamily: 'Pretendard',
-                color: Color(0xFF9E9E9E),
+                color: Color(0xFF6B7280),
                 height: 1.4,
               ),
             ),
@@ -103,7 +103,7 @@ class PostInfoSection extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 13,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFF9E9E9E),
+                  color: Color(0xFF6B7280),
                 ),
               ),
               const SizedBox(width: 16),
@@ -114,7 +114,7 @@ class PostInfoSection extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 13,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFF9E9E9E),
+                  color: Color(0xFF6B7280),
                 ),
               ),
             ],
