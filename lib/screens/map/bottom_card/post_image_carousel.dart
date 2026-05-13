@@ -35,9 +35,17 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
   @override
   void didUpdateWidget(covariant PostImageCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // 게시글 전환 시 부모가 initialIndex를 0으로 줄 수 있으므로 동기화
-    if (widget.initialIndex != _current && _controller.hasClients) {
-      _current = widget.initialIndex.clamp(0, widget.images.isEmpty ? 0 : widget.images.length - 1);
+    // 게시글 전환(images 리스트 교체) 또는 부모가 새 initialIndex를 요구할 때 동기화.
+    // images만 비교하면 충분 — 새 게시글이면 거의 항상 다른 List 인스턴스.
+    final imagesChanged = oldWidget.images != widget.images;
+    final indexChanged = widget.initialIndex != _current;
+    if (!imagesChanged && !indexChanged) return;
+
+    _current = widget.initialIndex.clamp(
+      0,
+      widget.images.isEmpty ? 0 : widget.images.length - 1,
+    );
+    if (_controller.hasClients) {
       _controller.jumpToPage(_current);
     }
   }
@@ -48,17 +56,17 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
     super.dispose();
   }
 
-  Widget _placeholder() => Container(
-        color: const Color(0xFFF1F3F5),
-        child: const Center(
-          child: Icon(Icons.image_outlined, size: 48, color: Color(0xFFBDBDBD)),
-        ),
-      );
+  static const Widget _placeholder = ColoredBox(
+    color: Color(0xFFF1F3F5),
+    child: Center(
+      child: Icon(Icons.image_outlined, size: 48, color: Color(0xFFBDBDBD)),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     if (widget.images.isEmpty) {
-      return AspectRatio(aspectRatio: 1, child: _placeholder());
+      return const AspectRatio(aspectRatio: 1, child: _placeholder);
     }
 
     final total = widget.images.length;
@@ -78,8 +86,8 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
               return CachedNetworkImage(
                 imageUrl: widget.images[index].fileUrl,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => _placeholder(),
-                errorWidget: (_, __, ___) => _placeholder(),
+                placeholder: (_, __) => _placeholder,
+                errorWidget: (_, __, ___) => _placeholder,
               );
             },
           ),
