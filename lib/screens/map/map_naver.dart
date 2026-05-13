@@ -572,7 +572,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           // 공유하기 버튼
           Positioned(
             right: 16,
-            bottom: _isAnyCardOpen ? 208 + 56 : 40 + 56,
+            bottom: _isAnyCardOpen ? MediaQuery.sizeOf(context).height * 0.63 + 56 : 40 + 56,
             child: GestureDetector(
               onTap: () => Get.find<NavController>().selectedIndex.value = 1,
               child: Container(
@@ -596,7 +596,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           // 내 위치 버튼
           Positioned(
             right: 16,
-            bottom: _isAnyCardOpen ? 208 : 40,
+            bottom: _isAnyCardOpen ? MediaQuery.sizeOf(context).height * 0.63 : 40,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
@@ -635,10 +635,14 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                 key: ValueKey('group_$_selectedGroupIndex'),
                 groups: _postGroups,
                 initialGroupIndex: _selectedGroupIndex!,
+                minTopMargin: MediaQuery.paddingOf(context).top + 100,
                 onCameraMove: (pos) {
                   // 줌 유지하며 위치만 이동, 부드러운 fly 애니메이션
                   final update = NCameraUpdate.scrollAndZoomTo(target: pos)
-                    ..setAnimation(animation: NCameraAnimation.fly, duration: const Duration(milliseconds: 600));
+                    ..setAnimation(
+                      animation: NCameraAnimation.fly,
+                      duration: const Duration(milliseconds: 600),
+                    );
                   _mapController?.updateCamera(update);
                 },
                 onClose: () => setState(() => _selectedGroupIndex = null),
