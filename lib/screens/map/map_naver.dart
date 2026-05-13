@@ -176,11 +176,11 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       g.sort((a, b) => b.score.compareTo(a.score));
       return g;
     }).toList();
-    // 클래스 멤버 _postGroups에 보관 (각 그룹은 좌표 기준, score 내림차순 정렬됨)
-    _postGroups = groupsList;
 
-    for (var idx = 0; idx < _postGroups.length; idx++) {
-      final postsAtLocation = _postGroups[idx];
+    // Fix 1: 마커 생성에 성공한 그룹만 _postGroups에 포함 → 인덱스 일치 보장
+    final List<List<MapPost>> visibleGroups = [];
+
+    for (final postsAtLocation in groupsList) {
       // score 내림차순 정렬 완료 → 맨 위 post가 마커 대표
       final topPost = postsAtLocation.first;
       final position = NLatLng(topPost.latitude, topPost.longitude);
@@ -193,9 +193,13 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           final bytes = await _imageService.createMarkerImage(stream);
           icon = await NOverlayImage.fromByteArray(bytes);
         } catch (_) {
-          continue; // 이미지 로드 실패 시 마커 표시 생략
+          continue; // 이미지 로드 실패 시 마커 표시 생략 (visibleGroups에도 포함 안 함)
         }
       }
+
+      // 마커 생성 직전의 length가 이 마커에 대응하는 인덱스
+      final visibleIdx = visibleGroups.length;
+      visibleGroups.add(postsAtLocation);
 
       final marker = NMarker(
         id: topPost.id,
@@ -220,13 +224,24 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           _selectedSymbol = null;
           _selectedPlace = null;
           _isLoadingPlace = false;
-          _selectedGroupIndex = idx;
+          _selectedGroupIndex = visibleIdx;
         });
       });
 
       if (!mounted) return;
       _mapController!.addOverlay(marker);
       _mapMarkerIds.add(topPost.id);
+    }
+
+    _postGroups = visibleGroups;
+
+    // Fix 2: 새 로드 후 stale index가 범위 밖이면 카드 자동 닫힘 (RangeError 방지)
+    if (_selectedGroupIndex != null && _selectedGroupIndex! >= _postGroups.length) {
+      if (mounted) {
+        setState(() {
+          _selectedGroupIndex = null;
+        });
+      }
     }
   }
 
