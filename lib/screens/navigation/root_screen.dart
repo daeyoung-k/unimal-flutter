@@ -33,15 +33,8 @@ class _RootScreen extends State<RootScreen> {
         try { (mapState as dynamic).refreshMap(); } catch (_) {}
       }
     }
-    // 게시판 탭(인덱스 2)을 이미 선택한 상태에서 다시 터치하면 새로고침
+    // My 탭(인덱스 2)을 이미 선택한 상태에서 다시 터치하면 새로고침
     else if (index == 2 && current == 2) {
-      final boardState = appRoutes.boardScreenKey.currentState;
-      if (boardState != null) {
-        try { (boardState as dynamic).refreshPosts(); } catch (_) {}
-      }
-    }
-    // My 탭(인덱스 3)을 이미 선택한 상태에서 다시 터치하면 새로고침
-    else if (index == 3 && current == 3) {
       final profileState = appRoutes.profileScreenKey.currentState;
       if (profileState != null) {
         try { (profileState as dynamic).refreshProfile(); } catch (_) {}
@@ -64,7 +57,6 @@ class _RootScreen extends State<RootScreen> {
   static const _navItems = [
     {'icon': 'assets/icon/svg/map_icon.svg', 'activeIcon': 'assets/icon/svg/map_bold_icon.svg', 'label': '지도'},
     {'icon': 'assets/icon/svg/additem_icon.svg', 'activeIcon': 'assets/icon/svg/additem_bold_icon.svg', 'label': '공유하기'},
-    {'icon': 'assets/icon/svg/clipboard_icon.svg', 'activeIcon': 'assets/icon/svg/clipboard_bold_icon.svg', 'label': '게시판'},
     {'icon': 'assets/icon/svg/user_icon.svg', 'activeIcon': 'assets/icon/svg/user_bold_icon.svg', 'label': 'My'},
   ];
 

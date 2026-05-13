@@ -17,9 +17,6 @@ import 'package:unimal/screens/profile/profile.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/web/web_view_screen.dart';
 class AppRoutes {
-  // 게시판 화면의 GlobalKey (새로고침을 위해 사용)
-  // State 타입을 명시적으로 지정하기 위해 dynamic 사용
-  final GlobalKey boardScreenKey = GlobalKey();
   final GlobalKey mapScreenKey = GlobalKey();
   final GlobalKey profileScreenKey = GlobalKey();
   final GlobalKey addItemScreenKey = GlobalKey();
@@ -35,11 +32,10 @@ class AppRoutes {
     return [
       GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
       GetPage(name: '/add', page: () => RootScreen(selectedIndex: 1)),
-      GetPage(name: '/board', page: () => RootScreen(selectedIndex: 2)),
-      GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 3)),
+      GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 2)),
     ];
   }
-  
+
   List<GetPage> _authRoutes() {
     return [
       GetPage(name: '/login', page: () => LoginScreens()),
@@ -47,6 +43,7 @@ class AppRoutes {
       GetPage(name: '/id-find', page: () => IdFindScreen()),
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),
       GetPage(name: '/signup', page: () => SignupScreens()),
+      GetPage(name: '/board', page: () => BoardScreens()),
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
       GetPage(name: '/edit-board', page: () => EditBoardScreen()),
       GetPage(name: '/notice-list', page: () => const NoticeListScreen()),
@@ -54,7 +51,7 @@ class AppRoutes {
     ];
   }
 
-  // 하단 네비게이션 바 아이템 (getter로 변경하여 boardScreenKey 사용 가능)
+  // 하단 네비게이션 바 아이템
   List<Map<String, dynamic>> get _bottomNavigationItems => [
     {
       "page": MapNaverScreens(key: mapScreenKey),
@@ -69,13 +66,6 @@ class AppRoutes {
         icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
         activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
         label: '공유하기')
-    },
-    {
-      "page": BoardScreens(key: boardScreenKey),
-      "bottomNavigationIcon": BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/clipboard_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/clipboard_bold_icon.svg'),
-        label: '게시판')
     },
     {
       "page": ProfileScreens(key: profileScreenKey),

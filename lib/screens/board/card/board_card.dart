@@ -176,7 +176,7 @@ class _BoardCardState extends State<BoardCard> {
     final success =
         await _boardApiService.deleteBoard(widget.boardPost.boardId);
     if (success) {
-      Get.offAllNamed('/board');
+      Get.offAllNamed('/map');
     }
   }
 
