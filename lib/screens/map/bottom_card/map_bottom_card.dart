@@ -1,4 +1,5 @@
 // lib/screens/map/bottom_card/map_bottom_card.dart
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -89,6 +90,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
       );
       _cardState = _CardState.default_;
       _loadedDetail = null;
+      _isLoadingDetail = false;
     }
   }
 
@@ -159,12 +161,10 @@ class _MapBottomCardState extends State<MapBottomCard> {
       widget.onCameraMove(
         NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
       );
+      setState(() => _loadedDetail = null);
     } else if (result == null) {
       HapticFeedback.lightImpact();
     }
-    setState(() {
-      _loadedDetail = null;
-    });
   }
 
   void _jumpToGroup(int groupIndex) {
@@ -309,7 +309,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
                 decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFF2A2A3E)),
                 clipBehavior: Clip.antiAlias,
                 child: post.profileImage != null && post.profileImage!.isNotEmpty
-                    ? Image.network(post.profileImage!, fit: BoxFit.cover)
+                    ? CachedNetworkImage(imageUrl: post.profileImage!, fit: BoxFit.cover)
                     : const Icon(Icons.person_outline, size: 18, color: Color(0xFF555555)),
               ),
               const SizedBox(width: 8),
