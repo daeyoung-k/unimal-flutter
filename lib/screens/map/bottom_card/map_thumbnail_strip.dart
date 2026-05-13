@@ -27,6 +27,8 @@ class MapThumbnailStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    assert(currentGroupIndex >= 0 && currentGroupIndex < groups.length,
+        'currentGroupIndex ($currentGroupIndex) out of range [0, ${groups.length})');
     final indices = stripVisibleIndices(groups.length, currentGroupIndex);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -34,7 +36,7 @@ class MapThumbnailStrip extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: indices.map((i) {
           final isActive = i == currentGroupIndex;
-          final isTextPost = groups[i].first.fileInfoList.isEmpty;
+          final isTextPost = groups[i].isEmpty || groups[i].first.fileInfoList.isEmpty;
           final size = isActive ? 36.0 : 26.0;
           final opacity = () {
             final dist = (i - currentGroupIndex).abs();
@@ -43,8 +45,9 @@ class MapThumbnailStrip extends StatelessWidget {
 
           return GestureDetector(
             onTap: () => onTap(i),
-            child: Opacity(
+            child: AnimatedOpacity(
               opacity: opacity,
+              duration: const Duration(milliseconds: 200),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 width: size,
