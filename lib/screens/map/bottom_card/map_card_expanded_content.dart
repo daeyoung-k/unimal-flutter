@@ -337,7 +337,7 @@ class _Avatar extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null && imageUrl!.isNotEmpty
           ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
-          : const Icon(Icons.person_outline, size: 18, color: Color(0xFF555555)),
+          : Icon(Icons.person_outline, size: size * 0.6, color: const Color(0xFF555555)),
     );
   }
 }
