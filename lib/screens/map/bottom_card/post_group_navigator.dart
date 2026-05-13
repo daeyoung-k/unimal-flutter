@@ -17,20 +17,33 @@ class PostGroupNavigator {
   int _imageIndex;
 
   PostGroupNavigator({
-    required this.groups,
+    required List<List<MapPost>> groups,
     int initialGroupIndex = 0,
     int initialPostIndex = 0,
     int currentImageIndex = 0,
-  })  : _groupIndex = initialGroupIndex,
+  })  : groups = List.unmodifiable(groups.map<List<MapPost>>(List<MapPost>.unmodifiable)),
+        _groupIndex = initialGroupIndex,
         _postIndex = initialPostIndex,
         _imageIndex = currentImageIndex {
     assert(groups.isNotEmpty, 'PostGroupNavigator requires non-empty groups');
+    assert(
+      initialGroupIndex >= 0 && initialGroupIndex < groups.length,
+      'initialGroupIndex out of range',
+    );
+    assert(
+      initialPostIndex >= 0 && initialPostIndex < groups[initialGroupIndex].length,
+      'initialPostIndex out of range',
+    );
   }
 
   int get groupIndex => _groupIndex;
   int get postIndex => _postIndex;
   int get currentImageIndex => _imageIndex;
-  set currentImageIndex(int v) => _imageIndex = v;
+
+  /// Update the currently-shown image index (e.g., when carousel scrolls).
+  void updateImageIndex(int v) {
+    _imageIndex = v;
+  }
 
   MapPost get currentPost => groups[_groupIndex][_postIndex];
   List<MapPost> get currentGroup => groups[_groupIndex];
