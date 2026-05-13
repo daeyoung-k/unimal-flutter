@@ -82,6 +82,30 @@ class PostGroupNavigator {
     return null;
   }
 
+  /// 게시글을 건너뛰고 다음 마커 그룹으로 바로 이동.
+  /// 다음 그룹이 있으면 true, 없으면 null (경계).
+  bool? nextGroup() {
+    if (_groupIndex + 1 < groups.length) {
+      _groupIndex++;
+      _postIndex = 0;
+      _imageIndex = 0;
+      return true;
+    }
+    return null;
+  }
+
+  /// 게시글을 건너뛰고 이전 마커 그룹으로 바로 이동.
+  /// 이전 그룹이 있으면 true, 없으면 null (경계).
+  bool? prevGroup() {
+    if (_groupIndex > 0) {
+      _groupIndex--;
+      _postIndex = 0;
+      _imageIndex = 0;
+      return true;
+    }
+    return null;
+  }
+
   /// Jump to a specific group (e.g., when user taps a different marker).
   void jumpToGroup(int groupIndex) {
     assert(groupIndex >= 0 && groupIndex < groups.length);
