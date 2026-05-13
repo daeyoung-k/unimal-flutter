@@ -40,10 +40,13 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     final text = _commentController.text.trim();
     if (text.isEmpty || _isSending) return;
     setState(() => _isSending = true);
-    await BoardApiService().createReply(widget.post.id, text);
-    if (mounted) {
-      _commentController.clear();
-      setState(() => _isSending = false);
+    try {
+      await BoardApiService().createReply(widget.post.id, text);
+      if (mounted) _commentController.clear();
+    } catch (_) {
+      // 네트워크 오류 무시 — spinner는 finally에서 해제
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
