@@ -5,6 +5,9 @@ import 'package:unimal/service/map/models/map_post.dart';
 
 /// Renders title, address, relative time, content, like/reply counts,
 /// and the full-width "자세히 보기" button.
+///
+/// [padding] should include any safe-area bottom inset when the card
+/// is positioned at the bottom of the screen.
 class PostInfoSection extends StatelessWidget {
   final MapPost post;
   final EdgeInsets padding;
@@ -29,7 +32,7 @@ class PostInfoSection extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  post.title,
+                  post.title.isNotEmpty ? post.title : '제목 없음',
                   style: const TextStyle(
                     fontSize: 17,
                     fontFamily: 'Pretendard',
