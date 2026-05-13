@@ -895,7 +895,7 @@ class _MapBottomCardState extends State<MapBottomCard> with SingleTickerProvider
                     PostImageCarousel(
                       images: post.fileInfoList,
                       initialIndex: _nav.currentImageIndex,
-                      onIndexChanged: (i) => _nav.currentImageIndex = i,
+                      onIndexChanged: (i) => _nav.updateImageIndex(i),
                     ),
                     PostInfoSection(post: post),
                   ],
