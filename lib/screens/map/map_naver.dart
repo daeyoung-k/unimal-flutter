@@ -53,6 +53,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   Worker? _pendingLocationWorker;
 
+  final _searchBarKey = GlobalKey();
+  double _searchBarBottom = 0;
+
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   static const _zoomChangeTrigger = 3;
@@ -66,6 +69,17 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       Get.find<NavController>().pendingMapLat,
       (_) => _applyPendingLocation(),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
+  }
+
+  void _measureSearchBar() {
+    final ctx = _searchBarKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final offset = box.localToGlobal(Offset.zero);
+    final bottom = offset.dy + box.size.height;
+    if (bottom != _searchBarBottom) setState(() => _searchBarBottom = bottom);
   }
 
   void _applyPendingLocation() {
@@ -411,6 +425,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
             left: 16,
             right: 16,
             child: Column(
+              key: _searchBarKey,
               children: [
                 Container(
                   decoration: BoxDecoration(
@@ -635,7 +650,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                 key: ValueKey('group_$_selectedGroupIndex'),
                 groups: _postGroups,
                 initialGroupIndex: _selectedGroupIndex!,
-                minTopMargin: MediaQuery.paddingOf(context).top + 100,
+                minTopMargin: _searchBarBottom > 0
+                    ? _searchBarBottom + 8
+                    : MediaQuery.paddingOf(context).top + 80,
                 onCameraMove: (pos) {
                   // 줌 유지하며 위치만 이동, 부드러운 fly 애니메이션
                   final update = NCameraUpdate.scrollAndZoomTo(target: pos)
