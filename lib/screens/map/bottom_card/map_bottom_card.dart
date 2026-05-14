@@ -11,6 +11,7 @@ import 'package:unimal/screens/map/bottom_card/post_info_section.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/board/model/like_info.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 
 /// 카드 상태: 기본(default_) 또는 확장(expanded).
@@ -39,6 +40,10 @@ class MapBottomCard extends StatefulWidget {
   /// map_naver.dart에서 safeAreaTop + 약 100px로 전달.
   final double minTopMargin;
 
+  /// 사용자가 다른 그룹으로 이동했을 때 parent에 알림.
+  /// (스트립 탭, 좌우 마커 스와이프)
+  final ValueChanged<int>? onGroupChanged;
+
   const MapBottomCard({
     super.key,
     required this.groups,
@@ -46,6 +51,7 @@ class MapBottomCard extends StatefulWidget {
     required this.onCameraMove,
     required this.onClose,
     required this.minTopMargin,
+    this.onGroupChanged,
   });
 
   @override
@@ -53,22 +59,28 @@ class MapBottomCard extends StatefulWidget {
 }
 
 class _MapBottomCardState extends State<MapBottomCard> {
-  static const _defaultImageRatio = 0.62;
-  static const _defaultTextRatio = 0.38;
+  static const _defaultImageRatio = 0.50;
+  static const _defaultTextRatio = 0.30;
   static const _hSwipeMinDistance = 60.0;
   static const _hSwipeMinVelocity = 300.0;
   static const _handleDragThreshold = 60.0;
   static const _handleVelocityThreshold = 300.0;
-  static const _stripHeight = 60.0;
+  // 실측: 썸네일 활성 70 + 상하 패딩 6×2 = 82
+  static const _stripHeight = 82.0;
   static const _stripCardGap = 8.0;
 
   late PostGroupNavigator _nav;
   _CardState _cardState = _CardState.default_;
   double _hDragAccum = 0;
   double _handleDragAccum = 0;
+  bool _isHandleDragging = false;
 
   BoardPost? _loadedDetail;
   bool _isLoadingDetail = false;
+
+  // 좋아요 상태 override (post.id → LikeInfo). 사용자가 토글한 결과 보관.
+  final Map<String, LikeInfo> _likeOverrides = {};
+  bool _isLiking = false;
 
   @override
   void initState() {
@@ -96,18 +108,33 @@ class _MapBottomCardState extends State<MapBottomCard> {
 
   bool get _isImagePost => _nav.currentPost.fileInfoList.isNotEmpty;
 
-  double _cardHeight(double screenHeight) {
-    final maxCardH = screenHeight - widget.minTopMargin - _stripHeight - _stripCardGap;
+  double _maxCardHeight(double screenHeight) =>
+      screenHeight - widget.minTopMargin - _stripHeight - _stripCardGap;
+
+  double _baseCardHeight(double screenHeight) {
     final ratio = _cardState == _CardState.default_
         ? (_isImagePost ? _defaultImageRatio : _defaultTextRatio)
         : 1.0;
-    return (screenHeight * ratio).clamp(0.0, maxCardH);
+    return (screenHeight * ratio).clamp(0.0, _maxCardHeight(screenHeight));
+  }
+
+  double _cardHeight(double screenHeight) {
+    final base = _baseCardHeight(screenHeight);
+    if (!_isHandleDragging) return base;
+    return (base - _handleDragAccum).clamp(0.0, _maxCardHeight(screenHeight));
   }
 
   // ── Handle drag (expand / collapse / close) ──────────────────────────
 
+  void _onHandleDragStart(DragStartDetails d) {
+    setState(() {
+      _isHandleDragging = true;
+      _handleDragAccum = 0;
+    });
+  }
+
   void _onHandleDragUpdate(DragUpdateDetails d) {
-    _handleDragAccum += d.delta.dy;
+    setState(() => _handleDragAccum += d.delta.dy);
   }
 
   void _onHandleDragEnd(DragEndDetails d) {
@@ -118,9 +145,15 @@ class _MapBottomCardState extends State<MapBottomCard> {
     if (_cardState == _CardState.default_) {
       if (drag < -_handleDragThreshold || v < -_handleVelocityThreshold) {
         _loadDetail();
-        setState(() => _cardState = _CardState.expanded);
+        setState(() {
+          _cardState = _CardState.expanded;
+          _isHandleDragging = false;
+        });
       } else if (drag > _handleDragThreshold || v > _handleVelocityThreshold) {
+        setState(() => _isHandleDragging = false);
         widget.onClose();
+      } else {
+        setState(() => _isHandleDragging = false);
       }
     } else {
       // expanded → shrink to default
@@ -128,8 +161,48 @@ class _MapBottomCardState extends State<MapBottomCard> {
         setState(() {
           _cardState = _CardState.default_;
           _loadedDetail = null;
+          _isHandleDragging = false;
         });
+      } else {
+        setState(() => _isHandleDragging = false);
       }
+    }
+  }
+
+  void _onHandleDragCancel() {
+    setState(() {
+      _handleDragAccum = 0;
+      _isHandleDragging = false;
+    });
+  }
+
+  /// 카드 확장 (탭/제스처 공용 진입점).
+  void _expandCard() {
+    if (_cardState == _CardState.expanded) return;
+    _loadDetail();
+    setState(() => _cardState = _CardState.expanded);
+  }
+
+  // ── 좋아요 ────────────────────────────────────────────────────────────
+
+  bool get _isCurrentLiked =>
+      _likeOverrides[_nav.currentPost.id]?.isLike ?? _nav.currentPost.isLike;
+
+  int get _currentLikeCount =>
+      _likeOverrides[_nav.currentPost.id]?.likeCount ??
+      _nav.currentPost.likeCount;
+
+  Future<void> _toggleLike() async {
+    if (_isLiking) return;
+    _isLiking = true;
+    final postId = _nav.currentPost.id;
+    try {
+      final result = await BoardApiService().requestLike(postId);
+      if (result != null && mounted) {
+        setState(() => _likeOverrides[postId] = result);
+      }
+    } finally {
+      _isLiking = false;
     }
   }
 
@@ -161,6 +234,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
       widget.onCameraMove(
         NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
       );
+      widget.onGroupChanged?.call(_nav.groupIndex);
       setState(() => _loadedDetail = null);
     } else if (result == null) {
       HapticFeedback.lightImpact();
@@ -173,6 +247,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
     widget.onCameraMove(
       NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
     );
+    widget.onGroupChanged?.call(_nav.groupIndex);
     setState(() {
       _cardState = _CardState.default_;
       _loadedDetail = null;
@@ -181,8 +256,8 @@ class _MapBottomCardState extends State<MapBottomCard> {
 
   // ── Detail lazy loading ───────────────────────────────────────────────
 
-  Future<void> _loadDetail() async {
-    if (_loadedDetail != null) return;
+  Future<void> _loadDetail({bool force = false}) async {
+    if (!force && _loadedDetail != null) return;
     setState(() => _isLoadingDetail = true);
     try {
       final detail = await BoardApiService().getBoardDetail(_nav.currentPost.id);
@@ -203,6 +278,8 @@ class _MapBottomCardState extends State<MapBottomCard> {
   Widget build(BuildContext context) {
     final screenH = MediaQuery.sizeOf(context).height;
     final cardH = _cardHeight(screenH);
+    final base = _baseCardHeight(screenH);
+    final renderH = cardH > base ? cardH : base;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -216,9 +293,12 @@ class _MapBottomCardState extends State<MapBottomCard> {
         const SizedBox(height: _stripCardGap),
         // 카드 본문
         AnimatedContainer(
-          duration: const Duration(milliseconds: 280),
+          duration: _isHandleDragging
+              ? Duration.zero
+              : const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
           height: cardH,
+          clipBehavior: Clip.antiAlias,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -226,40 +306,63 @@ class _MapBottomCardState extends State<MapBottomCard> {
               BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4)),
             ],
           ),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: _onHorizDragUpdate,
-            onHorizontalDragEnd: _onHorizDragEnd,
-            onHorizontalDragCancel: () => _hDragAccum = 0,
-            child: Column(
-              children: [
-                // 핸들 (수직 드래그 전용)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onVerticalDragUpdate: _onHandleDragUpdate,
-                  onVerticalDragEnd: _onHandleDragEnd,
-                  onVerticalDragCancel: () => _handleDragAccum = 0,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    child: Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFDDDDDD),
-                          borderRadius: BorderRadius.circular(2),
+          child: OverflowBox(
+            alignment: Alignment.topCenter,
+            minHeight: 0,
+            maxHeight: renderH,
+            child: SizedBox(
+              height: renderH,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onHorizontalDragUpdate: _onHorizDragUpdate,
+                onHorizontalDragEnd: _onHorizDragEnd,
+                onHorizontalDragCancel: () => _hDragAccum = 0,
+                // 기본 상태에서만 카드 전체로 수직 드래그 받음.
+                // expanded 상태에선 null로 두어 내부 SingleChildScrollView가 스크롤을 가져감.
+                onVerticalDragStart: _cardState == _CardState.default_
+                    ? _onHandleDragStart
+                    : null,
+                onVerticalDragUpdate: _cardState == _CardState.default_
+                    ? _onHandleDragUpdate
+                    : null,
+                onVerticalDragEnd: _cardState == _CardState.default_
+                    ? _onHandleDragEnd
+                    : null,
+                onVerticalDragCancel: _cardState == _CardState.default_
+                    ? _onHandleDragCancel
+                    : null,
+                child: Column(
+                  children: [
+                    // 핸들 (수직 드래그 전용)
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragStart: _onHandleDragStart,
+                      onVerticalDragUpdate: _onHandleDragUpdate,
+                      onVerticalDragEnd: _onHandleDragEnd,
+                      onVerticalDragCancel: _onHandleDragCancel,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDDDDDD),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
+                    // 카드 내용
+                    Expanded(
+                      child: _cardState == _CardState.expanded
+                          ? _buildExpandedContent()
+                          : _buildDefaultContent(),
+                    ),
+                  ],
                 ),
-                // 카드 내용
-                Expanded(
-                  child: _cardState == _CardState.expanded
-                      ? _buildExpandedContent()
-                      : _buildDefaultContent(),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -288,6 +391,10 @@ class _MapBottomCardState extends State<MapBottomCard> {
             post: post,
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             showDetailButton: false,
+            isLiked: _isCurrentLiked,
+            likeCountOverride: _currentLikeCount,
+            onLikeTap: _toggleLike,
+            onReplyTap: _expandCard,
           ),
         ),
       ],
@@ -354,16 +461,39 @@ class _MapBottomCardState extends State<MapBottomCard> {
           ),
           const SizedBox(height: 8),
           Row(
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Icon(Icons.favorite, size: 15, color: Color(0xFFFF6B6B)),
-              const SizedBox(width: 4),
-              Text('${post.likeCount}',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleLike,
+                child: Row(
+                  children: [
+                    Icon(
+                      _isCurrentLiked ? Icons.favorite : Icons.favorite_outline,
+                      size: 15,
+                      color: _isCurrentLiked
+                          ? const Color(0xFFFF6B6B)
+                          : const Color(0xFF9CA3AF),
+                    ),
+                    const SizedBox(width: 4),
+                    Text('$_currentLikeCount',
+                        style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+                  ],
+                ),
+              ),
               const SizedBox(width: 14),
-              const Icon(Icons.chat_bubble_outline, size: 14, color: Color(0xFF4D91FF)),
-              const SizedBox(width: 4),
-              Text('${post.replyCount}',
-                  style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _expandCard,
+                child: Row(
+                  children: [
+                    const Icon(Icons.chat_bubble_outline, size: 14, color: Color(0xFF4D91FF)),
+                    const SizedBox(width: 4),
+                    Text('${post.replyCount}',
+                        style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+                  ],
+                ),
+              ),
             ],
           ),
         ],
@@ -388,6 +518,10 @@ class _MapBottomCardState extends State<MapBottomCard> {
             post: post,
             detail: _loadedDetail,
             isLoading: _isLoadingDetail,
+            isLiked: _isCurrentLiked,
+            likeCountOverride: _currentLikeCount,
+            onLikeTap: _toggleLike,
+            onRefreshDetail: () => _loadDetail(force: true),
           ),
         ),
       ],

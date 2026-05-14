@@ -47,18 +47,17 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   // 주변 스토리 조회 버튼 관련 상태
   bool _mapInitialized = false;
-  bool _showNearbyButton = false;
   NLatLng? _lastQueriedTarget;
   double _lastQueriedZoom = 14;
 
-  Worker? _pendingLocationWorker;
+  // 카메라 이동 자동 조회 — debounce + lock
+  Timer? _cameraDebounce;
+  bool _isLoadingMarkers = false;
 
-  final _searchBarKey = GlobalKey();
-  double _searchBarBottom = 0;
+  Worker? _pendingLocationWorker;
 
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
-  static const _zoomChangeTrigger = 3;
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
@@ -69,17 +68,6 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       Get.find<NavController>().pendingMapLat,
       (_) => _applyPendingLocation(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
-  }
-
-  void _measureSearchBar() {
-    final ctx = _searchBarKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null) return;
-    final offset = box.localToGlobal(Offset.zero);
-    final bottom = offset.dy + box.size.height;
-    if (bottom != _searchBarBottom) setState(() => _searchBarBottom = bottom);
   }
 
   void _applyPendingLocation() {
@@ -101,6 +89,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   void dispose() {
     _pendingLocationWorker?.dispose();
     _debounce?.cancel();
+    _cameraDebounce?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -166,39 +155,70 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
     if (_mapController == null) return;
-
-    // 기존 마커 제거
-    for (final id in _mapMarkerIds) {
-      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: id));
+    if (_isLoadingMarkers) return; // 중복 호출 방지
+    _isLoadingMarkers = true;
+    try {
+      await _loadMapMarkersInternal(latitude, longitude, zoom);
+    } finally {
+      _isLoadingMarkers = false;
     }
-    _mapMarkerIds.clear();
+  }
 
+  Future<void> _loadMapMarkersInternal(
+      double latitude, double longitude, int zoom) async {
+    // 재조회 직전: 사용자가 현재 선택한 마커의 대표 ID 저장
+    String? prevSelectedPostId;
+    if (_selectedGroupIndex != null &&
+        _selectedGroupIndex! >= 0 &&
+        _selectedGroupIndex! < _postGroups.length) {
+      prevSelectedPostId = _postGroups[_selectedGroupIndex!].first.id;
+    }
+
+    // 응답 대기 동안 기존 마커는 그대로 유지 (깜빡임 방지)
     final posts = await _boardApiService.getMapLocationPosts(
       latitude: latitude,
       longitude: longitude,
       zoom: zoom,
     );
+    if (!mounted) return;
 
-    // 같은 좌표끼리 그룹핑
+    // 같은 좌표끼리 그룹핑 + score 내림차순
     final Map<String, List<MapPost>> grouped = {};
     for (final post in posts) {
       final key = '${post.latitude.toStringAsFixed(3)},${post.longitude.toStringAsFixed(3)}';
       grouped.putIfAbsent(key, () => []).add(post);
     }
-
     final groupsList = grouped.values.map((g) {
       g.sort((a, b) => b.score.compareTo(a.score));
       return g;
     }).toList();
 
-    // Fix 1: 마커 생성에 성공한 그룹만 _postGroups에 포함 → 인덱스 일치 보장
+    // 새 결과의 대표 마커 ID 집합
+    final newMarkerIds = groupsList.map((g) => g.first.id).toSet();
+
+    // 1) 기존에 있고 새에 없는 마커만 제거
+    for (final id in _mapMarkerIds.toList()) {
+      if (!newMarkerIds.contains(id)) {
+        try {
+          _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: id));
+        } catch (_) {}
+        _mapMarkerIds.remove(id);
+      }
+    }
+
+    // 2) 새 결과 순서대로 visibleGroups 구성 — 기존 마커는 재사용, 누락된 것만 신규 추가
     final List<List<MapPost>> visibleGroups = [];
 
     for (final postsAtLocation in groupsList) {
-      // score 내림차순 정렬 완료 → 맨 위 post가 마커 대표
       final topPost = postsAtLocation.first;
-      final position = NLatLng(topPost.latitude, topPost.longitude);
 
+      // 이미 화면에 있는 마커 → 재사용 (이미지 fetch / addOverlay 생략)
+      if (_mapMarkerIds.contains(topPost.id)) {
+        visibleGroups.add(postsAtLocation);
+        continue;
+      }
+
+      // 신규 마커 — 이미지 fetch + 생성
       NOverlayImage? icon;
       if (topPost.fileInfoList.isNotEmpty) {
         try {
@@ -207,17 +227,15 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           final bytes = await _imageService.createMarkerImage(stream);
           icon = await NOverlayImage.fromByteArray(bytes);
         } catch (_) {
-          continue; // 이미지 로드 실패 시 마커 표시 생략 (visibleGroups에도 포함 안 함)
+          continue; // 이미지 로드 실패 시 마커 + 그룹 모두 skip
         }
       }
 
-      // 마커 생성 직전의 length가 이 마커에 대응하는 인덱스
-      final visibleIdx = visibleGroups.length;
       visibleGroups.add(postsAtLocation);
 
       final marker = NMarker(
         id: topPost.id,
-        position: position,
+        position: NLatLng(topPost.latitude, topPost.longitude),
         icon: icon,
         size: const Size(45, 45),
         caption: NOverlayCaption(
@@ -226,20 +244,26 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           color: Colors.black,
           haloColor: Colors.white,
         ),
-        // subCaption: 추후 해시태그 정보로 변경 예정
       );
 
       marker.setGlobalZIndex(200000 + topPost.score.toInt());
 
+      // ID 기반으로 현재 _postGroups에서 인덱스 동적 검색 (재조회 후에도 정확)
+      final markerPostId = topPost.id;
+      final markerLatLng = NLatLng(topPost.latitude, topPost.longitude);
       marker.setOnTapListener((_) {
         _focusNode.unfocus();
+        final idx = _postGroups
+            .indexWhere((g) => g.isNotEmpty && g.first.id == markerPostId);
+        if (idx < 0) return;
         setState(() {
           _searchResults = [];
           _selectedSymbol = null;
           _selectedPlace = null;
           _isLoadingPlace = false;
-          _selectedGroupIndex = visibleIdx;
+          _selectedGroupIndex = idx;
         });
+        _moveCameraToMarker(markerLatLng);
       });
 
       if (!mounted) return;
@@ -250,8 +274,13 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     if (!mounted) return;
     setState(() {
       _postGroups = visibleGroups;
-      // stale index가 범위 밖이면 카드 자동 닫힘 (RangeError 방지)
-      if (_selectedGroupIndex != null && _selectedGroupIndex! >= _postGroups.length) {
+      // 이전 선택 마커가 새 결과에 있으면 그 인덱스로 유지, 없으면 카드 닫음
+      if (prevSelectedPostId != null) {
+        final newIdx = visibleGroups
+            .indexWhere((g) => g.isNotEmpty && g.first.id == prevSelectedPostId);
+        _selectedGroupIndex = newIdx >= 0 ? newIdx : null;
+      } else if (_selectedGroupIndex != null &&
+          _selectedGroupIndex! >= _postGroups.length) {
         _selectedGroupIndex = null;
       }
     });
@@ -335,7 +364,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     final currentTarget = camera.target;
     final currentZoom = camera.zoom;
 
-    // 초기화 시점은 버튼 표시 없이 기준값만 저장
+    // 초기화 시점은 자동 호출 없이 기준값만 저장
     if (!_mapInitialized) {
       _mapInitialized = true;
       _lastQueriedTarget = currentTarget;
@@ -343,29 +372,27 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       return;
     }
 
-    final zoomChanged = (currentZoom - _lastQueriedZoom).abs() >= _zoomChangeTrigger;
-    final positionChanged = _lastQueriedTarget == null ||
-        currentTarget.latitude != _lastQueriedTarget!.latitude ||
-        currentTarget.longitude != _lastQueriedTarget!.longitude;
-
-    if (zoomChanged || positionChanged) {
-      setState(() => _showNearbyButton = true);
+    // 변화량 임계값 — 줌 1단계 이상 OR 좌표 ~50m 이상
+    final zoomChanged = (currentZoom - _lastQueriedZoom).abs() >= 1;
+    bool positionChanged = false;
+    if (_lastQueriedTarget != null) {
+      final dLat = (currentTarget.latitude - _lastQueriedTarget!.latitude).abs();
+      final dLng = (currentTarget.longitude - _lastQueriedTarget!.longitude).abs();
+      positionChanged = dLat > 0.0005 || dLng > 0.0005;
     }
-  }
+    if (!zoomChanged && !positionChanged) return;
 
-  void _onNearbyButtonTap() async {
-    if (_mapController == null) return;
-    final camera = await _mapController!.getCameraPosition();
-    setState(() {
-      _showNearbyButton = false;
-      _lastQueriedTarget = camera.target;
-      _lastQueriedZoom = camera.zoom;
+    // Debounce 500ms — 카메라 멈춘 시점에 1회 조회
+    _cameraDebounce?.cancel();
+    _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
+      _lastQueriedTarget = currentTarget;
+      _lastQueriedZoom = currentZoom;
+      _loadMapMarkers(
+        currentTarget.latitude,
+        currentTarget.longitude,
+        currentZoom.round(),
+      );
     });
-    _loadMapMarkers(
-      camera.target.latitude,
-      camera.target.longitude,
-      camera.zoom.round(),
-    );
   }
 
   String _truncateMarkerTitle(String title) =>
@@ -379,6 +406,29 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _selectedGroupIndex = null;
       _cardDragOffset = 0.0;
     });
+  }
+
+  /// 마커가 화면 세로 40% 지점에 보이도록 카메라 이동 (fly 600ms).
+  /// 카드/스트립이 하단을 덮어도 마커가 사용자 시야에 들어옴.
+  Future<void> _moveCameraToMarker(NLatLng markerPos) async {
+    if (_mapController == null) return;
+    final size = MediaQuery.sizeOf(context);
+    // 현재 줌 기준으로 화면 50% 픽셀과 40% 픽셀의 위도 차이 계산
+    final mid = await _mapController!.screenLocationToLatLng(
+      NPoint(size.width / 2, size.height * 0.5),
+    );
+    final target25 = await _mapController!.screenLocationToLatLng(
+      NPoint(size.width / 2, size.height * 0.25),
+    );
+    final dLat = mid.latitude - target25.latitude; // 50% → 25% 보정값
+    final adjustedTarget = NLatLng(markerPos.latitude + dLat, markerPos.longitude);
+
+    final update = NCameraUpdate.scrollAndZoomTo(target: adjustedTarget)
+      ..setAnimation(
+        animation: NCameraAnimation.fly,
+        duration: const Duration(milliseconds: 600),
+      );
+    await _mapController!.updateCamera(update);
   }
 
   void _onCardDragUpdate(DragUpdateDetails details) {
@@ -415,17 +465,24 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               setState(() => _mapController = controller);
               _moveToCurrentLocationOrDefault();
             },
-            onMapTapped: (point, latLng) => _closeAllCards(),
+            onMapTapped: (point, latLng) {
+              _focusNode.unfocus();
+              _closeAllCards();
+            },
             onSymbolTapped: _onSymbolTapped,
             onCameraIdle: _onCameraIdle,
           ),
-          // 검색창
+          // 검색창 — 카드 열려있으면 페이드아웃 + 터치 비활성
           Positioned(
             top: safeAreaPadding.top + 12,
             left: 16,
             right: 16,
-            child: Column(
-              key: _searchBarKey,
+            child: IgnorePointer(
+              ignoring: _isAnyCardOpen,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 250),
+                opacity: _isAnyCardOpen ? 0 : 1,
+                child: Column(
               children: [
                 Container(
                   decoration: BoxDecoration(
@@ -540,47 +597,6 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                   ),
               ],
             ),
-          ),
-          // 이 주변 스토리 조회 버튼
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOut,
-            left: 0,
-            right: 0,
-            bottom: _showNearbyButton && !_isAnyCardOpen ? 52 : -60,
-            child: Center(
-              child: GestureDetector(
-                onTap: _onNearbyButtonTap,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x44000000),
-                        blurRadius: 10,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.refresh_rounded, color: Color(0xFF1A1A2E), size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        '이 주변 스토리 조회',
-                        style: TextStyle(
-                          color: Color(0xFF1A1A2E),
-                          fontSize: 14,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ),
@@ -640,31 +656,47 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               onDragEnd: _onCardDragEnd,
             ),
           ),
-          // 마커 탭 시 바텀시트 카드
-          if (_selectedGroupIndex != null)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: MapBottomCard(
-                key: ValueKey('group_$_selectedGroupIndex'),
-                groups: _postGroups,
-                initialGroupIndex: _selectedGroupIndex!,
-                minTopMargin: _searchBarBottom > 0
-                    ? _searchBarBottom + 8
-                    : MediaQuery.paddingOf(context).top + 80,
-                onCameraMove: (pos) {
-                  // 줌 유지하며 위치만 이동, 부드러운 fly 애니메이션
-                  final update = NCameraUpdate.scrollAndZoomTo(target: pos)
-                    ..setAnimation(
-                      animation: NCameraAnimation.fly,
-                      duration: const Duration(milliseconds: 600),
-                    );
-                  _mapController?.updateCamera(update);
-                },
-                onClose: () => setState(() => _selectedGroupIndex = null),
+          // 마커 탭 시 바텀시트 카드 — 등장/소실 시 슬라이드 + 페이드
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              reverseDuration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, animation) {
+                final slide = Tween<Offset>(
+                  begin: const Offset(0, 1),
+                  end: Offset.zero,
+                ).animate(animation);
+                return SlideTransition(
+                  position: slide,
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              layoutBuilder: (currentChild, previousChildren) => Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  ...previousChildren,
+                  if (currentChild != null) currentChild,
+                ],
               ),
+              child: _selectedGroupIndex != null
+                  ? MapBottomCard(
+                      key: const ValueKey('card'),
+                      groups: _postGroups,
+                      initialGroupIndex: _selectedGroupIndex!,
+                      minTopMargin: MediaQuery.paddingOf(context).top + 12,
+                      onCameraMove: _moveCameraToMarker,
+                      onClose: () => setState(() => _selectedGroupIndex = null),
+                      onGroupChanged: (newIdx) =>
+                          setState(() => _selectedGroupIndex = newIdx),
+                    )
+                  : const SizedBox.shrink(key: ValueKey('empty')),
             ),
+          ),
         ],
       ),
     );

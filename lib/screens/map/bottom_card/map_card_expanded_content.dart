@@ -14,12 +14,22 @@ class MapCardExpandedContent extends StatefulWidget {
   final MapPost post;
   final BoardPost? detail;
   final bool isLoading;
+  final bool isLiked;
+  final int? likeCountOverride;
+  final VoidCallback? onLikeTap;
+
+  /// 댓글 작성/수정/삭제 후 호출 — 부모가 detail을 재로딩한다.
+  final Future<void> Function()? onRefreshDetail;
 
   const MapCardExpandedContent({
     super.key,
     required this.post,
     required this.detail,
     required this.isLoading,
+    this.isLiked = false,
+    this.likeCountOverride,
+    this.onLikeTap,
+    this.onRefreshDetail,
   });
 
   @override
@@ -28,11 +38,15 @@ class MapCardExpandedContent extends StatefulWidget {
 
 class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   final _commentController = TextEditingController();
+  final _editController = TextEditingController();
   bool _isSending = false;
+  String? _editingReplyId; // null이면 수정 모드 아님
+  bool _isSavingEdit = false;
 
   @override
   void dispose() {
     _commentController.dispose();
+    _editController.dispose();
     super.dispose();
   }
 
@@ -41,12 +55,72 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     if (text.isEmpty || _isSending) return;
     setState(() => _isSending = true);
     try {
-      await BoardApiService().createReply(widget.post.id, text);
-      if (mounted) _commentController.clear();
-    } catch (_) {
-      // 네트워크 오류 무시 — spinner는 finally에서 해제
+      final ok = await BoardApiService().createReply(widget.post.id, text);
+      if (ok && mounted) {
+        _commentController.clear();
+        await widget.onRefreshDetail?.call();
+      }
     } finally {
       if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  void _startEditReply(ReplyInfo reply) {
+    setState(() {
+      _editingReplyId = reply.id;
+      _editController.text = reply.comment;
+    });
+  }
+
+  void _cancelEditReply() {
+    setState(() {
+      _editingReplyId = null;
+      _editController.clear();
+    });
+  }
+
+  Future<void> _saveEditReply(ReplyInfo reply) async {
+    final text = _editController.text.trim();
+    if (text.isEmpty || _isSavingEdit) return;
+    setState(() => _isSavingEdit = true);
+    try {
+      final ok = await BoardApiService()
+          .updateReply(widget.post.id, reply.id, text);
+      if (ok && mounted) {
+        _editingReplyId = null;
+        _editController.clear();
+        await widget.onRefreshDetail?.call();
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingEdit = false);
+    }
+  }
+
+  Future<void> _confirmDeleteReply(ReplyInfo reply) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('댓글 삭제', style: TextStyle(fontFamily: 'Pretendard')),
+        content: const Text('댓글을 삭제할까요? 삭제 후에는 복구할 수 없어요.',
+            style: TextStyle(fontFamily: 'Pretendard')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('취소', style: TextStyle(fontFamily: 'Pretendard')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('삭제',
+                style: TextStyle(
+                    fontFamily: 'Pretendard', color: Color(0xFFFF6B6B))),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await BoardApiService().deleteReply(widget.post.id, reply.id);
+    if (ok && mounted) {
+      await widget.onRefreshDetail?.call();
     }
   }
 
@@ -54,19 +128,23 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 스크롤 가능 영역
+        // 스크롤 가능 영역 — 빈 공간 탭 시 키보드 내리기
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildPostInfo(),
-                const SizedBox(height: 16),
-                const Divider(color: Color(0xFFE5E7EB), height: 1),
-                const SizedBox(height: 12),
-                _buildComments(),
-              ],
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildPostInfo(),
+                  const SizedBox(height: 16),
+                  const Divider(color: Color(0xFFE5E7EB), height: 1),
+                  const SizedBox(height: 12),
+                  _buildComments(),
+                ],
+              ),
             ),
           ),
         ),
@@ -81,19 +159,55 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 제목 + 시간
+        // 헤더: [아바타] (닉네임 / 위치) (우측: 날짜)
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _Avatar(imageUrl: post.profileImage, size: 36),
+            const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                post.title.isNotEmpty ? post.title : '제목 없음',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF1A1A2E),
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    post.nickname,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1A1A2E),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (post.streetName.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: 1),
+                          child: Icon(Icons.location_on_outlined,
+                              size: 13, color: Color(0xFF6B7280)),
+                        ),
+                        const SizedBox(width: 2),
+                        Expanded(
+                          child: Text(
+                            post.streetName,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Pretendard',
+                              color: Color(0xFF6B7280),
+                              height: 1.3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
               ),
             ),
             const SizedBox(width: 8),
@@ -102,33 +216,25 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               style: const TextStyle(
                 fontSize: 12,
                 fontFamily: 'Pretendard',
-                color: Color(0xFF9E9E9E),
+                color: Color(0xFF6B7280),
               ),
             ),
           ],
         ),
-        if (post.streetName.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              const Icon(Icons.location_on_outlined, size: 14, color: Color(0xFF9E9E9E)),
-              const SizedBox(width: 2),
-              Expanded(
-                child: Text(
-                  post.streetName,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'Pretendard',
-                    color: Color(0xFF9E9E9E),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
+        // 타이틀
+        const SizedBox(height: 14),
+        Text(
+          post.title.isNotEmpty ? post.title : '제목 없음',
+          style: const TextStyle(
+            fontSize: 17,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF1A1A2E),
           ),
-        ],
+        ),
+        // 내용
         if (post.content.isNotEmpty) ...[
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Text(
             post.content,
             style: const TextStyle(
@@ -141,15 +247,30 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
         ],
         const SizedBox(height: 10),
         Row(
+          mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            const Icon(Icons.favorite, size: 16, color: Color(0xFFFF6B6B)),
-            const SizedBox(width: 4),
-            Text(
-              '${post.likeCount}',
-              style: const TextStyle(
-                fontSize: 13,
-                fontFamily: 'Pretendard',
-                color: Color(0xFF9E9E9E),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onLikeTap,
+              child: Row(
+                children: [
+                  Icon(
+                    widget.isLiked ? Icons.favorite : Icons.favorite_outline,
+                    size: 16,
+                    color: widget.isLiked
+                        ? const Color(0xFFFF6B6B)
+                        : const Color(0xFF9CA3AF),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${widget.likeCountOverride ?? post.likeCount}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Pretendard',
+                      color: Color(0xFF9E9E9E),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 16),
@@ -214,6 +335,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   }
 
   Widget _buildReplyItem(ReplyInfo reply) {
+    final isEditing = _editingReplyId == reply.id;
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -227,41 +349,151 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      reply.nickname,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF374151),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              reply.nickname,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF374151),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            relativeTimeFromString(reply.createdAt),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'Pretendard',
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      relativeTimeFromString(reply.createdAt),
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'Pretendard',
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
+                    if (reply.isOwner && !isEditing)
+                      _buildReplyMenu(reply),
                   ],
                 ),
                 const SizedBox(height: 3),
-                Text(
-                  reply.comment,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'Pretendard',
-                    color: Color(0xFF4B5563),
-                    height: 1.4,
-                  ),
-                ),
+                if (isEditing) _buildEditField(reply) else _buildReplyBody(reply),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildReplyBody(ReplyInfo reply) {
+    return Text(
+      reply.comment,
+      style: const TextStyle(
+        fontSize: 13,
+        fontFamily: 'Pretendard',
+        color: Color(0xFF4B5563),
+        height: 1.4,
+      ),
+    );
+  }
+
+  Widget _buildReplyMenu(ReplyInfo reply) {
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: PopupMenuButton<String>(
+        padding: EdgeInsets.zero,
+        iconSize: 18,
+        icon: const Icon(Icons.more_horiz, color: Color(0xFF9CA3AF)),
+        onSelected: (value) {
+          if (value == 'edit') _startEditReply(reply);
+          if (value == 'delete') _confirmDeleteReply(reply);
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem(
+            value: 'edit',
+            child: Text('수정', style: TextStyle(fontFamily: 'Pretendard', fontSize: 13)),
+          ),
+          PopupMenuItem(
+            value: 'delete',
+            child: Text('삭제',
+                style: TextStyle(
+                    fontFamily: 'Pretendard', fontSize: 13, color: Color(0xFFFF6B6B))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditField(ReplyInfo reply) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F0F0),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: TextField(
+            controller: _editController,
+            autofocus: true,
+            maxLines: null,
+            style: const TextStyle(
+              fontSize: 13,
+              fontFamily: 'Pretendard',
+              color: Color(0xFF1A1A2E),
+              height: 1.4,
+            ),
+            decoration: const InputDecoration.collapsed(hintText: '댓글 수정'),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            TextButton(
+              onPressed: _isSavingEdit ? null : _cancelEditReply,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(40, 28),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('취소',
+                  style: TextStyle(
+                      fontFamily: 'Pretendard', fontSize: 12, color: Color(0xFF6B7280))),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              onPressed: _isSavingEdit ? null : () => _saveEditReply(reply),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(40, 28),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: _isSavingEdit
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Color(0xFF4D91FF)),
+                    )
+                  : const Text('저장',
+                      style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 12,
+                          color: Color(0xFF4D91FF),
+                          fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

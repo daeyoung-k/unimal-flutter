@@ -15,6 +15,7 @@ class MapPost {
   final int replyCount;
   final double score;
   final bool isOwner;
+  final bool isLike;
 
   MapPost({
     required this.id,
@@ -31,6 +32,7 @@ class MapPost {
     required this.replyCount,
     required this.score,
     required this.isOwner,
+    required this.isLike,
   });
 
   factory MapPost.fromJson(Map<String, dynamic> json) {
@@ -52,7 +54,8 @@ class MapPost {
       likeCount: json['like_count'] as int? ?? 0,
       replyCount: json['reply_count'] as int? ?? 0,
       score: (json['score'] as num?)?.toDouble() ?? 0.0,
-      isOwner: json['isOwner'] as bool? ?? false,
+      isOwner: json['is_owner'] as bool? ?? false,
+      isLike: json['is_like'] as bool? ?? false,
     );
   }
 }
