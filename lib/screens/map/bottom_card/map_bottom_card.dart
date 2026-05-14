@@ -355,7 +355,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
                       onVerticalDragEnd: _onHandleDragEnd,
                       onVerticalDragCancel: _onHandleDragCancel,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        padding: const EdgeInsets.only(top: 10, bottom: 22),
                         child: Center(
                           child: Container(
                             width: 40,

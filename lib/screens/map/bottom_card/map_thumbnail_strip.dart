@@ -256,7 +256,7 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
               width: size,
               height: size,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
+                shape: BoxShape.circle,
                 border: Border.all(color: borderColor, width: borderWidth),
                 boxShadow: activeness > 0.05
                     ? [
@@ -268,8 +268,7 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
                       ]
                     : null,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6.5),
+              child: ClipOval(
                 child: isTextPost
                     ? Container(
                         color: const Color(0xFFF5F5F5),

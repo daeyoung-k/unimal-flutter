@@ -35,6 +35,19 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   // 현재 진행 중인 클러스터의 (topId → 마지막 빌드 시점의 size).
   // 비동기 합성 결과가 늦게 도착할 때 stale 적용 방지.
   final Map<String, int> _clusterCurrentSize = {};
+  // 마커 ID → 마커 객체. 선택 시 z-index 부스트를 위해 참조 유지.
+  final Map<String, NClusterableMarker> _markerRefs = {};
+  // 마커 ID → 기본 z-index (score 기반). 선택 해제 시 이 값으로 복원.
+  final Map<String, int> _markerBaseZIndex = {};
+  // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
+  String? _highlightedMarkerId;
+  // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
+  static const int _selectedMarkerZIndex = 999999999;
+  // 선택 마커가 표시될 때 사용하는 핀 아이콘. onMapReady 시점에 lazy init.
+  NOverlayImage? _pinIcon;
+  // 선택 핀 마커 표시 사이즈 (일반 마커 32보다 약간 크게 두드러짐).
+  static const _selectedMarkerWidth = 36.0;
+  static const _selectedMarkerHeight = 46.0;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -59,7 +72,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   // 주변 스토리 조회 버튼 관련 상태
   bool _mapInitialized = false;
   NLatLng? _lastQueriedTarget;
-  double _lastQueriedZoom = 14;
+  double _lastQueriedZoom = 15;
 
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
@@ -71,8 +84,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   static const _dismissThreshold = 80.0;
 
   // 마커 크기 — 한 곳에서 조절
-  static const _normalMarkerSize = 42.0; // 일반(단일) 마커
-  static const _clusterMarkerSize = 48.0; // 클러스터(2개 이상 합쳐진) 마커
+  static const _normalMarkerSize = 32.0; // 일반(단일) 마커
+  static const _clusterMarkerSize = 40.0; // 클러스터(2개 이상 합쳐진) 마커
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
@@ -112,7 +125,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   void refreshMap() {
     _mapController?.updateCamera(
-      NCameraUpdate.withParams(zoom: 14),
+      NCameraUpdate.withParams(zoom: 15),
     );
   }
 
@@ -121,7 +134,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
         return;
       }
 
@@ -135,7 +148,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
         return;
       }
 
@@ -154,16 +167,16 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(position.latitude, position.longitude),
-            zoom: 14,
+            zoom: 15,
           ),
         );
-        _loadMapMarkers(position.latitude, position.longitude, 14);
+        _loadMapMarkers(position.latitude, position.longitude, 15);
       } else {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
       }
     } catch (_) {
       if (mounted) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 14);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
       }
     }
   }
@@ -249,6 +262,12 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         _markerIconCache.remove(id);
         _markerBytesCache.remove(id);
         _clusterIconCache.removeWhere((key, _) => key.startsWith('${id}_'));
+        _markerRefs.remove(id);
+        _markerBaseZIndex.remove(id);
+        // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
+        if (_highlightedMarkerId == id) {
+          _highlightedMarkerId = null;
+        }
       }
     }
 
@@ -306,7 +325,10 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         ),
       );
 
-      marker.setGlobalZIndex(200000 + topPost.score.toInt());
+      final baseZIndex = 200000 + topPost.score.toInt();
+      marker.setGlobalZIndex(baseZIndex);
+      _markerRefs[topPost.id] = marker;
+      _markerBaseZIndex[topPost.id] = baseZIndex;
 
       final markerPostId = topPost.id;
       final markerLatLng = pos;
@@ -322,6 +344,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           _isLoadingPlace = false;
           _selectedGroupIndex = idx;
         });
+        _applySelectionHighlight(markerPostId);
         _moveCameraToMarker(markerLatLng);
       });
 
@@ -343,6 +366,12 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         _selectedGroupIndex = null;
       }
     });
+    // 재조회로 마커 객체가 새로 생성된 경우에도 z-index 부스트 재적용
+    if (_selectedGroupIndex != null) {
+      _applySelectionHighlight(_postGroups[_selectedGroupIndex!].first.id);
+    } else {
+      _applySelectionHighlight(null);
+    }
   }
 
   Future<void> _onSearch(String query) async {
@@ -401,6 +430,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _selectedPlace = null;
       _isLoadingPlace = true;
     });
+    _applySelectionHighlight(null);
 
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
@@ -422,6 +452,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     final camera = await _mapController!.getCameraPosition();
     final currentTarget = camera.target;
     final currentZoom = camera.zoom;
+    debugPrint('[map] zoom=${currentZoom.toStringAsFixed(2)} '
+        'target=(${currentTarget.latitude.toStringAsFixed(5)}, '
+        '${currentTarget.longitude.toStringAsFixed(5)})');
 
     // 초기화 시점은 자동 호출 없이 기준값만 저장
     if (!_mapInitialized) {
@@ -465,6 +498,40 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
       _selectedGroupIndex = null;
       _cardDragOffset = 0.0;
     });
+    _applySelectionHighlight(null);
+  }
+
+  /// 선택된 마커를 푸른 핀으로 즉시 교체하고 z-index를 다른 마커보다 위로 부스트.
+  /// 이전에 선택되어 있던 마커가 있으면 원래 사진 아이콘 + score 기반 z-index로 복원.
+  /// [markerId]가 null이면 부스트/핀 해제만 수행.
+  /// idempotent: 재조회로 마커 객체가 새로 만들어진 케이스에도 안전하게 재적용됨.
+  void _applySelectionHighlight(String? markerId) {
+    final prevId = _highlightedMarkerId;
+    if (prevId != null && prevId != markerId) {
+      final prevMarker = _markerRefs[prevId];
+      if (prevMarker != null) {
+        final baseZ = _markerBaseZIndex[prevId];
+        if (baseZ != null) prevMarker.setGlobalZIndex(baseZ);
+        final originalIcon = _markerIconCache[prevId];
+        if (originalIcon != null) prevMarker.setIcon(originalIcon);
+        prevMarker
+            .setSize(const Size(_normalMarkerSize, _normalMarkerSize));
+      }
+    }
+    _highlightedMarkerId = markerId;
+    if (markerId != null) {
+      final marker = _markerRefs[markerId];
+      if (marker != null) {
+        marker.setGlobalZIndex(_selectedMarkerZIndex);
+        if (_pinIcon != null) {
+          marker.setIcon(_pinIcon);
+          marker.setSize(const Size(
+            _selectedMarkerWidth,
+            _selectedMarkerHeight,
+          ));
+        }
+      }
+    }
   }
 
   /// 클러스터 마커 빌더.
@@ -473,6 +540,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     // children 중 score 최대 마커 식별
     String? topId;
     String? topTitle;
+    NLatLng? topPosition;
     double topScore = -1;
     for (final child in info.children) {
       final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
@@ -480,6 +548,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         topScore = s;
         topId = child.id;
         topTitle = child.tags['title'];
+        topPosition = child.position;
       }
     }
 
@@ -523,6 +592,27 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     ));
     clusterMarker.setCaptionAligns(const [NAlign.bottom]);
     clusterMarker.setCaptionOffset(0);
+
+    // 클러스터(size>1) 탭 → 줌 15+ 자동 확대. 줌 15부터 클러스터링이 비활성
+    // 이므로 자연스럽게 풀리며, 사용자가 펼쳐진 jitter 마커를 한 번 더 탭해서
+    // 카드/스트립으로 진입.
+    if (info.size > 1 && topPosition != null) {
+      final target = topPosition;
+      clusterMarker.setOnTapListener((_) async {
+        if (_mapController == null) return;
+        _focusNode.unfocus();
+        final camera = await _mapController!.getCameraPosition();
+        final nextZoom = camera.zoom < 15 ? 15.0 : camera.zoom;
+        final update = NCameraUpdate.scrollAndZoomTo(
+          target: target,
+          zoom: nextZoom,
+        )..setAnimation(
+            animation: NCameraAnimation.fly,
+            duration: const Duration(milliseconds: 600),
+          );
+        await _mapController!.updateCamera(update);
+      });
+    }
   }
 
   /// 클러스터 뱃지가 합성된 아이콘을 비동기로 만들어 캐시에 저장하고 마커에 적용.
@@ -579,6 +669,17 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     await _mapController!.updateCamera(update);
   }
 
+  /// 선택 마커가 핀으로 즉시 교체될 수 있도록 onMapReady 시점에 핀 이미지를 1회 생성.
+  Future<void> _preparePinIcon() async {
+    try {
+      final bytes = await _imageService.createPinMarkerImage();
+      if (!mounted) return;
+      _pinIcon = await NOverlayImage.fromByteArray(bytes);
+    } catch (_) {
+      // 핀 이미지 생성 실패 시: 선택 시 z-index 부스트만 적용 (방어)
+    }
+  }
+
   void _onCardDragUpdate(DragUpdateDetails details) {
     if (details.delta.dy > 0) {
       setState(() => _cardDragOffset += details.delta.dy);
@@ -604,28 +705,29 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           NaverMap(
             options: NaverMapViewOptions(
               contentPadding: safeAreaPadding,
-              initialCameraPosition: NCameraPosition(target: seoulCityHall, zoom: 14),
+              initialCameraPosition: NCameraPosition(target: seoulCityHall, zoom: 15),
               consumeSymbolTapEvents: true,
               minZoom: 10,
               maxZoom: 20,
             ),
             clusterOptions: NaverMapClusteringOptions(
-              // 줌 15 이하만 클러스터링, 16+ 부터는 모든 마커 펼침
-              enableZoomRange: const NInclusiveRange(0, 15),
+              // 줌 14 이하만 클러스터링, 15+ 부터는 모든 마커 펼침
+              enableZoomRange: const NInclusiveRange(0, 14),
               // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
               animationDuration: Duration.zero,
               mergeStrategy: const NClusterMergeStrategy(
                 willMergedScreenDistance: {
                   // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
                   NInclusiveRange(10, 12): 100.0,
-                  // 줌 13-15 (구·동): 70dp (기본 보통)
-                  NInclusiveRange(13, 15): 70.0,
+                  // 줌 13-14 (구·동): 70dp (기본 보통)
+                  NInclusiveRange(13, 14): 70.0,
                 },
               ),
               clusterMarkerBuilder: _buildClusterMarker,
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);
+              _preparePinIcon();
               _moveToCurrentLocationOrDefault();
             },
             onMapTapped: (point, latLng) {
@@ -853,9 +955,17 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                       initialGroupIndex: _selectedGroupIndex!,
                       minTopMargin: MediaQuery.paddingOf(context).top + 12,
                       onCameraMove: _moveCameraToMarker,
-                      onClose: () => setState(() => _selectedGroupIndex = null),
-                      onGroupChanged: (newIdx) =>
-                          setState(() => _selectedGroupIndex = newIdx),
+                      onClose: () {
+                        setState(() => _selectedGroupIndex = null);
+                        _applySelectionHighlight(null);
+                      },
+                      onGroupChanged: (newIdx) {
+                        setState(() => _selectedGroupIndex = newIdx);
+                        if (newIdx >= 0 && newIdx < _postGroups.length) {
+                          _applySelectionHighlight(
+                              _postGroups[newIdx].first.id);
+                        }
+                      },
                     )
                   : const SizedBox.shrink(key: ValueKey('empty')),
             ),
