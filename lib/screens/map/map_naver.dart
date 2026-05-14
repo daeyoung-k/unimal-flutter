@@ -408,26 +408,34 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     });
   }
 
-  /// 마커가 화면 세로 40% 지점에 보이도록 카메라 이동 (fly 600ms).
-  /// 카드/스트립이 하단을 덮어도 마커가 사용자 시야에 들어옴.
+  /// 마커가 화면 세로 25% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
+  /// 알고리즘: 카메라 target T를 (markerPos + (현재 카메라 target 좌표 - 원하는 픽셀 좌표))로 두면
+  /// 새 카메라에서 markerPos가 원하는 픽셀에 정확히 매핑됨 (줌 동일 가정).
   Future<void> _moveCameraToMarker(NLatLng markerPos) async {
     if (_mapController == null) return;
     final size = MediaQuery.sizeOf(context);
-    // 현재 줌 기준으로 화면 50% 픽셀과 40% 픽셀의 위도 차이 계산
-    final mid = await _mapController!.screenLocationToLatLng(
-      NPoint(size.width / 2, size.height * 0.5),
+
+    final cameraTarget =
+        (await _mapController!.getCameraPosition()).target;
+    final desiredPixel = NPoint(size.width / 2, size.height * 0.22);
+    final desiredCoord =
+        await _mapController!.screenLocationToLatLng(desiredPixel);
+
+    // 카메라 target 좌표 - 원하는 픽셀의 현재 좌표 = 필요한 좌표 보정값
+    final dLat = cameraTarget.latitude - desiredCoord.latitude;
+    final dLng = cameraTarget.longitude - desiredCoord.longitude;
+
+    final adjustedTarget = NLatLng(
+      markerPos.latitude + dLat,
+      markerPos.longitude + dLng,
     );
-    final target25 = await _mapController!.screenLocationToLatLng(
-      NPoint(size.width / 2, size.height * 0.25),
-    );
-    final dLat = mid.latitude - target25.latitude; // 50% → 25% 보정값
-    final adjustedTarget = NLatLng(markerPos.latitude + dLat, markerPos.longitude);
 
     final update = NCameraUpdate.scrollAndZoomTo(target: adjustedTarget)
       ..setAnimation(
         animation: NCameraAnimation.fly,
         duration: const Duration(milliseconds: 600),
       );
+    _lastQueriedTarget = adjustedTarget;
     await _mapController!.updateCamera(update);
   }
 

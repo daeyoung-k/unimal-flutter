@@ -241,9 +241,22 @@ class _MapBottomCardState extends State<MapBottomCard> {
     }
   }
 
-  void _jumpToGroup(int groupIndex) {
+  /// 드래그 중 strip이 시각적 활성 인덱스를 알릴 때 호출.
+  /// 카드 본문(이미지/텍스트/좋아요)을 즉시 동기화. 카메라 이동/parent 통지는 생략.
+  void _previewGroup(int groupIndex) {
     if (groupIndex == _nav.groupIndex) return;
     _nav.jumpToGroup(groupIndex);
+    setState(() {
+      _cardState = _CardState.default_;
+      _loadedDetail = null;
+    });
+  }
+
+  void _jumpToGroup(int groupIndex) {
+    // drag end 또는 탭 commit. drag 중 _previewGroup으로 _nav가 이미 변경됐을 수 있음.
+    if (groupIndex != _nav.groupIndex) {
+      _nav.jumpToGroup(groupIndex);
+    }
     widget.onCameraMove(
       NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
     );
@@ -289,6 +302,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
           groups: widget.groups,
           currentGroupIndex: _nav.groupIndex,
           onTap: _jumpToGroup,
+          onVisualIndexChange: _previewGroup,
         ),
         const SizedBox(height: _stripCardGap),
         // 카드 본문
@@ -354,11 +368,30 @@ class _MapBottomCardState extends State<MapBottomCard> {
                         ),
                       ),
                     ),
-                    // 카드 내용
+                    // 카드 내용 — 그룹 변경 시 cross-fade
                     Expanded(
-                      child: _cardState == _CardState.expanded
-                          ? _buildExpandedContent()
-                          : _buildDefaultContent(),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 260),
+                        switchInCurve: Curves.easeOutCubic,
+                        switchOutCurve: Curves.easeInCubic,
+                        transitionBuilder: (child, animation) =>
+                            FadeTransition(opacity: animation, child: child),
+                        layoutBuilder: (currentChild, previousChildren) => Stack(
+                          alignment: Alignment.topCenter,
+                          children: [
+                            ...previousChildren,
+                            if (currentChild != null) currentChild,
+                          ],
+                        ),
+                        child: KeyedSubtree(
+                          // post id + 상태 조합 → 그룹/상태 변경 시 새 child로 fade
+                          key: ValueKey(
+                              '${_nav.currentPost.id}_${_cardState.name}'),
+                          child: _cardState == _CardState.expanded
+                              ? _buildExpandedContent()
+                              : _buildDefaultContent(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
