@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -24,6 +26,15 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   final NaverSearchService _searchService = NaverSearchService();
   final BoardApiService _boardApiService = BoardApiService();
   final List<String> _mapMarkerIds = [];
+  // 마커 ID → NOverlayImage 캐시. 클러스터 마커가 score 최상위 마커 이미지를 재사용할 때 사용.
+  final Map<String, NOverlayImage> _markerIconCache = {};
+  // 마커 ID → base bytes 캐시. 클러스터 뱃지 합성에 재사용.
+  final Map<String, Uint8List> _markerBytesCache = {};
+  // (topId, size) → 합성된 클러스터 아이콘 캐시.
+  final Map<String, NOverlayImage> _clusterIconCache = {};
+  // 현재 진행 중인 클러스터의 (topId → 마지막 빌드 시점의 size).
+  // 비동기 합성 결과가 늦게 도착할 때 stale 적용 방지.
+  final Map<String, int> _clusterCurrentSize = {};
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -58,6 +69,10 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
+
+  // 마커 크기 — 한 곳에서 조절
+  static const _normalMarkerSize = 42.0; // 일반(단일) 마커
+  static const _clusterMarkerSize = 48.0; // 클러스터(2개 이상 합쳐진) 마커
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
@@ -182,62 +197,107 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     );
     if (!mounted) return;
 
-    // 같은 좌표끼리 그룹핑 + score 내림차순
+    // 같은 좌표끼리 그룹핑 (jitter 오프셋 결정용)
     final Map<String, List<MapPost>> grouped = {};
     for (final post in posts) {
       final key = '${post.latitude.toStringAsFixed(3)},${post.longitude.toStringAsFixed(3)}';
       grouped.putIfAbsent(key, () => []).add(post);
     }
-    final groupsList = grouped.values.map((g) {
-      g.sort((a, b) => b.score.compareTo(a.score));
-      return g;
-    }).toList();
+    // 그룹 내 score 내림차순 (jitter 순서 안정화)
+    for (final list in grouped.values) {
+      list.sort((a, b) => b.score.compareTo(a.score));
+    }
 
-    // 새 결과의 대표 마커 ID 집합
-    final newMarkerIds = groupsList.map((g) => g.first.id).toSet();
+    // 점진적 표시: 같은 좌표 그룹이 너무 크면 상위 N개만 jitter로 표시.
+    // 나머지는 클러스터링으로 줌인 시 펼쳐지도록 위임.
+    const jitterRadius = 0.00015; // 위경도 약 17m
+    const maxJitterPerGroup = 5; // 한 좌표 그룹당 최대 jitter 마커 수
+    final List<({MapPost post, NLatLng position})> markerData = [];
+    for (final group in grouped.values) {
+      // score 상위 N개까지만 표시
+      final visible = group.length <= maxJitterPerGroup
+          ? group
+          : group.sublist(0, maxJitterPerGroup);
+      for (int i = 0; i < visible.length; i++) {
+        final post = visible[i];
+        NLatLng pos;
+        if (visible.length == 1) {
+          pos = NLatLng(post.latitude, post.longitude);
+        } else {
+          final angle = 2 * pi * i / visible.length;
+          pos = NLatLng(
+            post.latitude + jitterRadius * cos(angle),
+            post.longitude + jitterRadius * sin(angle),
+          );
+        }
+        markerData.add((post: post, position: pos));
+      }
+    }
+
+    // 새 결과의 마커 ID 집합 (게시글 id 1:1)
+    final newMarkerIds = markerData.map((m) => m.post.id).toSet();
 
     // 1) 기존에 있고 새에 없는 마커만 제거
     for (final id in _mapMarkerIds.toList()) {
       if (!newMarkerIds.contains(id)) {
         try {
-          _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: id));
+          _mapController!.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
+          );
         } catch (_) {}
         _mapMarkerIds.remove(id);
+        _markerIconCache.remove(id);
+        _markerBytesCache.remove(id);
+        _clusterIconCache.removeWhere((key, _) => key.startsWith('${id}_'));
       }
     }
 
-    // 2) 새 결과 순서대로 visibleGroups 구성 — 기존 마커는 재사용, 누락된 것만 신규 추가
+    // 2) 각 게시글마다 마커 + single-post visibleGroup 추가
     final List<List<MapPost>> visibleGroups = [];
 
-    for (final postsAtLocation in groupsList) {
-      final topPost = postsAtLocation.first;
+    for (final data in markerData) {
+      final topPost = data.post;
+      final pos = data.position;
 
-      // 이미 화면에 있는 마커 → 재사용 (이미지 fetch / addOverlay 생략)
+      // 이미 화면에 있는 마커 → 재사용
       if (_mapMarkerIds.contains(topPost.id)) {
-        visibleGroups.add(postsAtLocation);
+        visibleGroups.add([topPost]);
         continue;
       }
 
       // 신규 마커 — 이미지 fetch + 생성
       NOverlayImage? icon;
+      Uint8List? baseBytes;
       if (topPost.fileInfoList.isNotEmpty) {
         try {
           final firstUrl = topPost.fileInfoList.first.fileUrl;
           final stream = await _imageService.getImageStream(firstUrl);
-          final bytes = await _imageService.createMarkerImage(stream);
-          icon = await NOverlayImage.fromByteArray(bytes);
+          baseBytes = await _imageService.createMarkerImage(stream);
+          icon = await NOverlayImage.fromByteArray(baseBytes);
         } catch (_) {
-          continue; // 이미지 로드 실패 시 마커 + 그룹 모두 skip
+          continue;
         }
       }
 
-      visibleGroups.add(postsAtLocation);
+      visibleGroups.add([topPost]);
 
-      final marker = NMarker(
+      // 클러스터 빌더에서 재사용할 캐시 저장
+      if (icon != null) {
+        _markerIconCache[topPost.id] = icon;
+      }
+      if (baseBytes != null) {
+        _markerBytesCache[topPost.id] = baseBytes;
+      }
+
+      final marker = NClusterableMarker(
         id: topPost.id,
-        position: NLatLng(topPost.latitude, topPost.longitude),
+        position: pos,
         icon: icon,
-        size: const Size(45, 45),
+        size: const Size(_normalMarkerSize, _normalMarkerSize),
+        tags: {
+          'score': topPost.score.toString(),
+          'title': topPost.title,
+        },
         caption: NOverlayCaption(
           text: _truncateMarkerTitle(topPost.title),
           textSize: 12,
@@ -248,9 +308,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
       marker.setGlobalZIndex(200000 + topPost.score.toInt());
 
-      // ID 기반으로 현재 _postGroups에서 인덱스 동적 검색 (재조회 후에도 정확)
       final markerPostId = topPost.id;
-      final markerLatLng = NLatLng(topPost.latitude, topPost.longitude);
+      final markerLatLng = pos;
       marker.setOnTapListener((_) {
         _focusNode.unfocus();
         final idx = _postGroups
@@ -408,6 +467,87 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     });
   }
 
+  /// 클러스터 마커 빌더.
+  /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
+  void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
+    // children 중 score 최대 마커 식별
+    String? topId;
+    String? topTitle;
+    double topScore = -1;
+    for (final child in info.children) {
+      final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
+      if (s > topScore) {
+        topScore = s;
+        topId = child.id;
+        topTitle = child.tags['title'];
+      }
+    }
+
+    if (topId != null) {
+      // 현재 빌드 시점의 size 기록 → 비동기 합성 결과의 stale 적용 방지
+      _clusterCurrentSize[topId] = info.size;
+
+      if (info.size == 1) {
+        // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시 (사이즈 + 뱃지 없음)
+        final base = _markerIconCache[topId];
+        if (base != null) {
+          clusterMarker.setIcon(base);
+          clusterMarker.setSize(const Size(_normalMarkerSize, _normalMarkerSize));
+        }
+      } else {
+        final cacheKey = '${topId}_${info.size}';
+        final composed = _clusterIconCache[cacheKey];
+        if (composed != null) {
+          // 합성 캐시 있음 → 즉시 적용
+          clusterMarker.setIcon(composed);
+          clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+        } else {
+          // 합성 캐시 없음 → 일단 base icon 사용 (즉시 표시), 비동기로 합성 후 교체
+          final base = _markerIconCache[topId];
+          if (base != null) {
+            clusterMarker.setIcon(base);
+            clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+          }
+          _composeClusterIconAsync(topId, info.size, clusterMarker);
+        }
+      }
+    }
+
+    // 마커 아래 타이틀 (일반 마커와 동일)
+    final title = (topTitle ?? '').trim();
+    clusterMarker.setCaption(NOverlayCaption(
+      text: title.isEmpty ? '' : _truncateMarkerTitle(title),
+      textSize: 12,
+      color: Colors.black,
+      haloColor: Colors.white,
+    ));
+    clusterMarker.setCaptionAligns(const [NAlign.bottom]);
+    clusterMarker.setCaptionOffset(0);
+  }
+
+  /// 클러스터 뱃지가 합성된 아이콘을 비동기로 만들어 캐시에 저장하고 마커에 적용.
+  /// 클러스터링 incremental 호출(size 1→2→3..) 동안 카운트업 잔상을 피하려고
+  /// 합성 후 짧게 기다린 뒤 그 시점의 최종 size일 때만 setIcon 적용.
+  Future<void> _composeClusterIconAsync(
+      String topId, int size, NClusterMarker clusterMarker) async {
+    final baseBytes = _markerBytesCache[topId];
+    if (baseBytes == null) return;
+    try {
+      final composedBytes = await _imageService.addClusterBadge(baseBytes, size);
+      final composedIcon = await NOverlayImage.fromByteArray(composedBytes);
+      if (!mounted) return;
+      _clusterIconCache['${topId}_$size'] = composedIcon;
+
+      // 클러스터링 안정 대기 — 그 사이 같은 topId의 더 큰 size가 도착하면 stale 처리
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      if (_clusterCurrentSize[topId] != size) return; // 이미 다른 size로 변경됨
+
+      clusterMarker.setIcon(composedIcon);
+      clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+    } catch (_) {}
+  }
+
   /// 마커가 화면 세로 25% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
   /// 알고리즘: 카메라 target T를 (markerPos + (현재 카메라 target 좌표 - 원하는 픽셀 좌표))로 두면
   /// 새 카메라에서 markerPos가 원하는 픽셀에 정확히 매핑됨 (줌 동일 가정).
@@ -468,6 +608,21 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               consumeSymbolTapEvents: true,
               minZoom: 10,
               maxZoom: 20,
+            ),
+            clusterOptions: NaverMapClusteringOptions(
+              // 줌 15 이하만 클러스터링, 16+ 부터는 모든 마커 펼침
+              enableZoomRange: const NInclusiveRange(0, 15),
+              // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
+              animationDuration: Duration.zero,
+              mergeStrategy: const NClusterMergeStrategy(
+                willMergedScreenDistance: {
+                  // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
+                  NInclusiveRange(10, 12): 100.0,
+                  // 줌 13-15 (구·동): 70dp (기본 보통)
+                  NInclusiveRange(13, 15): 70.0,
+                },
+              ),
+              clusterMarkerBuilder: _buildClusterMarker,
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);

@@ -55,4 +55,67 @@ class ImageService {
         await finalImage.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
   }
+
+  /// 마커 이미지 위에 우상단 +N 뱃지를 합성해 새 PNG bytes 반환.
+  /// 클러스터 마커용. base는 createMarkerImage 결과(200x200 가정).
+  Future<Uint8List> addClusterBadge(Uint8List baseBytes, int count) async {
+    final codec = await ui.instantiateImageCodec(baseBytes);
+    final frame = await codec.getNextFrame();
+    final base = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+
+    // base 이미지 그리기
+    canvas.drawImageRect(
+      base,
+      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+      Rect.fromLTWH(0, 0, size, size),
+      Paint(),
+    );
+
+    // 우상단 뱃지
+    const double badgeRadius = 40.0;
+    final badgeCenter = Offset(size - badgeRadius, badgeRadius);
+    // 외곽 흰 테두리
+    canvas.drawCircle(
+      badgeCenter,
+      badgeRadius + 4,
+      Paint()..color = Colors.white,
+    );
+    // 코랄 원
+    canvas.drawCircle(
+      badgeCenter,
+      badgeRadius,
+      Paint()..color = const Color(0xFFFF6B6B),
+    );
+    // +N 텍스트
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '+$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 44,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Pretendard',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(
+      canvas,
+      Offset(
+        badgeCenter.dx - tp.width / 2,
+        badgeCenter.dy - tp.height / 2,
+      ),
+    );
+
+    final composedImage =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final byteData =
+        await composedImage.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
 }
