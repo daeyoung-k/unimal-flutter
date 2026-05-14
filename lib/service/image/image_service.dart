@@ -85,11 +85,11 @@ class ImageService {
       badgeRadius + 4,
       Paint()..color = Colors.white,
     );
-    // 코랄 원
+    // 브랜드 푸른색 원 (선택 핀 마커와 동일 톤으로 통일)
     canvas.drawCircle(
       badgeCenter,
       badgeRadius,
-      Paint()..color = const Color(0xFFFF6B6B),
+      Paint()..color = const Color(0xFF3578E5),
     );
     // +N 텍스트
     final tp = TextPainter(

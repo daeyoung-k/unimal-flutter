@@ -870,7 +870,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
           // 내 위치 버튼 — 좌측 하단 고정
           Positioned(
             left: 16,
-            bottom: 40,
+            bottom: 45,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
