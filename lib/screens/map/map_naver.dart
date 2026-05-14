@@ -85,7 +85,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   // 마커 크기 — 한 곳에서 조절
   static const _normalMarkerSize = 32.0; // 일반(단일) 마커
-  static const _clusterMarkerSize = 40.0; // 클러스터(2개 이상 합쳐진) 마커
+  static const _clusterMarkerSize = 42.0; // 클러스터(2개 이상 합쳐진) 마커
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
@@ -319,8 +319,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         },
         caption: NOverlayCaption(
           text: _truncateMarkerTitle(topPost.title),
-          textSize: 12,
-          color: Colors.black,
+          textSize: 13,
+          color: const Color(0xFF1A1A2E),
           haloColor: Colors.white,
         ),
       );
@@ -586,8 +586,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     final title = (topTitle ?? '').trim();
     clusterMarker.setCaption(NOverlayCaption(
       text: title.isEmpty ? '' : _truncateMarkerTitle(title),
-      textSize: 12,
-      color: Colors.black,
+      textSize: 13,
+      color: const Color(0xFF1A1A2E),
       haloColor: Colors.white,
     ));
     clusterMarker.setCaptionAligns(const [NAlign.bottom]);
@@ -711,16 +711,18 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               maxZoom: 20,
             ),
             clusterOptions: NaverMapClusteringOptions(
-              // 줌 14 이하만 클러스터링, 15+ 부터는 모든 마커 펼침
-              enableZoomRange: const NInclusiveRange(0, 14),
+              // 줌 13 이하만 클러스터링, 14+ 부터는 모든 마커 펼침.
+              // 라이브러리 enableZoomRange가 명세("zoom < max+1")대로 동작 안 하는 케이스
+              // 관찰됨(줌 15.00에서도 클러스터링됨). 안전권으로 한 칸 더 낮춤.
+              enableZoomRange: const NInclusiveRange(0, 13),
               // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
               animationDuration: Duration.zero,
               mergeStrategy: const NClusterMergeStrategy(
                 willMergedScreenDistance: {
                   // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
                   NInclusiveRange(10, 12): 100.0,
-                  // 줌 13-14 (구·동): 70dp (기본 보통)
-                  NInclusiveRange(13, 14): 70.0,
+                  // 줌 13 (구·동): 70dp (기본 보통)
+                  NInclusiveRange(13, 13): 70.0,
                 },
               ),
               clusterMarkerBuilder: _buildClusterMarker,
@@ -865,40 +867,17 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               ),
             ),
           ),
-          // 공유하기 버튼
+          // 내 위치 버튼 — 좌측 하단 고정
           Positioned(
-            right: 16,
-            bottom: 40 + 56,
-            child: GestureDetector(
-              onTap: () => Get.find<NavController>().selectedIndex.value = 1,
-              child: Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4D91FF),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x334D91FF),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(Icons.add_rounded, color: Colors.white, size: 24),
-              ),
-            ),
-          ),
-          // 내 위치 버튼
-          Positioned(
-            right: 16,
+            left: 16,
             bottom: 40,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
                 key: ValueKey(_isAnyCardOpen),
                 mapController: _mapController,
-                borderRadius: BorderRadius.circular(22),
+                size: 40,
+                borderRadius: BorderRadius.circular(18),
               ),
             ),
           ),

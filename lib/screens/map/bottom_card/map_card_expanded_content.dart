@@ -38,16 +38,36 @@ class MapCardExpandedContent extends StatefulWidget {
 
 class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   final _commentController = TextEditingController();
+  final _commentFocus = FocusNode();
   final _editController = TextEditingController();
   bool _isSending = false;
   String? _editingReplyId; // null이면 수정 모드 아님
   bool _isSavingEdit = false;
+  // 답글 작성 대상. null이면 일반 댓글 모드, 값 있으면 그 댓글에 대한 답글 모드.
+  String? _replyToId;
+  String? _replyToNickname;
 
   @override
   void dispose() {
     _commentController.dispose();
+    _commentFocus.dispose();
     _editController.dispose();
     super.dispose();
+  }
+
+  void _setReplyTo(ReplyInfo parent) {
+    setState(() {
+      _replyToId = parent.id;
+      _replyToNickname = parent.nickname;
+    });
+    _commentFocus.requestFocus();
+  }
+
+  void _clearReplyTo() {
+    setState(() {
+      _replyToId = null;
+      _replyToNickname = null;
+    });
   }
 
   Future<void> _sendComment() async {
@@ -55,9 +75,15 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     if (text.isEmpty || _isSending) return;
     setState(() => _isSending = true);
     try {
-      final ok = await BoardApiService().createReply(widget.post.id, text);
+      final ok = await BoardApiService().createReply(
+        widget.post.id,
+        text,
+        replyId: _replyToId,
+      );
       if (ok && mounted) {
         _commentController.clear();
+        _replyToId = null;
+        _replyToNickname = null;
         await widget.onRefreshDetail?.call();
       }
     } finally {
@@ -300,8 +326,9 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
       );
     }
     final replies = widget.detail?.reply ?? [];
-    final visible = replies.where((r) => !r.isDel && !r.reReplyYn).toList();
-    if (visible.isEmpty) {
+    final active = replies.where((r) => !r.isDel).toList();
+    final topLevel = active.where((r) => !r.reReplyYn).toList();
+    if (active.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(
@@ -316,11 +343,22 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
         ),
       );
     }
+    // 부모 댓글 아래에 같은 replyId를 가진 대댓글을 들여쓰기로 이어 붙임.
+    final items = <Widget>[];
+    for (final parent in topLevel) {
+      items.add(_buildReplyItem(parent));
+      final nested = active.where(
+        (r) => r.reReplyYn && r.replyId == parent.id,
+      );
+      for (final child in nested) {
+        items.add(_buildReplyItem(child, isNested: true));
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '댓글 ${visible.length}',
+          '댓글 ${active.length}',
           style: const TextStyle(
             fontSize: 13,
             fontFamily: 'Pretendard',
@@ -329,15 +367,16 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
           ),
         ),
         const SizedBox(height: 10),
-        ...visible.map((r) => _buildReplyItem(r)),
+        ...items,
       ],
     );
   }
 
-  Widget _buildReplyItem(ReplyInfo reply) {
+  Widget _buildReplyItem(ReplyInfo reply, {bool isNested = false}) {
     final isEditing = _editingReplyId == reply.id;
+    // 대댓글이면 아바타(28) + 좌측 간격(10) 만큼 들여써서 부모와 시각적으로 구분.
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: EdgeInsets.only(bottom: 14, left: isNested ? 38 : 0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -383,6 +422,24 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 ),
                 const SizedBox(height: 3),
                 if (isEditing) _buildEditField(reply) else _buildReplyBody(reply),
+                // 답글 트리거 — 부모 댓글에만 표시 (대댓글은 depth 1만 지원).
+                if (!isNested && !isEditing)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: GestureDetector(
+                      onTap: () => _setReplyTo(reply),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Text(
+                        '답글 달기',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -499,55 +556,100 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
 
   Widget _buildCommentInput() {
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final isReplyMode = _replyToId != null;
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + safeBottom),
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const _Avatar(imageUrl: null, size: 28),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          // 답글 모드 인디케이터 — 부모 댓글에 답글 작성 중임을 표시 + 취소(X).
+          if (isReplyMode)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFF0F0F0),
-                borderRadius: BorderRadius.circular(20),
+                color: const Color(0xFFEEF6FF),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: TextField(
-                controller: _commentController,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  color: Color(0xFF1A1A2E),
-                ),
-                decoration: const InputDecoration.collapsed(
-                  hintText: '나도 한 마디...',
-                  hintStyle: TextStyle(
-                    color: Color(0xFF9E9E9E),
-                    fontFamily: 'Pretendard',
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '@${_replyToNickname ?? ''} 에게 답글',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF4D91FF),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendComment(),
+                  GestureDetector(
+                    onTap: _clearReplyTo,
+                    behavior: HitTestBehavior.opaque,
+                    child: const Icon(
+                      Icons.close_rounded,
+                      size: 16,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _sendComment,
-            child: _isSending
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFF4D91FF),
+          Row(
+            children: [
+              const _Avatar(imageUrl: null, size: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F0F0),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: TextField(
+                    controller: _commentController,
+                    focusNode: _commentFocus,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontFamily: 'Pretendard',
+                      color: Color(0xFF1A1A2E),
                     ),
-                  )
-                : const Icon(Icons.send_rounded, color: Color(0xFF4D91FF), size: 22),
+                    decoration: InputDecoration.collapsed(
+                      hintText: isReplyMode ? '답글을 입력하세요...' : '나도 한 마디...',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF9E9E9E),
+                        fontFamily: 'Pretendard',
+                      ),
+                    ),
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendComment(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _sendComment,
+                child: _isSending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF4D91FF),
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded,
+                        color: Color(0xFF4D91FF), size: 22),
+              ),
+            ],
           ),
         ],
       ),
