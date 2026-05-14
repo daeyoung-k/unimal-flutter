@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:unimal/service/board/model/file_info.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 /// Horizontal carousel of post images. Uses [ClampingScrollPhysics] so it
 /// does NOT compete with the parent's vertical drag gesture (no overscroll
@@ -56,17 +57,21 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
     super.dispose();
   }
 
-  static const Widget _placeholder = ColoredBox(
-    color: Color(0xFFF1F3F5),
-    child: Center(
-      child: Icon(Icons.image_outlined, size: 48, color: Color(0xFFBDBDBD)),
-    ),
-  );
+  Widget _placeholder(BuildContext context) {
+    final colors = AppColors.of(context);
+    return ColoredBox(
+      color: colors.surfaceVariant,
+      child: Center(
+        child: Icon(Icons.image_outlined, size: 48, color: colors.textMuted),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     if (widget.images.isEmpty) {
-      return const SizedBox(height: 220, child: _placeholder);
+      return SizedBox(height: 220, child: _placeholder(context));
     }
 
     final total = widget.images.length;
@@ -86,8 +91,8 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
               return CachedNetworkImage(
                 imageUrl: widget.images[index].fileUrl,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => _placeholder,
-                errorWidget: (_, __, ___) => _placeholder,
+                placeholder: (_, __) => _placeholder(context),
+                errorWidget: (_, __, ___) => _placeholder(context),
               );
             },
           ),
@@ -99,13 +104,14 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xCC1A1A2E),
+                  // 다크 오버레이 — textPrimary 80% (light: 진한 네이비, dark: 옅은)
+                  color: colors.textPrimary.withValues(alpha: 0.8),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
                   '${_current + 1} / $total',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colors.surface,
                     fontSize: 12,
                     fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w600,
@@ -129,7 +135,9 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
                     width: active ? 18 : 6,
                     height: 6,
                     decoration: BoxDecoration(
-                      color: active ? const Color(0xFF4D91FF) : const Color(0x66FFFFFF),
+                      color: active
+                          ? colors.primaryStrong
+                          : colors.surface.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   );

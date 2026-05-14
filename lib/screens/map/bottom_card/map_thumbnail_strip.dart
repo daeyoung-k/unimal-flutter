@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 /// 현재 그룹 기준으로 표시할 인덱스 목록 반환 (최대 2+현재+2).
 /// 범위 초과 인덱스는 포함하지 않으며, 별도 오버플로 표시 없음.
@@ -238,9 +239,10 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
         ? 1.0
         : ((1.0 - t) / (1.0 - _activeDeadzone)).clamp(0.0, 1.0);
 
+    final colors = AppColors.of(context);
     final borderColor = Color.lerp(
-      isTextPost ? const Color(0xFFFF9F43) : const Color(0xFFBBBBBB),
-      const Color(0xFF4D91FF),
+      isTextPost ? colors.accent : colors.borderStrong,
+      colors.primaryStrong,
       activeness,
     )!;
     final borderWidth = lerpDouble(1.5, 2.0, activeness)!;
@@ -261,7 +263,7 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
                 boxShadow: activeness > 0.05
                     ? [
                         BoxShadow(
-                          color: const Color(0xFF4D91FF)
+                          color: colors.primaryStrong
                               .withValues(alpha: 0.27 * activeness),
                           blurRadius: 6,
                         ),
@@ -271,7 +273,7 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
               child: ClipOval(
                 child: isTextPost
                     ? Container(
-                        color: const Color(0xFFF5F5F5),
+                        color: colors.surfaceVariant,
                         child: Center(
                           child: Text(
                             '💬',
@@ -283,11 +285,11 @@ class _MapThumbnailStripState extends State<MapThumbnailStrip>
                         imageUrl:
                             widget.groups[i].first.fileInfoList.first.fileUrl,
                         fit: BoxFit.cover,
-                        placeholder: (_, __) => const ColoredBox(
-                          color: Color(0xFFF5F5F5),
+                        placeholder: (_, __) => ColoredBox(
+                          color: colors.surfaceVariant,
                         ),
-                        errorWidget: (_, __, ___) => const ColoredBox(
-                          color: Color(0xFFF5F5F5),
+                        errorWidget: (_, __, ___) => ColoredBox(
+                          color: colors.surfaceVariant,
                         ),
                       ),
               ),

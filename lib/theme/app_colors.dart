@@ -120,6 +120,14 @@ class AppColors {
     required this.shadow,
   });
 
+  /// 현재 컨텍스트의 시스템 밝기에 따라 light/dark 인스턴스를 반환.
+  /// MaterialApp.themeMode 설정과 무관하게 OS 다크모드를 자동 추적.
+  /// 추후 ThemeData 정식 통합 시 이 of() 구현만 교체하면 사용처는 그대로.
+  static AppColors of(BuildContext context) {
+    final brightness = MediaQuery.platformBrightnessOf(context);
+    return brightness == Brightness.dark ? dark : light;
+  }
+
   /// 라이트 모드 컬러 세트.
   static const AppColors light = AppColors(
     // Brand

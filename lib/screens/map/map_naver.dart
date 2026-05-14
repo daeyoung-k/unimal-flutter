@@ -12,6 +12,7 @@ import 'package:unimal/service/image/image_service.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 class MapNaverScreens extends StatefulWidget {
   const MapNaverScreens({super.key});
@@ -20,7 +21,8 @@ class MapNaverScreens extends StatefulWidget {
   State<MapNaverScreens> createState() => _MapNaverScreensState();
 }
 
-class _MapNaverScreensState extends State<MapNaverScreens> {
+class _MapNaverScreensState extends State<MapNaverScreens>
+    with WidgetsBindingObserver {
   NaverMapController? _mapController;
   final ImageService _imageService = ImageService();
   final NaverSearchService _searchService = NaverSearchService();
@@ -92,10 +94,62 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pendingLocationWorker = ever(
       Get.find<NavController>().pendingMapLat,
       (_) => _applyPendingLocation(),
     );
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    super.didChangePlatformBrightness();
+    if (!mounted) return;
+    // 다크모드 토글 시 마커 캡션 색이 즉시 반영되도록 모든 마커 재로드.
+    // 캐시 일괄 비움(이미지 fetch 다시 발생) — 토글 빈도 낮음을 가정한 단순 전략.
+    // MediaQuery 가 새 brightness로 갱신된 다음 frame에 실행 — 안 그러면 이전
+    // brightness 값으로 캡션 색이 결정되어 반대로 적용되는 케이스 있음.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _reloadMarkersForBrightnessChange();
+    });
+  }
+
+  Future<void> _reloadMarkersForBrightnessChange() async {
+    if (_mapController == null) return;
+    for (final id in _mapMarkerIds.toList()) {
+      try {
+        _mapController!.deleteOverlay(
+          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
+        );
+      } catch (_) {}
+    }
+    _mapMarkerIds.clear();
+    _markerRefs.clear();
+    _markerBaseZIndex.clear();
+    _markerIconCache.clear();
+    _markerBytesCache.clear();
+    _clusterIconCache.clear();
+    _clusterCurrentSize.clear();
+    _highlightedMarkerId = null;
+
+    // 마지막 조회 위치 기준으로 재로드. 없으면 현재 카메라 기준.
+    final target = _lastQueriedTarget;
+    if (target != null) {
+      await _loadMapMarkers(
+        target.latitude,
+        target.longitude,
+        _lastQueriedZoom.round(),
+      );
+    } else {
+      final camera = await _mapController!.getCameraPosition();
+      if (!mounted) return;
+      await _loadMapMarkers(
+        camera.target.latitude,
+        camera.target.longitude,
+        camera.zoom.round(),
+      );
+    }
   }
 
   void _applyPendingLocation() {
@@ -115,6 +169,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pendingLocationWorker?.dispose();
     _debounce?.cancel();
     _cameraDebounce?.cancel();
@@ -194,6 +249,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
 
   Future<void> _loadMapMarkersInternal(
       double latitude, double longitude, int zoom) async {
+    // await 이후 context 사용을 피하기 위해 함수 시작 시점에 캡처.
+    // 다크모드 토글 시 기존 마커는 그대로, 다음 재조회부터 새 색 반영.
+    final captionTokens = AppColors.of(context);
     // 재조회 직전: 사용자가 현재 선택한 마커의 대표 ID 저장
     String? prevSelectedPostId;
     if (_selectedGroupIndex != null &&
@@ -320,8 +378,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
         caption: NOverlayCaption(
           text: _truncateMarkerTitle(topPost.title),
           textSize: 13,
-          color: const Color(0xFF1A1A2E),
-          haloColor: Colors.white,
+          color: captionTokens.textPrimary,
+          haloColor: captionTokens.background,
         ),
       );
 
@@ -587,8 +645,8 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
     clusterMarker.setCaption(NOverlayCaption(
       text: title.isEmpty ? '' : _truncateMarkerTitle(title),
       textSize: 13,
-      color: const Color(0xFF1A1A2E),
-      haloColor: Colors.white,
+      color: AppColors.of(context).textPrimary,
+      haloColor: AppColors.of(context).background,
     ));
     clusterMarker.setCaptionAligns(const [NAlign.bottom]);
     clusterMarker.setCaptionOffset(0);
@@ -699,6 +757,7 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
   Widget build(BuildContext context) {
     const seoulCityHall = NLatLng(37.5666, 126.979);
     final safeAreaPadding = MediaQuery.paddingOf(context);
+    final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
     return Scaffold(
       body: Stack(
         children: [
@@ -709,6 +768,9 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               consumeSymbolTapEvents: true,
               minZoom: 10,
               maxZoom: 20,
+              // 다크모드일 때만 navi 타입 + 야간 모드 (라이브러리 한계: nightMode는 navi 전용)
+              mapType: isDark ? NMapType.navi : NMapType.basic,
+              nightModeEnable: isDark,
             ),
             clusterOptions: NaverMapClusteringOptions(
               // 줌 13 이하만 클러스터링, 14+ 부터는 모든 마커 펼침.
@@ -753,13 +815,13 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(24),
-                    boxShadow: const [
+                    boxShadow: [
                       BoxShadow(
-                        color: Color(0x22000000),
+                        color: AppColors.of(context).shadow,
                         blurRadius: 8,
-                        offset: Offset(0, 2),
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
@@ -771,32 +833,33 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                       _onSearch(v);
                     },
                     textInputAction: TextInputAction.search,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontFamily: 'Pretendard',
+                      color: AppColors.of(context).textPrimary,
                     ),
                     decoration: InputDecoration(
                       hintText: '장소 검색',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF9E9E9E),
+                      hintStyle: TextStyle(
+                        color: AppColors.of(context).textMuted,
                         fontFamily: 'Pretendard',
                       ),
                       prefixIcon: _isSearching
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
+                          ? Padding(
+                              padding: const EdgeInsets.all(12),
                               child: SizedBox(
                                 width: 20,
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Color(0xFF4D91FF),
+                                  color: AppColors.of(context).primaryStrong,
                                 ),
                               ),
                             )
-                          : const Icon(Icons.search, color: Color(0xFF9E9E9E)),
+                          : Icon(Icons.search, color: AppColors.of(context).textMuted),
                       suffixIcon: _searchController.text.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.close, color: Color(0xFF9E9E9E), size: 20),
+                              icon: Icon(Icons.close, color: AppColors.of(context).textMuted, size: 20),
                               onPressed: _clearSearch,
                             )
                           : null,
@@ -821,13 +884,13 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                   Container(
                     margin: const EdgeInsets.only(top: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.of(context).surface,
                       borderRadius: BorderRadius.circular(24),
-                      boxShadow: const [
+                      boxShadow: [
                         BoxShadow(
-                          color: Color(0x22000000),
+                          color: AppColors.of(context).shadow,
                           blurRadius: 8,
-                          offset: Offset(0, 2),
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
@@ -840,21 +903,22 @@ class _MapNaverScreensState extends State<MapNaverScreens> {
                         final result = _searchResults[index];
                         return ListTile(
                           dense: true,
-                          leading: const Icon(Icons.place_outlined, color: Color(0xFF4D91FF), size: 20),
+                          leading: Icon(Icons.place_outlined, color: AppColors.of(context).primaryStrong, size: 20),
                           title: Text(
                             result.title,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w600,
+                              color: AppColors.of(context).textPrimary,
                             ),
                           ),
                           subtitle: Text(
                             result.roadAddress.isNotEmpty ? result.roadAddress : result.address,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontFamily: 'Pretendard',
-                              color: Color(0xFF9E9E9E),
+                              color: AppColors.of(context).textMuted,
                             ),
                           ),
                           onTap: () => _onResultTap(result),
@@ -981,15 +1045,16 @@ class _PlaceInfoCard extends StatelessWidget {
         ? (place!.roadAddress.isNotEmpty ? place!.roadAddress : place!.address)
         : '';
 
+    final colors = AppColors.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x22000000),
+            color: colors.shadow,
             blurRadius: 12,
-            offset: Offset(0, -2),
+            offset: const Offset(0, -2),
           ),
         ],
       ),
@@ -1007,7 +1072,7 @@ class _PlaceInfoCard extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
+                  color: colors.divider,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1016,7 +1081,7 @@ class _PlaceInfoCard extends StatelessWidget {
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.place, color: Color(0xFF4D91FF), size: 22),
+              Icon(Icons.place, color: colors.primaryStrong, size: 22),
               const SizedBox(width: 10),
               Expanded(
                 child: isLoading
@@ -1025,19 +1090,20 @@ class _PlaceInfoCard extends StatelessWidget {
                         children: [
                           Text(
                             symbol?.caption ?? '',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const SizedBox(
+                          SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Color(0xFF4D91FF),
+                              color: colors.primaryStrong,
                             ),
                           ),
                         ],
@@ -1047,20 +1113,21 @@ class _PlaceInfoCard extends StatelessWidget {
                         children: [
                           Text(
                             name,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
                             ),
                           ),
                           if (address.isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Text(
                               address,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontFamily: 'Pretendard',
-                                color: Color(0xFF9E9E9E),
+                                color: colors.textMuted,
                               ),
                             ),
                           ],
@@ -1069,7 +1136,7 @@ class _PlaceInfoCard extends StatelessWidget {
               ),
               IconButton(
                 onPressed: onClose,
-                icon: const Icon(Icons.close, color: Color(0xFF9E9E9E), size: 20),
+                icon: Icon(Icons.close, color: colors.textMuted, size: 20),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),

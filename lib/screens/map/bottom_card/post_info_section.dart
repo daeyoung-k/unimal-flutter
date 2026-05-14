@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 /// Renders title, address, relative time, content, like/reply counts,
 /// and the full-width "자세히 보기" button.
@@ -39,6 +40,7 @@ class PostInfoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Padding(
       padding: padding,
       child: Column(
@@ -59,11 +61,11 @@ class PostInfoSection extends StatelessWidget {
                     children: [
                       Text(
                         post.nickname,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF1A1A2E),
+                          color: colors.textPrimary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -73,10 +75,10 @@ class PostInfoSection extends StatelessWidget {
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 1),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
                               child: Icon(Icons.location_on_outlined,
-                                  size: 13, color: Color(0xFF6B7280)),
+                                  size: 13, color: colors.textTertiary),
                             ),
                             const SizedBox(width: 2),
                             Expanded(
@@ -84,10 +86,10 @@ class PostInfoSection extends StatelessWidget {
                                 dummyStreetName,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   fontFamily: 'Pretendard',
-                                  color: Color(0xFF6B7280),
+                                  color: colors.textTertiary,
                                   height: 1.3,
                                 ),
                               ),
@@ -102,10 +104,10 @@ class PostInfoSection extends StatelessWidget {
                 // 날짜: 항상 첫 줄 우측 상단 정렬
                 Text(
                   relativeTimeFromString(post.createdAt),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontFamily: 'Pretendard',
-                    color: Color(0xFF6B7280),
+                    color: colors.textTertiary,
                   ),
                 ),
               ],
@@ -115,26 +117,26 @@ class PostInfoSection extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             post.title.isNotEmpty ? post.title : '제목 없음',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 17,
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1A2E),
+              color: colors.textPrimary,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          // 내용
+          // 내용 — 타이틀과 동일한 textPrimary 사용 (다크에서 흰색 가까이)
           if (post.content.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
               post.content,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontFamily: 'Pretendard',
-                color: Color(0xFF6B7280),
+                color: colors.textPrimary,
                 height: 1.4,
               ),
             ),
@@ -152,15 +154,15 @@ class PostInfoSection extends StatelessWidget {
                     Icon(
                       isLiked ? Icons.favorite : Icons.favorite_outline,
                       size: 16,
-                      color: isLiked ? const Color(0xFFFF6B6B) : const Color(0xFF9CA3AF),
+                      color: isLiked ? colors.danger : colors.textMuted,
                     ),
                     const SizedBox(width: 4),
                     Text(
                       '${likeCountOverride ?? post.likeCount}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontFamily: 'Pretendard',
-                        color: Color(0xFF6B7280),
+                        color: colors.textTertiary,
                       ),
                     ),
                   ],
@@ -172,14 +174,15 @@ class PostInfoSection extends StatelessWidget {
                 onTap: onReplyTap,
                 child: Row(
                   children: [
-                    const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF4D91FF)),
+                    Icon(Icons.chat_bubble_outline,
+                        size: 15, color: colors.primaryStrong),
                     const SizedBox(width: 4),
                     Text(
                       '${post.replyCount}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontFamily: 'Pretendard',
-                        color: Color(0xFF6B7280),
+                        color: colors.textTertiary,
                       ),
                     ),
                   ],
@@ -196,8 +199,8 @@ class PostInfoSection extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: () => Get.toNamed('/detail-board', parameters: {'id': post.id}),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF4D91FF),
-                  foregroundColor: Colors.white,
+                  backgroundColor: colors.primaryStrong,
+                  foregroundColor: colors.surface,
                   elevation: 0,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
                 ),
@@ -232,17 +235,19 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFFF5F5F5),
+        color: colors.surfaceVariant,
       ),
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null && imageUrl!.isNotEmpty
           ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
-          : Icon(Icons.person_outline, size: size * 0.55, color: const Color(0xFFBBBBBB)),
+          : Icon(Icons.person_outline,
+              size: size * 0.55, color: colors.textMuted),
     );
   }
 }

@@ -6,6 +6,7 @@ import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/reply_info.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 /// 확장 카드의 스크롤 가능한 내부 영역.
 /// 본문, 댓글 목록, 댓글 입력창을 포함한다.
@@ -136,9 +137,10 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('삭제',
+            child: Text('삭제',
                 style: TextStyle(
-                    fontFamily: 'Pretendard', color: Color(0xFFFF6B6B))),
+                    fontFamily: 'Pretendard',
+                    color: AppColors.of(ctx).danger)),
           ),
         ],
       ),
@@ -166,7 +168,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 children: [
                   _buildPostInfo(),
                   const SizedBox(height: 16),
-                  const Divider(color: Color(0xFFE5E7EB), height: 1),
+                  Divider(color: AppColors.of(context).border, height: 1),
                   const SizedBox(height: 12),
                   _buildComments(),
                 ],
@@ -182,6 +184,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
 
   Widget _buildPostInfo() {
     final post = widget.post;
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -197,11 +200,11 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 children: [
                   Text(
                     post.nickname,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       fontFamily: 'Pretendard',
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1A1A2E),
+                      color: colors.textPrimary,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -211,10 +214,10 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 1),
+                        Padding(
+                          padding: const EdgeInsets.only(top: 1),
                           child: Icon(Icons.location_on_outlined,
-                              size: 13, color: Color(0xFF6B7280)),
+                              size: 13, color: colors.textTertiary),
                         ),
                         const SizedBox(width: 2),
                         Expanded(
@@ -222,10 +225,10 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                             post.streetName,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontFamily: 'Pretendard',
-                              color: Color(0xFF6B7280),
+                              color: colors.textTertiary,
                               height: 1.3,
                             ),
                           ),
@@ -239,10 +242,10 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             const SizedBox(width: 8),
             Text(
               relativeTimeFromString(post.createdAt),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontFamily: 'Pretendard',
-                color: Color(0xFF6B7280),
+                color: colors.textTertiary,
               ),
             ),
           ],
@@ -251,22 +254,22 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
         const SizedBox(height: 14),
         Text(
           post.title.isNotEmpty ? post.title : '제목 없음',
-          style: const TextStyle(
-            fontSize: 17,
+          style: TextStyle(
+            fontSize: 22,
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w700,
-            color: Color(0xFF1A1A2E),
+            color: colors.textPrimary,
           ),
         ),
-        // 내용
+        // 내용 — textPrimary 사용으로 다크모드에서 거의 흰색 (라이트는 본문이 약간 더 진해짐)
         if (post.content.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
             post.content,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontFamily: 'Pretendard',
-              color: Color(0xFF4B5563),
+              color: colors.textPrimary,
               height: 1.5,
             ),
           ),
@@ -283,31 +286,30 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   Icon(
                     widget.isLiked ? Icons.favorite : Icons.favorite_outline,
                     size: 16,
-                    color: widget.isLiked
-                        ? const Color(0xFFFF6B6B)
-                        : const Color(0xFF9CA3AF),
+                    color: widget.isLiked ? colors.danger : colors.textMuted,
                   ),
                   const SizedBox(width: 4),
                   Text(
                     '${widget.likeCountOverride ?? post.likeCount}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontFamily: 'Pretendard',
-                      color: Color(0xFF9E9E9E),
+                      color: colors.textMuted,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 16),
-            const Icon(Icons.chat_bubble_outline, size: 15, color: Color(0xFF4D91FF)),
+            Icon(Icons.chat_bubble_outline,
+                size: 15, color: colors.primaryStrong),
             const SizedBox(width: 4),
             Text(
               '${post.replyCount}',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontFamily: 'Pretendard',
-                color: Color(0xFF9E9E9E),
+                color: colors.textMuted,
               ),
             ),
           ],
@@ -317,11 +319,13 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   }
 
   Widget _buildComments() {
+    final colors = AppColors.of(context);
     if (widget.isLoading) {
-      return const Center(
+      return Center(
         child: Padding(
-          padding: EdgeInsets.all(24),
-          child: CircularProgressIndicator(color: Color(0xFF4D91FF), strokeWidth: 2),
+          padding: const EdgeInsets.all(24),
+          child: CircularProgressIndicator(
+              color: colors.primaryStrong, strokeWidth: 2),
         ),
       );
     }
@@ -329,15 +333,15 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     final active = replies.where((r) => !r.isDel).toList();
     final topLevel = active.where((r) => !r.reReplyYn).toList();
     if (active.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
           child: Text(
             '아직 댓글이 없어요',
             style: TextStyle(
               fontSize: 13,
               fontFamily: 'Pretendard',
-              color: Color(0xFF9E9E9E),
+              color: colors.textMuted,
             ),
           ),
         ),
@@ -359,11 +363,11 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
       children: [
         Text(
           '댓글 ${active.length}',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w700,
-            color: Color(0xFF9E9E9E),
+            color: colors.textMuted,
           ),
         ),
         const SizedBox(height: 10),
@@ -374,6 +378,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
 
   Widget _buildReplyItem(ReplyInfo reply, {bool isNested = false}) {
     final isEditing = _editingReplyId == reply.id;
+    final colors = AppColors.of(context);
     // 대댓글이면 아바타(28) + 좌측 간격(10) 만큼 들여써서 부모와 시각적으로 구분.
     return Padding(
       padding: EdgeInsets.only(bottom: 14, left: isNested ? 38 : 0),
@@ -396,21 +401,21 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                               reply.nickname,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontFamily: 'Pretendard',
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF374151),
+                                color: colors.textSecondary,
                               ),
                             ),
                           ),
                           const SizedBox(width: 6),
                           Text(
                             relativeTimeFromString(reply.createdAt),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 11,
                               fontFamily: 'Pretendard',
-                              color: Color(0xFF6B7280),
+                              color: colors.textTertiary,
                             ),
                           ),
                         ],
@@ -429,13 +434,13 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                     child: GestureDetector(
                       onTap: () => _setReplyTo(reply),
                       behavior: HitTestBehavior.opaque,
-                      child: const Text(
+                      child: Text(
                         '답글 달기',
                         style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF6B7280),
+                          color: colors.textTertiary,
                         ),
                       ),
                     ),
@@ -449,39 +454,44 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   }
 
   Widget _buildReplyBody(ReplyInfo reply) {
+    final colors = AppColors.of(context);
     return Text(
       reply.comment,
-      style: const TextStyle(
+      style: TextStyle(
         fontSize: 13,
         fontFamily: 'Pretendard',
-        color: Color(0xFF4B5563),
+        color: colors.textSecondary,
         height: 1.4,
       ),
     );
   }
 
   Widget _buildReplyMenu(ReplyInfo reply) {
+    final colors = AppColors.of(context);
     return SizedBox(
       width: 28,
       height: 28,
       child: PopupMenuButton<String>(
         padding: EdgeInsets.zero,
         iconSize: 18,
-        icon: const Icon(Icons.more_horiz, color: Color(0xFF9CA3AF)),
+        icon: Icon(Icons.more_horiz, color: colors.textMuted),
         onSelected: (value) {
           if (value == 'edit') _startEditReply(reply);
           if (value == 'delete') _confirmDeleteReply(reply);
         },
-        itemBuilder: (_) => const [
-          PopupMenuItem(
+        itemBuilder: (_) => [
+          const PopupMenuItem(
             value: 'edit',
-            child: Text('수정', style: TextStyle(fontFamily: 'Pretendard', fontSize: 13)),
+            child: Text('수정',
+                style: TextStyle(fontFamily: 'Pretendard', fontSize: 13)),
           ),
           PopupMenuItem(
             value: 'delete',
             child: Text('삭제',
                 style: TextStyle(
-                    fontFamily: 'Pretendard', fontSize: 13, color: Color(0xFFFF6B6B))),
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    color: colors.danger)),
           ),
         ],
       ),
@@ -489,23 +499,24 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   }
 
   Widget _buildEditField(ReplyInfo reply) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0F0F0),
+            color: colors.surfaceVariant,
             borderRadius: BorderRadius.circular(8),
           ),
           child: TextField(
             controller: _editController,
             autofocus: true,
             maxLines: null,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontFamily: 'Pretendard',
-              color: Color(0xFF1A1A2E),
+              color: colors.textPrimary,
               height: 1.4,
             ),
             decoration: const InputDecoration.collapsed(hintText: '댓글 수정'),
@@ -522,9 +533,11 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 padding: const EdgeInsets.symmetric(horizontal: 10),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text('취소',
+              child: Text('취소',
                   style: TextStyle(
-                      fontFamily: 'Pretendard', fontSize: 12, color: Color(0xFF6B7280))),
+                      fontFamily: 'Pretendard',
+                      fontSize: 12,
+                      color: colors.textTertiary)),
             ),
             const SizedBox(width: 4),
             TextButton(
@@ -535,17 +548,17 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: _isSavingEdit
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Color(0xFF4D91FF)),
+                          strokeWidth: 2, color: colors.primaryStrong),
                     )
-                  : const Text('저장',
+                  : Text('저장',
                       style: TextStyle(
                           fontFamily: 'Pretendard',
                           fontSize: 12,
-                          color: Color(0xFF4D91FF),
+                          color: colors.primaryStrong,
                           fontWeight: FontWeight.w600)),
             ),
           ],
@@ -557,11 +570,12 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   Widget _buildCommentInput() {
     final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
     final isReplyMode = _replyToId != null;
+    final colors = AppColors.of(context);
     return Container(
       padding: EdgeInsets.fromLTRB(12, 8, 12, 8 + safeBottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(top: BorderSide(color: colors.border)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -572,7 +586,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: const Color(0xFFEEF6FF),
+                color: colors.primaryWash,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -580,11 +594,11 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   Expanded(
                     child: Text(
                       '@${_replyToNickname ?? ''} 에게 답글',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Pretendard',
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF4D91FF),
+                        color: colors.primaryStrong,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -593,10 +607,10 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   GestureDetector(
                     onTap: _clearReplyTo,
                     behavior: HitTestBehavior.opaque,
-                    child: const Icon(
+                    child: Icon(
                       Icons.close_rounded,
                       size: 16,
-                      color: Color(0xFF6B7280),
+                      color: colors.textTertiary,
                     ),
                   ),
                 ],
@@ -611,21 +625,21 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF0F0F0),
+                    color: colors.surfaceVariant,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: TextField(
                     controller: _commentController,
                     focusNode: _commentFocus,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontFamily: 'Pretendard',
-                      color: Color(0xFF1A1A2E),
+                      color: colors.textPrimary,
                     ),
                     decoration: InputDecoration.collapsed(
                       hintText: isReplyMode ? '답글을 입력하세요...' : '나도 한 마디...',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFF9E9E9E),
+                      hintStyle: TextStyle(
+                        color: colors.textMuted,
                         fontFamily: 'Pretendard',
                       ),
                     ),
@@ -638,16 +652,16 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               GestureDetector(
                 onTap: _sendComment,
                 child: _isSending
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Color(0xFF4D91FF),
+                          color: colors.primaryStrong,
                         ),
                       )
-                    : const Icon(Icons.send_rounded,
-                        color: Color(0xFF4D91FF), size: 22),
+                    : Icon(Icons.send_rounded,
+                        color: colors.primaryStrong, size: 22),
               ),
             ],
           ),
@@ -664,17 +678,19 @@ class _Avatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Color(0xFFF5F5F5),
+        color: colors.surfaceVariant,
       ),
       clipBehavior: Clip.antiAlias,
       child: imageUrl != null && imageUrl!.isNotEmpty
           ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
-          : Icon(Icons.person_outline, size: size * 0.6, color: const Color(0xFFBBBBBB)),
+          : Icon(Icons.person_outline,
+              size: size * 0.6, color: colors.textMuted),
     );
   }
 }

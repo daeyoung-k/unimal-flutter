@@ -9,6 +9,7 @@ import 'package:unimal/screens/map/bottom_card/post_group_navigator.dart';
 import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
 import 'package:unimal/screens/map/bottom_card/post_info_section.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/theme/app_colors.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
@@ -313,11 +314,14 @@ class _MapBottomCardState extends State<MapBottomCard> {
           curve: Curves.easeOutCubic,
           height: cardH,
           clipBehavior: Clip.antiAlias,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          decoration: BoxDecoration(
+            color: AppColors.of(context).surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
             boxShadow: [
-              BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, -4)),
+              BoxShadow(
+                  color: AppColors.of(context).shadow,
+                  blurRadius: 20,
+                  offset: const Offset(0, -4)),
             ],
           ),
           child: OverflowBox(
@@ -361,7 +365,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
                             width: 40,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFDDDDDD),
+                              color: AppColors.of(context).divider,
                               borderRadius: BorderRadius.circular(2),
                             ),
                           ),
@@ -435,6 +439,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
   }
 
   Widget _buildTextPostDefault(MapPost post) {
+    final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Column(
@@ -446,11 +451,13 @@ class _MapBottomCardState extends State<MapBottomCard> {
               Container(
                 width: 32,
                 height: 32,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFF5F5F5)),
+                decoration: BoxDecoration(
+                    shape: BoxShape.circle, color: colors.surfaceVariant),
                 clipBehavior: Clip.antiAlias,
                 child: post.profileImage != null && post.profileImage!.isNotEmpty
                     ? CachedNetworkImage(imageUrl: post.profileImage!, fit: BoxFit.cover)
-                    : const Icon(Icons.person_outline, size: 18, color: Color(0xFFBBBBBB)),
+                    : Icon(Icons.person_outline,
+                        size: 18, color: colors.textMuted),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -458,36 +465,43 @@ class _MapBottomCardState extends State<MapBottomCard> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(post.nickname,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13,
                             fontFamily: 'Pretendard',
                             fontWeight: FontWeight.w600,
-                            color: Color(0xFF374151))),
+                            color: colors.textSecondary)),
                     Text(relativeTimeFromString(post.createdAt),
-                        style: const TextStyle(fontSize: 11, fontFamily: 'Pretendard', color: Color(0xFF6B7280))),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'Pretendard',
+                            color: colors.textTertiary)),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                    color: const Color(0x22FF9F43),
-                    border: Border.all(color: const Color(0x66FF9F43)),
+                    color: colors.accent.withValues(alpha: 0.13),
+                    border: Border.all(
+                        color: colors.accent.withValues(alpha: 0.4)),
                     borderRadius: BorderRadius.circular(10)),
-                child: const Text('24h',
-                    style: TextStyle(fontSize: 10, fontFamily: 'Pretendard', color: Color(0xFFFF9F43))),
+                child: Text('24h',
+                    style: TextStyle(
+                        fontSize: 10,
+                        fontFamily: 'Pretendard',
+                        color: colors.accent)),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          // 텍스트 내용
+          // 텍스트 내용 — textPrimary 사용 (다크에서 흰색 가까이)
           Expanded(
             child: Text(
               post.content,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 14,
                   fontFamily: 'Pretendard',
-                  color: Color(0xFF4B5563),
+                  color: colors.textPrimary,
                   height: 1.5),
               overflow: TextOverflow.fade,
             ),
@@ -504,13 +518,15 @@ class _MapBottomCardState extends State<MapBottomCard> {
                     Icon(
                       _isCurrentLiked ? Icons.favorite : Icons.favorite_outline,
                       size: 15,
-                      color: _isCurrentLiked
-                          ? const Color(0xFFFF6B6B)
-                          : const Color(0xFF9CA3AF),
+                      color:
+                          _isCurrentLiked ? colors.danger : colors.textMuted,
                     ),
                     const SizedBox(width: 4),
                     Text('$_currentLikeCount',
-                        style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Pretendard',
+                            color: colors.textMuted)),
                   ],
                 ),
               ),
@@ -520,10 +536,14 @@ class _MapBottomCardState extends State<MapBottomCard> {
                 onTap: _expandCard,
                 child: Row(
                   children: [
-                    const Icon(Icons.chat_bubble_outline, size: 14, color: Color(0xFF4D91FF)),
+                    Icon(Icons.chat_bubble_outline,
+                        size: 14, color: colors.primaryStrong),
                     const SizedBox(width: 4),
                     Text('${post.replyCount}',
-                        style: const TextStyle(fontSize: 12, fontFamily: 'Pretendard', color: Color(0xFF9E9E9E))),
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Pretendard',
+                            color: colors.textMuted)),
                   ],
                 ),
               ),
