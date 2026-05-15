@@ -14,6 +14,7 @@ class PostInfoSection extends StatelessWidget {
   final MapPost post;
   final EdgeInsets padding;
   final bool showDetailButton;
+  final int contentMaxLines;
 
   /// 좋아요 토글 핸들러. 좋아요 아이콘/숫자 탭 시 호출.
   final VoidCallback? onLikeTap;
@@ -32,6 +33,7 @@ class PostInfoSection extends StatelessWidget {
     required this.post,
     this.padding = const EdgeInsets.fromLTRB(20, 16, 20, 20),
     this.showDetailButton = true,
+    this.contentMaxLines = 2,
     this.onLikeTap,
     this.onReplyTap,
     this.isLiked = false,
@@ -131,7 +133,7 @@ class PostInfoSection extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               post.content,
-              maxLines: 2,
+              maxLines: contentMaxLines,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 14,

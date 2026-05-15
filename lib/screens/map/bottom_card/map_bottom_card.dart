@@ -60,8 +60,8 @@ class MapBottomCard extends StatefulWidget {
 }
 
 class _MapBottomCardState extends State<MapBottomCard> {
-  static const _defaultImageRatio = 0.50;
   static const _defaultTextRatio = 0.30;
+  static const _defaultLongTextRatio = 0.40;
   static const _hSwipeMinDistance = 60.0;
   static const _hSwipeMinVelocity = 300.0;
   static const _handleDragThreshold = 60.0;
@@ -108,13 +108,21 @@ class _MapBottomCardState extends State<MapBottomCard> {
   }
 
   bool get _isImagePost => _nav.currentPost.fileInfoList.isNotEmpty;
+  bool get _hasLongDefaultContent {
+    final content = _nav.currentPost.content.trim();
+    if (content.isEmpty) return false;
+    final lineCount = '\n'.allMatches(content).length + 1;
+    return lineCount >= 4 || content.length > 80;
+  }
+
+  int get _defaultContentMaxLines => _hasLongDefaultContent ? 4 : 2;
 
   double _maxCardHeight(double screenHeight) =>
       screenHeight - widget.minTopMargin - _stripHeight - _stripCardGap;
 
   double _baseCardHeight(double screenHeight) {
     final ratio = _cardState == _CardState.default_
-        ? (_isImagePost ? _defaultImageRatio : _defaultTextRatio)
+        ? (_hasLongDefaultContent ? _defaultLongTextRatio : _defaultTextRatio)
         : 1.0;
     return (screenHeight * ratio).clamp(0.0, _maxCardHeight(screenHeight));
   }
@@ -416,25 +424,15 @@ class _MapBottomCardState extends State<MapBottomCard> {
   }
 
   Widget _buildImagePostDefault(MapPost post) {
-    return Column(
-      children: [
-        PostImageCarousel(
-          images: post.fileInfoList,
-          initialIndex: _nav.currentImageIndex,
-          onIndexChanged: (i) => _nav.updateImageIndex(i),
-        ),
-        Expanded(
-          child: PostInfoSection(
-            post: post,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            showDetailButton: false,
-            isLiked: _isCurrentLiked,
-            likeCountOverride: _currentLikeCount,
-            onLikeTap: _toggleLike,
-            onReplyTap: _expandCard,
-          ),
-        ),
-      ],
+    return PostInfoSection(
+      post: post,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      showDetailButton: false,
+      isLiked: _isCurrentLiked,
+      likeCountOverride: _currentLikeCount,
+      contentMaxLines: _defaultContentMaxLines,
+      onLikeTap: _toggleLike,
+      onReplyTap: _expandCard,
     );
   }
 

@@ -18,6 +18,7 @@ MapPost _post(String id, double lat, double lng) => MapPost(
   replyCount: 0,
   score: 0,
   isOwner: false,
+  isLike: false,
 );
 
 void main() {
