@@ -651,7 +651,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     clusterMarker.setCaptionAligns(const [NAlign.bottom]);
     clusterMarker.setCaptionOffset(0);
 
-    // 클러스터(size>1) 탭 → 줌 15+ 자동 확대. 줌 15부터 클러스터링이 비활성
+    // 클러스터(size>1) 탭 → 줌 16+ 자동 확대. 줌 16부터 클러스터링이 비활성
     // 이므로 자연스럽게 풀리며, 사용자가 펼쳐진 jitter 마커를 한 번 더 탭해서
     // 카드/스트립으로 진입.
     if (info.size > 1 && topPosition != null) {
@@ -660,7 +660,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         if (_mapController == null) return;
         _focusNode.unfocus();
         final camera = await _mapController!.getCameraPosition();
-        final nextZoom = camera.zoom < 15 ? 15.0 : camera.zoom;
+        final nextZoom = camera.zoom < 16 ? 16.0 : camera.zoom;
         final update = NCameraUpdate.scrollAndZoomTo(
           target: target,
           zoom: nextZoom,
@@ -773,18 +773,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               nightModeEnable: isDark,
             ),
             clusterOptions: NaverMapClusteringOptions(
-              // 줌 13 이하만 클러스터링, 14+ 부터는 모든 마커 펼침.
-              // 라이브러리 enableZoomRange가 명세("zoom < max+1")대로 동작 안 하는 케이스
-              // 관찰됨(줌 15.00에서도 클러스터링됨). 안전권으로 한 칸 더 낮춤.
-              enableZoomRange: const NInclusiveRange(0, 13),
+              // 줌 15까지 클러스터링, 16+ 부터는 모든 마커 펼침.
+              // 기본 진입 줌(15)에서도 가까운 사진 마커를 묶어 밀집 지역의
+              // 시각적 혼잡을 줄인다.
+              enableZoomRange: const NInclusiveRange(0, 15),
               // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
               animationDuration: Duration.zero,
               mergeStrategy: const NClusterMergeStrategy(
                 willMergedScreenDistance: {
                   // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
                   NInclusiveRange(10, 12): 100.0,
-                  // 줌 13 (구·동): 70dp (기본 보통)
-                  NInclusiveRange(13, 13): 70.0,
+                  // 줌 13-14 (구·동): 85dp (동네 단위 정리)
+                  NInclusiveRange(13, 14): 85.0,
+                  // 줌 15 (기본 진입): 가까운 마커만 60dp 이내로 묶음
+                  NInclusiveRange(15, 15): 60.0,
                 },
               ),
               clusterMarkerBuilder: _buildClusterMarker,
