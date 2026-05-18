@@ -47,7 +47,7 @@ class PostInfoSection extends StatelessWidget {
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: MainAxisSize.max,
         children: [
           // 헤더: [아바타] (닉네임 / 위치) (우측: 날짜)
           Builder(builder: (context) {
@@ -143,8 +143,8 @@ class PostInfoSection extends StatelessWidget {
               ),
             ),
           ],
-          // 좋아요 · 댓글 — 좋아요는 토글, 댓글은 확장
-          const SizedBox(height: 12),
+          // 좋아요 · 댓글 — Spacer로 카드 바닥에 고정 (콘텐츠 길이와 무관)
+          const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

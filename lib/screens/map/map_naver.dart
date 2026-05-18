@@ -7,6 +7,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
+import 'package:unimal/screens/map/bottom_card/map_thumbnail_strip.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
 import 'package:unimal/service/map/models/map_post.dart';
@@ -45,11 +46,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
   static const int _selectedMarkerZIndex = 999999999;
-  // 선택 마커가 표시될 때 사용하는 핀 아이콘. onMapReady 시점에 lazy init.
-  NOverlayImage? _pinIcon;
-  // 선택 핀 마커 표시 사이즈 (일반 마커 32보다 약간 크게 두드러짐).
-  static const _selectedMarkerWidth = 36.0;
-  static const _selectedMarkerHeight = 46.0;
+
+  // 마커 선택 시 그 마커의 화면 좌표 (스트립 오버레이 중앙 정렬용).
+  // 카메라 이동 애니메이션 완료 후 latLngToScreenLocation으로 1회 계산해서 고정.
+  Offset? _stripScreenPos;
+  // 스트립 너비 = 5칸 × 70px (map_thumbnail_strip.dart 와 동일).
+  static const double _stripWidth = 350.0;
+  // 스트립 높이 = 활성 썸네일 70 + 상하 패딩 6×2.
+  static const double _stripHeight = 82.0;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -82,6 +86,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Worker? _pendingLocationWorker;
 
+  // 검색바 실측 — 카드 최대 높이를 검색바 바로 아래까지로 정확히 제한하기 위해
+  // post-frame에서 RenderBox 위치를 측정한다. 0이면 아직 미측정.
+  final GlobalKey _searchBarKey = GlobalKey();
+  double _searchBarBottom = 0;
+
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
 
@@ -99,6 +108,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       Get.find<NavController>().pendingMapLat,
       (_) => _applyPendingLocation(),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
+  }
+
+  void _measureSearchBar() {
+    if (!mounted) return;
+    final ctx = _searchBarKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final offset = box.localToGlobal(Offset.zero);
+    final bottom = offset.dy + box.size.height;
+    if (bottom != _searchBarBottom) {
+      setState(() => _searchBarBottom = bottom);
+    }
   }
 
   @override
@@ -389,21 +412,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _markerBaseZIndex[topPost.id] = baseZIndex;
 
       final markerPostId = topPost.id;
-      final markerLatLng = pos;
-      marker.setOnTapListener((_) {
+      marker.setOnTapListener((_) async {
         _focusNode.unfocus();
         final idx = _postGroups
             .indexWhere((g) => g.isNotEmpty && g.first.id == markerPostId);
         if (idx < 0) return;
-        setState(() {
-          _searchResults = [];
-          _selectedSymbol = null;
-          _selectedPlace = null;
-          _isLoadingPlace = false;
-          _selectedGroupIndex = idx;
-        });
-        _applySelectionHighlight(markerPostId);
-        _moveCameraToMarker(markerLatLng);
+        await _selectMarker(idx);
       });
 
       if (!mounted) return;
@@ -554,14 +568,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPlace = null;
       _isLoadingPlace = false;
       _selectedGroupIndex = null;
+      _stripScreenPos = null;
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
   }
 
-  /// 선택된 마커를 푸른 핀으로 즉시 교체하고 z-index를 다른 마커보다 위로 부스트.
-  /// 이전에 선택되어 있던 마커가 있으면 원래 사진 아이콘 + score 기반 z-index로 복원.
-  /// [markerId]가 null이면 부스트/핀 해제만 수행.
+  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트.
+  /// 아이콘은 그대로 유지 (사진 마커 유지) — 시각적 강조는 위에 띄우는 스트립이 담당.
+  /// [markerId]가 null이면 부스트만 해제.
   /// idempotent: 재조회로 마커 객체가 새로 만들어진 케이스에도 안전하게 재적용됨.
   void _applySelectionHighlight(String? markerId) {
     final prevId = _highlightedMarkerId;
@@ -570,10 +585,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (prevMarker != null) {
         final baseZ = _markerBaseZIndex[prevId];
         if (baseZ != null) prevMarker.setGlobalZIndex(baseZ);
-        final originalIcon = _markerIconCache[prevId];
-        if (originalIcon != null) prevMarker.setIcon(originalIcon);
-        prevMarker
-            .setSize(const Size(_normalMarkerSize, _normalMarkerSize));
       }
     }
     _highlightedMarkerId = markerId;
@@ -581,13 +592,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final marker = _markerRefs[markerId];
       if (marker != null) {
         marker.setGlobalZIndex(_selectedMarkerZIndex);
-        if (_pinIcon != null) {
-          marker.setIcon(_pinIcon);
-          marker.setSize(const Size(
-            _selectedMarkerWidth,
-            _selectedMarkerHeight,
-          ));
-        }
       }
     }
   }
@@ -696,30 +700,42 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     } catch (_) {}
   }
 
-  /// 마커가 화면 세로 25% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
-  /// 알고리즘: 카메라 target T를 (markerPos + (현재 카메라 target 좌표 - 원하는 픽셀 좌표))로 두면
-  /// 새 카메라에서 markerPos가 원하는 픽셀에 정확히 매핑됨 (줌 동일 가정).
-  Future<void> _moveCameraToMarker(NLatLng markerPos) async {
+  /// 마커가 화면 세로 22% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
+  /// [zoom] 지정 시 줌도 함께 변경되며, 한 번의 애니메이션으로 처리됨.
+  /// 알고리즘: 카메라 target을 (markerPos + (cameraTarget - desiredCoord))로 두면
+  /// 새 카메라에서 markerPos가 원하는 픽셀에 정확히 매핑됨. 줌이 바뀌면 lat/lng 오프셋을
+  /// 2^(currentZoom - targetZoom) 비율로 스케일해야 픽셀 위치가 맞음.
+  Future<void> _moveCameraToMarker(NLatLng markerPos, {double? zoom}) async {
     if (_mapController == null) return;
     final size = MediaQuery.sizeOf(context);
 
-    final cameraTarget =
-        (await _mapController!.getCameraPosition()).target;
+    final camera = await _mapController!.getCameraPosition();
+    final currentZoom = camera.zoom;
+    final targetZoom = zoom ?? currentZoom;
+    final cameraTarget = camera.target;
+
     final desiredPixel = NPoint(size.width / 2, size.height * 0.22);
     final desiredCoord =
         await _mapController!.screenLocationToLatLng(desiredPixel);
 
-    // 카메라 target 좌표 - 원하는 픽셀의 현재 좌표 = 필요한 좌표 보정값
-    final dLat = cameraTarget.latitude - desiredCoord.latitude;
-    final dLng = cameraTarget.longitude - desiredCoord.longitude;
+    var dLat = cameraTarget.latitude - desiredCoord.latitude;
+    var dLng = cameraTarget.longitude - desiredCoord.longitude;
+
+    if (targetZoom != currentZoom) {
+      final scale = pow(2, currentZoom - targetZoom).toDouble();
+      dLat *= scale;
+      dLng *= scale;
+    }
 
     final adjustedTarget = NLatLng(
       markerPos.latitude + dLat,
       markerPos.longitude + dLng,
     );
 
-    final update = NCameraUpdate.scrollAndZoomTo(target: adjustedTarget)
-      ..setAnimation(
+    final update = NCameraUpdate.scrollAndZoomTo(
+      target: adjustedTarget,
+      zoom: targetZoom,
+    )..setAnimation(
         animation: NCameraAnimation.fly,
         duration: const Duration(milliseconds: 600),
       );
@@ -727,15 +743,48 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     await _mapController!.updateCamera(update);
   }
 
-  /// 선택 마커가 핀으로 즉시 교체될 수 있도록 onMapReady 시점에 핀 이미지를 1회 생성.
-  Future<void> _preparePinIcon() async {
-    try {
-      final bytes = await _imageService.createPinMarkerImage();
-      if (!mounted) return;
-      _pinIcon = await NOverlayImage.fromByteArray(bytes);
-    } catch (_) {
-      // 핀 이미지 생성 실패 시: 선택 시 z-index 부스트만 적용 (방어)
+  /// 주어진 인덱스의 마커를 선택: 카메라 이동(필요시 줌16) + z-index 부스트 + 스트립 위치 갱신.
+  /// 마커 탭, 스트립 탭, 카드 좌우 스와이프 등 모든 그룹 전환 경로의 공통 진입점.
+  Future<void> _selectMarker(int idx) async {
+    if (idx < 0 || idx >= _postGroups.length) return;
+    if (_mapController == null) return;
+    final post = _postGroups[idx].first;
+    final markerPos = _markerRefs[post.id]?.position
+        ?? NLatLng(post.latitude, post.longitude);
+
+    final camera = await _mapController!.getCameraPosition();
+    final targetZoom = camera.zoom < 16 ? 16.0 : camera.zoom;
+
+    setState(() {
+      _searchResults = [];
+      _selectedSymbol = null;
+      _selectedPlace = null;
+      _isLoadingPlace = false;
+      _selectedGroupIndex = idx;
+    });
+    _applySelectionHighlight(post.id);
+    await _moveCameraToMarker(markerPos, zoom: targetZoom);
+    if (!mounted) return;
+    await _updateStripScreenPosition();
+  }
+
+  /// 현재 선택된 마커의 화면 좌표를 계산해서 스트립 위치를 갱신.
+  /// 카메라 이동 애니메이션 완료 후 1회 호출 (Option A: 정적 배치, 패닝 시 따라가지 않음).
+  Future<void> _updateStripScreenPosition() async {
+    if (_mapController == null || _selectedGroupIndex == null) {
+      if (_stripScreenPos != null) {
+        setState(() => _stripScreenPos = null);
+      }
+      return;
     }
+    final post = _postGroups[_selectedGroupIndex!].first;
+    final markerPos = _markerRefs[post.id]?.position
+        ?? NLatLng(post.latitude, post.longitude);
+    final point = await _mapController!.latLngToScreenLocation(markerPos);
+    if (!mounted) return;
+    setState(() {
+      _stripScreenPos = Offset(point.x, point.y);
+    });
   }
 
   void _onCardDragUpdate(DragUpdateDetails details) {
@@ -793,7 +842,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             ),
             onMapReady: (controller) {
               setState(() => _mapController = controller);
-              _preparePinIcon();
               _moveToCurrentLocationOrDefault();
             },
             onMapTapped: (point, latLng) {
@@ -806,8 +854,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // 검색창 — 카드 열려있으면 페이드아웃 + 터치 비활성
           Positioned(
             top: safeAreaPadding.top + 12,
-            left: 16,
-            right: 16,
+            left: 25,
+            right: 25,
             child: IgnorePointer(
               ignoring: _isAnyCardOpen,
               child: AnimatedOpacity(
@@ -816,6 +864,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                 child: Column(
               children: [
                 Container(
+                  key: _searchBarKey,
                   decoration: BoxDecoration(
                     color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(24),
@@ -966,6 +1015,25 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               onDragEnd: _onCardDragEnd,
             ),
           ),
+          // 마커 선택 시 마커 위치에 띄우는 미리보기 스트립 (지도 오버레이)
+          if (_selectedGroupIndex != null && _stripScreenPos != null)
+            Positioned(
+              left: (_stripScreenPos!.dx - _stripWidth / 2).clamp(
+                0.0,
+                MediaQuery.sizeOf(context).width - _stripWidth,
+              ),
+              top: _stripScreenPos!.dy - _stripHeight / 2,
+              width: _stripWidth,
+              height: _stripHeight,
+              child: MapThumbnailStrip(
+                groups: _postGroups,
+                currentGroupIndex: _selectedGroupIndex!,
+                onTap: (idx) => _selectMarker(idx),
+                onVisualIndexChange: (idx) {
+                  setState(() => _selectedGroupIndex = idx);
+                },
+              ),
+            ),
           // 마커 탭 시 바텀시트 카드 — 등장/소실 시 슬라이드 + 페이드
           Positioned(
             left: 0,
@@ -998,18 +1066,18 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       key: const ValueKey('card'),
                       groups: _postGroups,
                       initialGroupIndex: _selectedGroupIndex!,
-                      minTopMargin: MediaQuery.paddingOf(context).top + 12,
-                      onCameraMove: _moveCameraToMarker,
+                      minTopMargin: _searchBarBottom > 0
+                          ? _searchBarBottom + 30
+                          : MediaQuery.paddingOf(context).top + 80,
                       onClose: () {
-                        setState(() => _selectedGroupIndex = null);
+                        setState(() {
+                          _selectedGroupIndex = null;
+                          _stripScreenPos = null;
+                        });
                         _applySelectionHighlight(null);
                       },
                       onGroupChanged: (newIdx) {
-                        setState(() => _selectedGroupIndex = newIdx);
-                        if (newIdx >= 0 && newIdx < _postGroups.length) {
-                          _applySelectionHighlight(
-                              _postGroups[newIdx].first.id);
-                        }
+                        _selectMarker(newIdx);
                       },
                     )
                   : const SizedBox.shrink(key: ValueKey('empty')),

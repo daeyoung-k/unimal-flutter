@@ -2,9 +2,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/screens/map/bottom_card/map_card_expanded_content.dart';
-import 'package:unimal/screens/map/bottom_card/map_thumbnail_strip.dart';
 import 'package:unimal/screens/map/bottom_card/post_group_navigator.dart';
 import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
 import 'package:unimal/screens/map/bottom_card/post_info_section.dart';
@@ -19,37 +17,30 @@ import 'package:unimal/service/map/models/map_post.dart';
 /// 닫힘은 onClose 콜백으로 부모에서 처리.
 enum _CardState { default_, expanded }
 
-/// 지도 마커 탭 시 표시되는 카드 + 썸네일 스트립.
-///
-/// 레이아웃 (아래에서 위):
-///   [카드 본문] ← AnimatedContainer, 높이 변동
-///   [썸네일 스트립] ← 카드 바로 위 부유, 확장 시 minTopMargin에 고정
+/// 지도 마커 탭 시 표시되는 카드.
 ///
 /// 제스처:
 ///   - 핸들 위 드래그(≥60px / 300px/s) → 확장
 ///   - 핸들 아래 드래그(≥60px / 300px/s) → 기본→닫힘, 확장→기본
-///   - 카드 좌우 스와이프(기본 상태만, ≥60px / 300px/s) → 이전/다음 마커
-///   - 스트립 썸네일 탭 → 해당 마커로 점프
+///   - 카드 좌우 스와이프(기본 상태만, ≥60px / 300px/s) → 이전/다음 마커 (onGroupChanged)
 ///   - 이미지 ‹ › 탭 → 같은 게시글 사진 전환 (PostImageCarousel이 처리)
 class MapBottomCard extends StatefulWidget {
   final List<List<MapPost>> groups;
   final int initialGroupIndex;
-  final ValueChanged<NLatLng> onCameraMove;
   final VoidCallback onClose;
 
-  /// 스트립이 올라갈 수 있는 화면 상단 한계 (검색바+필터 하단).
+  /// 카드가 올라갈 수 있는 화면 상단 한계 (검색바+필터 하단).
   /// map_naver.dart에서 safeAreaTop + 약 100px로 전달.
   final double minTopMargin;
 
   /// 사용자가 다른 그룹으로 이동했을 때 parent에 알림.
-  /// (스트립 탭, 좌우 마커 스와이프)
+  /// (좌우 카드 스와이프) parent는 카메라 이동 + 마커 하이라이트 + 스트립 위치 갱신을 처리한다.
   final ValueChanged<int>? onGroupChanged;
 
   const MapBottomCard({
     super.key,
     required this.groups,
     required this.initialGroupIndex,
-    required this.onCameraMove,
     required this.onClose,
     required this.minTopMargin,
     this.onGroupChanged,
@@ -60,19 +51,19 @@ class MapBottomCard extends StatefulWidget {
 }
 
 class _MapBottomCardState extends State<MapBottomCard> {
+  static const _defaultImageRatio = 0.50;
   static const _defaultTextRatio = 0.30;
   static const _defaultLongTextRatio = 0.40;
-  static const _hSwipeMinDistance = 60.0;
-  static const _hSwipeMinVelocity = 300.0;
   static const _handleDragThreshold = 60.0;
   static const _handleVelocityThreshold = 300.0;
-  // 실측: 썸네일 활성 70 + 상하 패딩 6×2 = 82
-  static const _stripHeight = 82.0;
-  static const _stripCardGap = 8.0;
+  // PageView viewportFraction — 가운데 카드 + 양옆 ~17px peek.
+  static const _pageViewportFraction = 0.88;
+  // 페이지 아이템 내부 좌우 패딩 — 카드 사이 시각적 간격.
+  static const _pageItemHPadding = 4.0;
 
   late PostGroupNavigator _nav;
+  late PageController _pageController;
   _CardState _cardState = _CardState.default_;
-  double _hDragAccum = 0;
   double _handleDragAccum = 0;
   bool _isHandleDragging = false;
 
@@ -90,13 +81,19 @@ class _MapBottomCardState extends State<MapBottomCard> {
       groups: widget.groups,
       initialGroupIndex: widget.initialGroupIndex,
     );
+    _pageController = PageController(
+      initialPage: widget.initialGroupIndex,
+      viewportFraction: _pageViewportFraction,
+    );
   }
 
   @override
   void didUpdateWidget(covariant MapBottomCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialGroupIndex != widget.initialGroupIndex ||
-        oldWidget.groups != widget.groups) {
+    final groupsChanged = oldWidget.groups != widget.groups;
+    final indexChanged =
+        oldWidget.initialGroupIndex != widget.initialGroupIndex;
+    if (groupsChanged) {
       _nav = PostGroupNavigator(
         groups: widget.groups,
         initialGroupIndex: widget.initialGroupIndex,
@@ -104,7 +101,34 @@ class _MapBottomCardState extends State<MapBottomCard> {
       _cardState = _CardState.default_;
       _loadedDetail = null;
       _isLoadingDetail = false;
+      _pageController.dispose();
+      _pageController = PageController(
+        initialPage: widget.initialGroupIndex,
+        viewportFraction: _pageViewportFraction,
+      );
+    } else if (indexChanged) {
+      // 외부 트리거(마커 탭 등) — PageView를 새 인덱스로 애니메이션.
+      _nav.jumpToGroup(widget.initialGroupIndex);
+      _cardState = _CardState.default_;
+      _loadedDetail = null;
+      _isLoadingDetail = false;
+      if (_pageController.hasClients) {
+        final current = _pageController.page?.round();
+        if (current != widget.initialGroupIndex) {
+          _pageController.animateToPage(
+            widget.initialGroupIndex,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   bool get _isImagePost => _nav.currentPost.fileInfoList.isNotEmpty;
@@ -115,15 +139,26 @@ class _MapBottomCardState extends State<MapBottomCard> {
     return lineCount >= 4 || content.length > 80;
   }
 
-  int get _defaultContentMaxLines => _hasLongDefaultContent ? 4 : 2;
+  // 특정 post 기준 좋아요 상태 (PageView에서 peek 카드도 자기 좋아요 상태 표시).
+  bool _isLikedFor(MapPost post) =>
+      _likeOverrides[post.id]?.isLike ?? post.isLike;
+  int _likeCountFor(MapPost post) =>
+      _likeOverrides[post.id]?.likeCount ?? post.likeCount;
 
   double _maxCardHeight(double screenHeight) =>
-      screenHeight - widget.minTopMargin - _stripHeight - _stripCardGap;
+      screenHeight - widget.minTopMargin;
 
   double _baseCardHeight(double screenHeight) {
-    final ratio = _cardState == _CardState.default_
-        ? (_hasLongDefaultContent ? _defaultLongTextRatio : _defaultTextRatio)
-        : 1.0;
+    final double ratio;
+    if (_cardState == _CardState.default_) {
+      if (_isImagePost) {
+        ratio = _defaultImageRatio;
+      } else {
+        ratio = _hasLongDefaultContent ? _defaultLongTextRatio : _defaultTextRatio;
+      }
+    } else {
+      ratio = 1.0;
+    }
     return (screenHeight * ratio).clamp(0.0, _maxCardHeight(screenHeight));
   }
 
@@ -201,79 +236,32 @@ class _MapBottomCardState extends State<MapBottomCard> {
       _likeOverrides[_nav.currentPost.id]?.likeCount ??
       _nav.currentPost.likeCount;
 
-  Future<void> _toggleLike() async {
+  Future<void> _toggleLikeFor(MapPost post) async {
     if (_isLiking) return;
     _isLiking = true;
-    final postId = _nav.currentPost.id;
     try {
-      final result = await BoardApiService().requestLike(postId);
+      final result = await BoardApiService().requestLike(post.id);
       if (result != null && mounted) {
-        setState(() => _likeOverrides[postId] = result);
+        setState(() => _likeOverrides[post.id] = result);
       }
     } finally {
       _isLiking = false;
     }
   }
 
-  // ── Horizontal swipe (marker navigation, default state only) ─────────
+  Future<void> _toggleLike() => _toggleLikeFor(_nav.currentPost);
 
-  void _onHorizDragUpdate(DragUpdateDetails d) {
-    _hDragAccum += d.delta.dx;
-  }
+  // ── PageView (그룹 좌우 스와이프) ─────────────────────────────────────
 
-  void _onHorizDragEnd(DragEndDetails d) {
-    if (_cardState == _CardState.expanded) {
-      _hDragAccum = 0;
-      return;
-    }
-    final v = d.primaryVelocity ?? 0;
-    final drag = _hDragAccum;
-    _hDragAccum = 0;
-
-    if (drag > _hSwipeMinDistance || v > _hSwipeMinVelocity) {
-      _navigateGroup(-1); // swipe right → prev
-    } else if (drag < -_hSwipeMinDistance || v < -_hSwipeMinVelocity) {
-      _navigateGroup(1); // swipe left → next
-    }
-  }
-
-  void _navigateGroup(int direction) {
-    final result = direction > 0 ? _nav.nextGroup() : _nav.prevGroup();
-    if (result == true) {
-      widget.onCameraMove(
-        NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
-      );
-      widget.onGroupChanged?.call(_nav.groupIndex);
-      setState(() => _loadedDetail = null);
-    } else if (result == null) {
-      HapticFeedback.lightImpact();
-    }
-  }
-
-  /// 드래그 중 strip이 시각적 활성 인덱스를 알릴 때 호출.
-  /// 카드 본문(이미지/텍스트/좋아요)을 즉시 동기화. 카메라 이동/parent 통지는 생략.
-  void _previewGroup(int groupIndex) {
-    if (groupIndex == _nav.groupIndex) return;
-    _nav.jumpToGroup(groupIndex);
+  void _onPageChanged(int idx) {
+    if (idx == _nav.groupIndex) return;
     setState(() {
-      _cardState = _CardState.default_;
+      _nav.jumpToGroup(idx);
       _loadedDetail = null;
     });
-  }
-
-  void _jumpToGroup(int groupIndex) {
-    // drag end 또는 탭 commit. drag 중 _previewGroup으로 _nav가 이미 변경됐을 수 있음.
-    if (groupIndex != _nav.groupIndex) {
-      _nav.jumpToGroup(groupIndex);
-    }
-    widget.onCameraMove(
-      NLatLng(_nav.currentPost.latitude, _nav.currentPost.longitude),
-    );
-    widget.onGroupChanged?.call(_nav.groupIndex);
-    setState(() {
-      _cardState = _CardState.default_;
-      _loadedDetail = null;
-    });
+    widget.onGroupChanged?.call(idx);
+    // 경계는 PageView 자체가 막아주므로 별도 햅틱 없음.
+    HapticFeedback.selectionClick();
   }
 
   // ── Detail lazy loading ───────────────────────────────────────────────
@@ -306,107 +294,31 @@ class _MapBottomCardState extends State<MapBottomCard> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // 썸네일 스트립
-        MapThumbnailStrip(
-          groups: widget.groups,
-          currentGroupIndex: _nav.groupIndex,
-          onTap: _jumpToGroup,
-          onVisualIndexChange: _previewGroup,
-        ),
-        const SizedBox(height: _stripCardGap),
-        // 카드 본문
         AnimatedContainer(
           duration: _isHandleDragging
               ? Duration.zero
               : const Duration(milliseconds: 280),
           curve: Curves.easeOutCubic,
           height: cardH,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppColors.of(context).surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            boxShadow: [
-              BoxShadow(
-                  color: AppColors.of(context).shadow,
-                  blurRadius: 20,
-                  offset: const Offset(0, -4)),
-            ],
-          ),
+          // 데코는 카드 자체(각 page item / expanded)로 이동 — peek 카드들이 시각적으로 분리되도록.
           child: OverflowBox(
             alignment: Alignment.topCenter,
             minHeight: 0,
             maxHeight: renderH,
             child: SizedBox(
               height: renderH,
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onHorizontalDragUpdate: _onHorizDragUpdate,
-                onHorizontalDragEnd: _onHorizDragEnd,
-                onHorizontalDragCancel: () => _hDragAccum = 0,
-                // 기본 상태에서만 카드 전체로 수직 드래그 받음.
-                // expanded 상태에선 null로 두어 내부 SingleChildScrollView가 스크롤을 가져감.
-                onVerticalDragStart: _cardState == _CardState.default_
-                    ? _onHandleDragStart
-                    : null,
-                onVerticalDragUpdate: _cardState == _CardState.default_
-                    ? _onHandleDragUpdate
-                    : null,
-                onVerticalDragEnd: _cardState == _CardState.default_
-                    ? _onHandleDragEnd
-                    : null,
-                onVerticalDragCancel: _cardState == _CardState.default_
-                    ? _onHandleDragCancel
-                    : null,
-                child: Column(
-                  children: [
-                    // 핸들 (수직 드래그 전용)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onVerticalDragStart: _onHandleDragStart,
-                      onVerticalDragUpdate: _onHandleDragUpdate,
-                      onVerticalDragEnd: _onHandleDragEnd,
-                      onVerticalDragCancel: _onHandleDragCancel,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 10, bottom: 22),
-                        child: Center(
-                          child: Container(
-                            width: 40,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: AppColors.of(context).divider,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    // 카드 내용 — 그룹 변경 시 cross-fade
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 260),
-                        switchInCurve: Curves.easeOutCubic,
-                        switchOutCurve: Curves.easeInCubic,
-                        transitionBuilder: (child, animation) =>
-                            FadeTransition(opacity: animation, child: child),
-                        layoutBuilder: (currentChild, previousChildren) => Stack(
-                          alignment: Alignment.topCenter,
-                          children: [
-                            ...previousChildren,
-                            if (currentChild != null) currentChild,
-                          ],
-                        ),
-                        child: KeyedSubtree(
-                          // post id + 상태 조합 → 그룹/상태 변경 시 새 child로 fade
-                          key: ValueKey(
-                              '${_nav.currentPost.id}_${_cardState.name}'),
-                          child: _cardState == _CardState.expanded
-                              ? _buildExpandedContent()
-                              : _buildDefaultContent(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // PageView를 항상 트리에 유지 — 확장 상태에서도 PageController
+                  // 위치가 보존되어, 스와이프 후 확장→축소 시 페이지가 어긋나지 않음.
+                  Offstage(
+                    offstage: _cardState == _CardState.expanded,
+                    child: _buildSwipeablePages(context),
+                  ),
+                  if (_cardState == _CardState.expanded)
+                    _buildExpandedCardShell(context),
+                ],
               ),
             ),
           ),
@@ -415,28 +327,147 @@ class _MapBottomCardState extends State<MapBottomCard> {
     );
   }
 
-  // ── 기본 상태 내용 ─────────────────────────────────────────────────────
+  // ── PageView (기본 상태) ──────────────────────────────────────────────
 
-  Widget _buildDefaultContent() {
-    final post = _nav.currentPost;
-    if (_isImagePost) return _buildImagePostDefault(post);
-    return _buildTextPostDefault(post);
-  }
-
-  Widget _buildImagePostDefault(MapPost post) {
-    return PostInfoSection(
-      post: post,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
-      showDetailButton: false,
-      isLiked: _isCurrentLiked,
-      likeCountOverride: _currentLikeCount,
-      contentMaxLines: _defaultContentMaxLines,
-      onLikeTap: _toggleLike,
-      onReplyTap: _expandCard,
+  Widget _buildSwipeablePages(BuildContext context) {
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: widget.groups.length,
+      onPageChanged: _onPageChanged,
+      // 가로 스크롤만 — 수직 드래그는 자식 GestureDetector(handle)로 전달.
+      itemBuilder: (context, idx) {
+        final post = widget.groups[idx].first;
+        final isCenter = idx == _nav.groupIndex;
+        return Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: _pageItemHPadding),
+          child: _buildCardShell(
+            context: context,
+            child: _buildDefaultContentFor(post, isCenter: isCenter),
+            isHandleInteractive: isCenter,
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildTextPostDefault(MapPost post) {
+  // 카드 외형(데코 + 핸들)을 그리는 공용 셸.
+  Widget _buildCardShell({
+    required BuildContext context,
+    required Widget child,
+    required bool isHandleInteractive,
+  }) {
+    // 기본(default) 중앙 카드일 때는 콘텐츠 영역도 수직 드래그로 확장/닫기 가능.
+    // expanded 상태에선 내부 SingleChildScrollView가 스크롤을 가져가야 하므로 비활성.
+    final enableContentDrag =
+        isHandleInteractive && _cardState == _CardState.default_;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.of(context).surface,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.of(context).shadow,
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onVerticalDragStart:
+                isHandleInteractive ? _onHandleDragStart : null,
+            onVerticalDragUpdate:
+                isHandleInteractive ? _onHandleDragUpdate : null,
+            onVerticalDragEnd:
+                isHandleInteractive ? _onHandleDragEnd : null,
+            onVerticalDragCancel:
+                isHandleInteractive ? _onHandleDragCancel : null,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10, bottom: 22),
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.of(context).divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragStart:
+                  enableContentDrag ? _onHandleDragStart : null,
+              onVerticalDragUpdate:
+                  enableContentDrag ? _onHandleDragUpdate : null,
+              onVerticalDragEnd:
+                  enableContentDrag ? _onHandleDragEnd : null,
+              onVerticalDragCancel:
+                  enableContentDrag ? _onHandleDragCancel : null,
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpandedCardShell(BuildContext context) {
+    return _buildCardShell(
+      context: context,
+      child: _buildExpandedContent(),
+      isHandleInteractive: true,
+    );
+  }
+
+  // ── 기본 상태 내용 ─────────────────────────────────────────────────────
+
+  Widget _buildDefaultContentFor(MapPost post, {required bool isCenter}) {
+    if (post.fileInfoList.isNotEmpty) {
+      return _buildImagePostDefault(post, isCenter: isCenter);
+    }
+    return _buildTextPostDefault(post, isCenter: isCenter);
+  }
+
+  Widget _buildImagePostDefault(MapPost post, {required bool isCenter}) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: PostImageCarousel(
+              images: post.fileInfoList,
+              initialIndex: isCenter ? _nav.currentImageIndex : 0,
+              onIndexChanged: (i) {
+                if (isCenter) _nav.updateImageIndex(i);
+              },
+            ),
+          ),
+        ),
+        Expanded(
+          child: PostInfoSection(
+            post: post,
+            padding: const EdgeInsets.fromLTRB(10, 12, 10, 15),
+            showDetailButton: false,
+            isLiked: _isLikedFor(post),
+            likeCountOverride: _likeCountFor(post),
+            onLikeTap: () => _toggleLikeFor(post),
+            onReplyTap: isCenter ? _expandCard : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTextPostDefault(MapPost post, {required bool isCenter}) {
     final colors = AppColors.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -505,48 +536,50 @@ class _MapBottomCardState extends State<MapBottomCard> {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _toggleLike,
-                child: Row(
-                  children: [
-                    Icon(
-                      _isCurrentLiked ? Icons.favorite : Icons.favorite_outline,
-                      size: 15,
-                      color:
-                          _isCurrentLiked ? colors.danger : colors.textMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Text('$_currentLikeCount',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Pretendard',
-                            color: colors.textMuted)),
-                  ],
+          Builder(builder: (_) {
+            final liked = _isLikedFor(post);
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _toggleLikeFor(post),
+                  child: Row(
+                    children: [
+                      Icon(
+                        liked ? Icons.favorite : Icons.favorite_outline,
+                        size: 15,
+                        color: liked ? colors.danger : colors.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text('${_likeCountFor(post)}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Pretendard',
+                              color: colors.textMuted)),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 14),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _expandCard,
-                child: Row(
-                  children: [
-                    Icon(Icons.chat_bubble_outline,
-                        size: 14, color: colors.primaryStrong),
-                    const SizedBox(width: 4),
-                    Text('${post.replyCount}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'Pretendard',
-                            color: colors.textMuted)),
-                  ],
+                const SizedBox(width: 14),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: isCenter ? _expandCard : null,
+                  child: Row(
+                    children: [
+                      Icon(Icons.chat_bubble_outline,
+                          size: 14, color: colors.primaryStrong),
+                      const SizedBox(width: 4),
+                      Text('${post.replyCount}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'Pretendard',
+                              color: colors.textMuted)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            );
+          }),
         ],
       ),
     );
@@ -559,10 +592,16 @@ class _MapBottomCardState extends State<MapBottomCard> {
     return Column(
       children: [
         if (_isImagePost)
-          PostImageCarousel(
-            images: post.fileInfoList,
-            initialIndex: _nav.currentImageIndex,
-            onIndexChanged: (i) => _nav.updateImageIndex(i),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: PostImageCarousel(
+                images: post.fileInfoList,
+                initialIndex: _nav.currentImageIndex,
+                onIndexChanged: (i) => _nav.updateImageIndex(i),
+              ),
+            ),
           ),
         Expanded(
           child: MapCardExpandedContent(
