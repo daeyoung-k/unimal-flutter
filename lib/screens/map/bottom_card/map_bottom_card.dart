@@ -461,6 +461,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
             likeCountOverride: _likeCountFor(post),
             onLikeTap: () => _toggleLikeFor(post),
             onReplyTap: isCenter ? _expandCard : null,
+            onShowMore: isCenter ? _expandCard : null,
           ),
         ),
       ],
@@ -523,16 +524,19 @@ class _MapBottomCardState extends State<MapBottomCard> {
             ],
           ),
           const SizedBox(height: 10),
-          // 텍스트 내용 — textPrimary 사용 (다크에서 흰색 가까이)
+          // 텍스트 내용 — 카드 영역을 넘으면 ellipsis + "더보기"로 확장 유도.
           Expanded(
-            child: Text(
-              post.content,
+            child: _OverflowingTextWithMore(
+              text: post.content,
               style: TextStyle(
-                  fontSize: 14,
-                  fontFamily: 'Pretendard',
-                  color: colors.textPrimary,
-                  height: 1.5),
-              overflow: TextOverflow.fade,
+                fontSize: 14,
+                fontFamily: 'Pretendard',
+                color: colors.textPrimary,
+                height: 1.5,
+              ),
+              moreColor: colors.primaryStrong,
+              surfaceColor: colors.surface,
+              onExpand: isCenter ? _expandCard : null,
             ),
           ),
           const SizedBox(height: 8),
@@ -616,5 +620,82 @@ class _MapBottomCardState extends State<MapBottomCard> {
         ),
       ],
     );
+  }
+}
+
+/// 텍스트가 주어진 영역(높이)을 넘으면 마지막 줄 우측에 "더보기" 오버레이 표시.
+/// 들어맞으면 전체 텍스트 그대로 렌더, "더보기" 숨김.
+///
+/// [onExpand]가 null이면(=peek 카드) "더보기"가 보여도 탭 비활성.
+class _OverflowingTextWithMore extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  final Color moreColor;
+  final Color surfaceColor;
+  final VoidCallback? onExpand;
+
+  const _OverflowingTextWithMore({
+    required this.text,
+    required this.style,
+    required this.moreColor,
+    required this.surfaceColor,
+    required this.onExpand,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: constraints.maxWidth);
+      final fits = tp.height <= constraints.maxHeight;
+      tp.dispose();
+
+      if (fits) {
+        return Text(text, style: style);
+      }
+
+      return SizedBox(
+        width: double.infinity,
+        child: Stack(
+        children: [
+          Text(
+            text,
+            style: style,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 999,
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onExpand,
+              child: Container(
+                padding: const EdgeInsets.only(left: 24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      surfaceColor.withValues(alpha: 0),
+                      surfaceColor,
+                    ],
+                    stops: const [0, 0.3],
+                  ),
+                ),
+                child: Text(
+                  '더보기',
+                  style: style.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: moreColor,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+        ),
+      );
+    });
   }
 }

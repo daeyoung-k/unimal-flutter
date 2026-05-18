@@ -22,6 +22,10 @@ class PostInfoSection extends StatelessWidget {
   /// 댓글 아이콘/숫자 탭 시 호출 (카드 확장).
   final VoidCallback? onReplyTap;
 
+  /// 본문이 [contentMaxLines]를 넘었을 때 노출되는 "더보기" 링크의 탭 핸들러.
+  /// null이면 더보기 자체를 숨김(peek 카드).
+  final VoidCallback? onShowMore;
+
   /// 좋아요 활성 상태. null이면 미설정(회색 outline).
   final bool isLiked;
 
@@ -36,6 +40,7 @@ class PostInfoSection extends StatelessWidget {
     this.contentMaxLines = 2,
     this.onLikeTap,
     this.onReplyTap,
+    this.onShowMore,
     this.isLiked = false,
     this.likeCountOverride,
   });
@@ -128,20 +133,71 @@ class PostInfoSection extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          // 내용 — 타이틀과 동일한 textPrimary 사용 (다크에서 흰색 가까이)
+          // 내용 — contentMaxLines 초과 시 마지막 줄 우측에 "더보기" 오버레이.
+          // Stack을 쓰는 이유: 별도 row를 추가하면 카드 영역을 넘어 overflow 발생.
           if (post.content.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              post.content,
-              maxLines: contentMaxLines,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+            Builder(builder: (context) {
+              final contentStyle = TextStyle(
                 fontSize: 14,
                 fontFamily: 'Pretendard',
                 color: colors.textPrimary,
                 height: 1.4,
-              ),
-            ),
+              );
+              return LayoutBuilder(builder: (context, constraints) {
+                final tp = TextPainter(
+                  text: TextSpan(text: post.content, style: contentStyle),
+                  textDirection: TextDirection.ltr,
+                  maxLines: contentMaxLines,
+                )..layout(maxWidth: constraints.maxWidth);
+                final overflows = tp.didExceedMaxLines;
+                tp.dispose();
+                return SizedBox(
+                  width: double.infinity,
+                  child: Stack(
+                    children: [
+                      Text(
+                        post.content,
+                        maxLines: contentMaxLines,
+                        overflow: TextOverflow.ellipsis,
+                        style: contentStyle,
+                      ),
+                      if (overflows && onShowMore != null)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onShowMore,
+                          child: Container(
+                            padding: const EdgeInsets.only(left: 24),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  colors.surface.withValues(alpha: 0),
+                                  colors.surface,
+                                ],
+                                stops: const [0, 0.3],
+                              ),
+                            ),
+                            child: Text(
+                              '더보기',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                                color: colors.primaryStrong,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              });
+            }),
           ],
           // 좋아요 · 댓글 — Spacer로 카드 바닥에 고정 (콘텐츠 길이와 무관)
           const Spacer(),
