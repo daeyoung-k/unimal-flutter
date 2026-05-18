@@ -7,7 +7,6 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
-import 'package:unimal/screens/map/bottom_card/map_thumbnail_strip.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
 import 'package:unimal/service/map/models/map_post.dart';
@@ -47,13 +46,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
   static const int _selectedMarkerZIndex = 999999999;
 
-  // 마커 선택 시 그 마커의 화면 좌표 (스트립 오버레이 중앙 정렬용).
-  // 카메라 이동 애니메이션 완료 후 latLngToScreenLocation으로 1회 계산해서 고정.
-  Offset? _stripScreenPos;
-  // 스트립 너비 = 5칸 × 70px (map_thumbnail_strip.dart 와 동일).
-  static const double _stripWidth = 350.0;
-  // 스트립 높이 = 활성 썸네일 70 + 상하 패딩 6×2.
-  static const double _stripHeight = 82.0;
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
@@ -568,14 +560,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPlace = null;
       _isLoadingPlace = false;
       _selectedGroupIndex = null;
-      _stripScreenPos = null;
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
   }
 
   /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트.
-  /// 아이콘은 그대로 유지 (사진 마커 유지) — 시각적 강조는 위에 띄우는 스트립이 담당.
+  /// 아이콘은 그대로 유지 (사진 마커 유지).
   /// [markerId]가 null이면 부스트만 해제.
   /// idempotent: 재조회로 마커 객체가 새로 만들어진 케이스에도 안전하게 재적용됨.
   void _applySelectionHighlight(String? markerId) {
@@ -764,27 +755,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
     _applySelectionHighlight(post.id);
     await _moveCameraToMarker(markerPos, zoom: targetZoom);
-    if (!mounted) return;
-    await _updateStripScreenPosition();
-  }
-
-  /// 현재 선택된 마커의 화면 좌표를 계산해서 스트립 위치를 갱신.
-  /// 카메라 이동 애니메이션 완료 후 1회 호출 (Option A: 정적 배치, 패닝 시 따라가지 않음).
-  Future<void> _updateStripScreenPosition() async {
-    if (_mapController == null || _selectedGroupIndex == null) {
-      if (_stripScreenPos != null) {
-        setState(() => _stripScreenPos = null);
-      }
-      return;
-    }
-    final post = _postGroups[_selectedGroupIndex!].first;
-    final markerPos = _markerRefs[post.id]?.position
-        ?? NLatLng(post.latitude, post.longitude);
-    final point = await _mapController!.latLngToScreenLocation(markerPos);
-    if (!mounted) return;
-    setState(() {
-      _stripScreenPos = Offset(point.x, point.y);
-    });
   }
 
   void _onCardDragUpdate(DragUpdateDetails details) {
@@ -1015,25 +985,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               onDragEnd: _onCardDragEnd,
             ),
           ),
-          // 마커 선택 시 마커 위치에 띄우는 미리보기 스트립 (지도 오버레이)
-          if (_selectedGroupIndex != null && _stripScreenPos != null)
-            Positioned(
-              left: (_stripScreenPos!.dx - _stripWidth / 2).clamp(
-                0.0,
-                MediaQuery.sizeOf(context).width - _stripWidth,
-              ),
-              top: _stripScreenPos!.dy - _stripHeight / 2,
-              width: _stripWidth,
-              height: _stripHeight,
-              child: MapThumbnailStrip(
-                groups: _postGroups,
-                currentGroupIndex: _selectedGroupIndex!,
-                onTap: (idx) => _selectMarker(idx),
-                onVisualIndexChange: (idx) {
-                  setState(() => _selectedGroupIndex = idx);
-                },
-              ),
-            ),
           // 마커 탭 시 바텀시트 카드 — 등장/소실 시 슬라이드 + 페이드
           Positioned(
             left: 0,
@@ -1072,7 +1023,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       onClose: () {
                         setState(() {
                           _selectedGroupIndex = null;
-                          _stripScreenPos = null;
                         });
                         _applySelectionHighlight(null);
                       },
