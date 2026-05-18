@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/state/nav_controller.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 class RootScreen extends StatefulWidget {
   const RootScreen({super.key, this.selectedIndex = 0});
@@ -51,22 +52,20 @@ class _RootScreen extends State<RootScreen> {
     }
   }
 
-  static const Color _active = Color(0xFF5B9FEF);
-  static const Color _inactive = Color(0xFF9E9E9E);
-
   static const _navItems = [
     {'icon': 'assets/icon/svg/map_icon.svg', 'activeIcon': 'assets/icon/svg/map_bold_icon.svg', 'label': '지도'},
     {'icon': 'assets/icon/svg/additem_icon.svg', 'activeIcon': 'assets/icon/svg/additem_bold_icon.svg', 'label': '공유하기'},
     {'icon': 'assets/icon/svg/user_icon.svg', 'activeIcon': 'assets/icon/svg/user_bold_icon.svg', 'label': 'My'},
   ];
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav(BuildContext context) {
+    final colors = AppColors.of(context);
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Color(0xFFE8E8E8), width: 1)),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border(top: BorderSide(color: colors.border, width: 1)),
         boxShadow: [
-          BoxShadow(color: Color(0x14000000), blurRadius: 16, offset: Offset(0, -4)),
+          BoxShadow(color: colors.shadow, blurRadius: 16, offset: const Offset(0, -4)),
         ],
       ),
       child: SafeArea(
@@ -77,6 +76,7 @@ class _RootScreen extends State<RootScreen> {
             children: List.generate(_navItems.length, (index) {
               final item = _navItems[index];
               final isActive = _nav.selectedIndex.value == index;
+              final iconColor = isActive ? colors.primaryStrong : colors.textMuted;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => _onItemTapped(index),
@@ -89,7 +89,7 @@ class _RootScreen extends State<RootScreen> {
                         width: 24,
                         height: 24,
                         colorFilter: ColorFilter.mode(
-                          isActive ? _active : _inactive,
+                          iconColor,
                           BlendMode.srcIn,
                         ),
                       ),
@@ -97,7 +97,7 @@ class _RootScreen extends State<RootScreen> {
                       Text(
                         item['label']!,
                         style: TextStyle(
-                          color: isActive ? _active : _inactive,
+                          color: iconColor,
                           fontSize: 11,
                           fontFamily: 'Pretendard',
                           fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
@@ -121,7 +121,7 @@ class _RootScreen extends State<RootScreen> {
         index: _nav.selectedIndex.value,
         children: appRoutes.bottomNavigationPages(),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _buildBottomNav(context),
     ));
   }
 }
