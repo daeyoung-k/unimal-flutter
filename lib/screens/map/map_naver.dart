@@ -399,9 +399,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       );
 
       final baseZIndex = 200000 + topPost.score.toInt();
-      marker.setGlobalZIndex(baseZIndex);
       _markerRefs[topPost.id] = marker;
       _markerBaseZIndex[topPost.id] = baseZIndex;
+
+      // setter는 모두 addOverlay 전에 호출 — _isAdded=false 가드로 native 호출은
+      // 건너뛰고 값만 로컬에 저장된다. addOverlay가 직렬화 시 함께 전송함.
+      // Android는 native add가 비동기로 느려서 addOverlay 직후 setGlobalZIndex를
+      // 호출하면 "overlay can't found" race 에러가 발생함.
+      marker.setGlobalZIndex(baseZIndex);
 
       final markerPostId = topPost.id;
       marker.setOnTapListener((_) async {
@@ -413,7 +418,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       });
 
       if (!mounted) return;
-      _mapController!.addOverlay(marker);
+      // await로 native add 완료를 기다림 — 안 그러면 후속 _applySelectionHighlight 등의
+      // setter 호출이 race로 "overlay can't found" 에러를 일으킴 (Android 한정).
+      await _mapController!.addOverlay(marker);
+      if (!mounted) return;
       _mapMarkerIds.add(topPost.id);
     }
 
@@ -575,14 +583,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final prevMarker = _markerRefs[prevId];
       if (prevMarker != null) {
         final baseZ = _markerBaseZIndex[prevId];
-        if (baseZ != null) prevMarker.setGlobalZIndex(baseZ);
+        if (baseZ != null) {
+          try {
+            prevMarker.setGlobalZIndex(baseZ);
+          } catch (_) {/* overlay가 이미 네이티브에서 제거된 경우 무시 */}
+        }
       }
     }
     _highlightedMarkerId = markerId;
     if (markerId != null) {
       final marker = _markerRefs[markerId];
       if (marker != null) {
-        marker.setGlobalZIndex(_selectedMarkerZIndex);
+        try {
+          marker.setGlobalZIndex(_selectedMarkerZIndex);
+        } catch (_) {/* same */}
       }
     }
   }
@@ -590,6 +604,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// 클러스터 마커 빌더.
   /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
+    try {
     // children 중 score 최대 마커 식별
     String? topId;
     String? topTitle;
@@ -646,6 +661,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     clusterMarker.setCaptionAligns(const [NAlign.bottom]);
     clusterMarker.setCaptionOffset(0);
 
+    // 단일 마커(size==1)가 클러스터 빌더를 통과할 때 — 줌 15에서 클러스터링이
+    // 활성이므로 NClusterableMarker 자체의 tap listener가 발동되지 않는다.
+    // NClusterMarker에 직접 listener를 달아 선택 흐름으로 전달.
+    if (info.size == 1 && topId != null) {
+      final singleId = topId;
+      clusterMarker.setOnTapListener((_) {
+        _focusNode.unfocus();
+        final idx = _postGroups
+            .indexWhere((g) => g.isNotEmpty && g.first.id == singleId);
+        if (idx < 0) return;
+        _selectMarker(idx);
+      });
+    }
+
     // 클러스터(size>1) 탭 → 줌 16+ 자동 확대. 줌 16부터 클러스터링이 비활성
     // 이므로 자연스럽게 풀리며, 사용자가 펼쳐진 jitter 마커를 한 번 더 탭해서
     // 카드/스트립으로 진입.
@@ -666,6 +695,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         await _mapController!.updateCamera(update);
       });
     }
+    } catch (_) {}
   }
 
   /// 클러스터 뱃지가 합성된 아이콘을 비동기로 만들어 캐시에 저장하고 마커에 적용.
@@ -685,6 +715,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
       if (_clusterCurrentSize[topId] != size) return; // 이미 다른 size로 변경됨
+      // delay 사이 native에서 클러스터가 사라졌을 수 있음 — isAdded로 한 번 더 검증.
+      if (!clusterMarker.isAdded) return;
 
       clusterMarker.setIcon(composedIcon);
       clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
