@@ -85,6 +85,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
+  bool _searchMarkerAdded = false;
 
   // 마커 크기 — 한 곳에서 조절
   static const _normalMarkerSize = 32.0; // 일반(단일) 마커
@@ -524,7 +525,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   void _onResultTap(NaverLocalSearchResult result) {
     _focusNode.unfocus();
-    setState(() => _searchResults = []);
+    setState(() {
+      _searchResults = [];
+      _selectedSymbol = null;
+      _selectedPlace = result;
+      _selectedGroupIndex = null;
+    });
+    _applySelectionHighlight(null);
     _searchController.text = result.title;
 
     final position = NLatLng(result.lat, result.lng);
@@ -536,24 +543,42 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _addSearchMarker(result, position);
   }
 
-  void _addSearchMarker(NaverLocalSearchResult result, NLatLng position) {
+  Future<void> _addSearchMarker(NaverLocalSearchResult result, NLatLng position) async {
     if (_mapController == null) return;
 
-    _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
+    if (_searchMarkerAdded) {
+      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
+      _searchMarkerAdded = false;
+    }
+
+    final bytes = await _imageService.createPinMarkerImage();
+    if (!mounted) return;
+    final icon = await NOverlayImage.fromByteArray(bytes);
 
     final marker = NMarker(
       id: _searchMarkerId,
       position: position,
-      size: const Size(26, 36),
+      icon: icon,
+      size: const Size(32, 41),
+      anchor: const NPoint(0.5, 1.0),
     );
+    marker.setGlobalZIndex(1000000);
 
     _mapController!.addOverlay(marker);
+    _searchMarkerAdded = true;
   }
 
   void _clearSearch() {
     _searchController.clear();
-    setState(() => _searchResults = []);
+    setState(() {
+      _searchResults = [];
+      _selectedPlace = null;
+    });
     _focusNode.unfocus();
+    if (_searchMarkerAdded && _mapController != null) {
+      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
+      _searchMarkerAdded = false;
+    }
   }
 
   Future<void> _onSymbolTapped(NSymbolInfo symbolInfo) async {
@@ -633,6 +658,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       title.length > 10 ? '${title.substring(0, 10)}...' : title;
 
   void _closeAllCards() {
+    if (_searchMarkerAdded && _mapController != null) {
+      _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
+      _searchMarkerAdded = false;
+    }
     setState(() {
       _selectedSymbol = null;
       _selectedPlace = null;
@@ -1097,7 +1126,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             curve: Curves.easeOut,
             left: 0,
             right: 0,
-            bottom: _selectedSymbol != null ? -_cardDragOffset : -200,
+            bottom: (_selectedSymbol != null || _selectedPlace != null) ? -_cardDragOffset : -200,
             child: _PlaceInfoCard(
               symbol: _selectedSymbol,
               place: _selectedPlace,
