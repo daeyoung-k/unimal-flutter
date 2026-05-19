@@ -172,6 +172,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final lat = nav.pendingMapLat.value;
     final lng = nav.pendingMapLng.value;
     if (lat == null || lng == null) return;
+    debugPrint('[map] _applyPendingLocation → (${lat.toStringAsFixed(5)}, '
+        '${lng.toStringAsFixed(5)}) zoom=16');
     if (_mapController != null) {
       _mapController!.updateCamera(
         NCameraUpdate.scrollAndZoomTo(target: NLatLng(lat, lng), zoom: 16),
@@ -223,17 +225,32 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
 
       Position? position;
+      final gpsStart = DateTime.now();
       try {
+        debugPrint('[map] GPS getCurrentPosition start (timeLimit 5s)');
         position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.medium,
           timeLimit: const Duration(seconds: 5),
         );
-      } catch (_) {
+        final ms = DateTime.now().difference(gpsStart).inMilliseconds;
+        debugPrint('[map] GPS ok (${ms}ms) lat=${position.latitude.toStringAsFixed(5)} '
+            'lng=${position.longitude.toStringAsFixed(5)}');
+      } catch (e) {
+        final ms = DateTime.now().difference(gpsStart).inMilliseconds;
+        debugPrint('[map] GPS failed (${ms}ms) $e → tryLastKnown');
         position = await Geolocator.getLastKnownPosition();
+        if (position != null) {
+          debugPrint('[map] lastKnown ok lat=${position.latitude.toStringAsFixed(5)} '
+              'lng=${position.longitude.toStringAsFixed(5)}');
+        } else {
+          debugPrint('[map] lastKnown null');
+        }
       }
 
       if (!mounted) return;
       if (position != null) {
+        debugPrint('[map] updateCamera → (${position.latitude.toStringAsFixed(5)}, '
+            '${position.longitude.toStringAsFixed(5)}) zoom=15');
         _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(position.latitude, position.longitude),
@@ -242,9 +259,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         );
         _loadMapMarkers(position.latitude, position.longitude, 15);
       } else {
+        debugPrint('[map] fallback → seoulCityHall');
         _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[map] _moveToCurrentLocationOrDefault outer catch: $e → fallback');
       if (mounted) {
         _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
       }
@@ -252,9 +271,24 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
-    if (_mapController == null) return;
-    if (_isLoadingMarkers) return; // 중복 호출 방지
+    if (_mapController == null) {
+      debugPrint('[map] _loadMapMarkers skipped (controller null)');
+      return;
+    }
+    if (_isLoadingMarkers) {
+      debugPrint('[map] _loadMapMarkers skipped (already loading) '
+          '→ (${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
+      return; // 중복 호출 방지
+    }
+    debugPrint('[map] _loadMapMarkers start '
+        '(${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
     _isLoadingMarkers = true;
+    // 의도적 조회 — 이 호출 직후 카메라가 같은 좌표로 이동하며 onCameraIdle이
+    // 다시 trigger될 때, 변화량 비교에서 걸려 자동 재조회가 발동하지 않도록
+    // 사전에 갱신. Android에서 의도/자동 _loadMapMarkers가 연속 호출될 때
+    // native overlay race("overlay can't found")가 발생하는 원인이었다.
+    _lastQueriedTarget = NLatLng(latitude, longitude);
+    _lastQueriedZoom = zoom.toDouble();
     try {
       await _loadMapMarkersInternal(latitude, longitude, zoom);
     } finally {
@@ -276,11 +310,16 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
 
     // 응답 대기 동안 기존 마커는 그대로 유지 (깜빡임 방지)
+    final apiStart = DateTime.now();
+    debugPrint('[map] API getMapLocationPosts start '
+        '(${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
     final posts = await _boardApiService.getMapLocationPosts(
       latitude: latitude,
       longitude: longitude,
       zoom: zoom,
     );
+    debugPrint('[map] API done (${DateTime.now().difference(apiStart).inMilliseconds}ms) '
+        'returned ${posts.length} posts');
     if (!mounted) return;
 
     // 같은 좌표끼리 그룹핑 (jitter 오프셋 결정용)
@@ -322,8 +361,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
     // 새 결과의 마커 ID 집합 (게시글 id 1:1)
     final newMarkerIds = markerData.map((m) => m.post.id).toSet();
+    debugPrint('[map] markerData built: ${markerData.length} markers '
+        '(grouped from ${posts.length} posts)');
 
     // 1) 기존에 있고 새에 없는 마커만 제거
+    int deletedCount = 0;
     for (final id in _mapMarkerIds.toList()) {
       if (!newMarkerIds.contains(id)) {
         try {
@@ -341,11 +383,23 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         if (_highlightedMarkerId == id) {
           _highlightedMarkerId = null;
         }
+        deletedCount++;
       }
+    }
+    if (deletedCount > 0) {
+      debugPrint('[map] deleted $deletedCount stale markers');
     }
 
     // 2) 각 게시글마다 마커 + single-post visibleGroup 추가
     final List<List<MapPost>> visibleGroups = [];
+    // 신규 마커는 한 번에 addOverlayAll로 추가한다.
+    // 한 개씩 addOverlay 하면 native가 매 호출마다 reclustering(release→retain)을
+    // 수행하면서 빌더 이벤트가 N번 발생하고, 이전 이벤트에서 시작된
+    // lSyncClusterMarker가 도착할 때 해당 클러스터가 이미 release되어
+    // "overlay can't found" race 가 일어남 (Android 한정).
+    // addOverlayAll은 native에서 1번의 reclustering으로 마무리되어 race 윈도우 제거.
+    final Set<NClusterableMarker> markersToAdd = {};
+    final List<String> markerIdsToAdd = [];
 
     for (final data in markerData) {
       final topPost = data.post;
@@ -403,9 +457,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _markerBaseZIndex[topPost.id] = baseZIndex;
 
       // setter는 모두 addOverlay 전에 호출 — _isAdded=false 가드로 native 호출은
-      // 건너뛰고 값만 로컬에 저장된다. addOverlay가 직렬화 시 함께 전송함.
-      // Android는 native add가 비동기로 느려서 addOverlay 직후 setGlobalZIndex를
-      // 호출하면 "overlay can't found" race 에러가 발생함.
+      // 건너뛰고 값만 로컬에 저장된다. addOverlayAll 직렬화 시 함께 전송됨.
       marker.setGlobalZIndex(baseZIndex);
 
       final markerPostId = topPost.id;
@@ -417,15 +469,26 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         await _selectMarker(idx);
       });
 
+      markersToAdd.add(marker);
+      markerIdsToAdd.add(topPost.id);
+    }
+
+    // 신규 마커들을 한 번에 native로 추가 (1회 reclustering).
+    if (markersToAdd.isNotEmpty) {
       if (!mounted) return;
-      // await로 native add 완료를 기다림 — 안 그러면 후속 _applySelectionHighlight 등의
-      // setter 호출이 race로 "overlay can't found" 에러를 일으킴 (Android 한정).
-      await _mapController!.addOverlay(marker);
+      final addStart = DateTime.now();
+      debugPrint('[map] addOverlayAll start (${markersToAdd.length} markers)');
+      await _mapController!.addOverlayAll(markersToAdd);
+      debugPrint('[map] addOverlayAll done '
+          '(${DateTime.now().difference(addStart).inMilliseconds}ms)');
       if (!mounted) return;
-      _mapMarkerIds.add(topPost.id);
+      _mapMarkerIds.addAll(markerIdsToAdd);
+    } else {
+      debugPrint('[map] addOverlayAll skipped (no new markers)');
     }
 
     if (!mounted) return;
+    debugPrint('[map] setState visibleGroups=${visibleGroups.length}');
     setState(() {
       _postGroups = visibleGroups;
       // 이전 선택 마커가 새 결과에 있으면 그 인덱스로 유지, 없으면 카드 닫음
@@ -533,6 +596,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _mapInitialized = true;
       _lastQueriedTarget = currentTarget;
       _lastQueriedZoom = currentZoom;
+      debugPrint('[map] cameraIdle baseline set (first call)');
       return;
     }
 
@@ -544,11 +608,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final dLng = (currentTarget.longitude - _lastQueriedTarget!.longitude).abs();
       positionChanged = dLat > 0.0005 || dLng > 0.0005;
     }
-    if (!zoomChanged && !positionChanged) return;
+    if (!zoomChanged && !positionChanged) {
+      debugPrint('[map] cameraIdle below threshold → skip auto-reload');
+      return;
+    }
 
     // Debounce 500ms — 카메라 멈춘 시점에 1회 조회
+    debugPrint('[map] cameraIdle changed (zoom=$zoomChanged pos=$positionChanged) '
+        '→ schedule auto-reload in 500ms');
     _cameraDebounce?.cancel();
     _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
+      debugPrint('[map] cameraIdle debounce fired → auto _loadMapMarkers');
       _lastQueriedTarget = currentTarget;
       _lastQueriedZoom = currentZoom;
       _loadMapMarkers(
@@ -604,6 +674,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// 클러스터 마커 빌더.
   /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
+    debugPrint('[map] clusterBuilder called size=${info.size}');
     try {
     // children 중 score 최대 마커 식별
     String? topId;
@@ -704,7 +775,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   Future<void> _composeClusterIconAsync(
       String topId, int size, NClusterMarker clusterMarker) async {
     final baseBytes = _markerBytesCache[topId];
-    if (baseBytes == null) return;
+    if (baseBytes == null) {
+      debugPrint('[map] composeCluster skip (no baseBytes) topId=$topId size=$size');
+      return;
+    }
+    debugPrint('[map] composeCluster start topId=$topId size=$size');
     try {
       final composedBytes = await _imageService.addClusterBadge(baseBytes, size);
       final composedIcon = await NOverlayImage.fromByteArray(composedBytes);
@@ -714,13 +789,29 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // 클러스터링 안정 대기 — 그 사이 같은 topId의 더 큰 size가 도착하면 stale 처리
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-      if (_clusterCurrentSize[topId] != size) return; // 이미 다른 size로 변경됨
+      if (_clusterCurrentSize[topId] != size) {
+        debugPrint('[map] composeCluster stale topId=$topId size=$size '
+            'now=${_clusterCurrentSize[topId]}');
+        return; // 이미 다른 size로 변경됨
+      }
       // delay 사이 native에서 클러스터가 사라졌을 수 있음 — isAdded로 한 번 더 검증.
-      if (!clusterMarker.isAdded) return;
+      if (!clusterMarker.isAdded) {
+        debugPrint('[map] composeCluster notAdded topId=$topId size=$size');
+        return;
+      }
 
-      clusterMarker.setIcon(composedIcon);
-      clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
-    } catch (_) {}
+      // isAdded 체크 후 setIcon/setSize 사이에 native에서 클러스터가 제거된
+      // 잔여 윈도우 보호 (Android 한정 race; iOS는 native가 빨라 무증상).
+      try {
+        clusterMarker.setIcon(composedIcon);
+        clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+        debugPrint('[map] composeCluster applied topId=$topId size=$size');
+      } catch (e) {
+        debugPrint('[map] composeCluster setIcon caught: $e');
+      }
+    } catch (e) {
+      debugPrint('[map] composeCluster outer caught: $e');
+    }
   }
 
   /// 마커가 화면 세로 22% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
