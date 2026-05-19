@@ -348,30 +348,46 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
       );
     }
     // 부모 댓글 아래에 같은 replyId를 가진 대댓글을 들여쓰기로 이어 붙임.
+    // 대댓글이 있는 경우 전체 대댓글 아래에 답글 달기 버튼 추가.
     final items = <Widget>[];
     for (final parent in topLevel) {
       items.add(_buildReplyItem(parent));
-      final nested = active.where(
-        (r) => r.reReplyYn && r.replyId == parent.id,
-      );
+      final nested = active
+          .where((r) => r.reReplyYn && r.replyId == parent.id)
+          .toList();
       for (final child in nested) {
         items.add(_buildReplyItem(child, isNested: true));
+      }
+      if (nested.isNotEmpty) {
+        items.add(_buildThreadReplyButton(parent));
       }
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '댓글 ${active.length}',
-          style: TextStyle(
-            fontSize: 13,
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w700,
-            color: colors.textMuted,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Icon(Icons.chat_bubble_outline_rounded,
+                  size: 16, color: colors.textMuted),
+              const SizedBox(width: 6),
+              Text(
+                '댓글 ${active.length}',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),
+        Divider(height: 1, color: colors.border),
         ...items,
+        const SizedBox(height: 4),
       ],
     );
   }
@@ -379,72 +395,87 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
   Widget _buildReplyItem(ReplyInfo reply, {bool isNested = false}) {
     final isEditing = _editingReplyId == reply.id;
     final colors = AppColors.of(context);
-    // 대댓글이면 아바타(28) + 좌측 간격(10) 만큼 들여써서 부모와 시각적으로 구분.
-    return Padding(
-      padding: EdgeInsets.only(bottom: 14, left: isNested ? 38 : 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final double avatarSize = isNested ? 30.0 : 38.0;
+
+    return Container(
+      color: isNested ? colors.surfaceMuted : null,
+      padding: EdgeInsets.only(left: isNested ? 24.0 : 0.0),
+      child: Column(
         children: [
-          _Avatar(imageUrl: reply.profileImage, size: 28),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
+          if (isNested)
+            Divider(height: 1, indent: 24, color: colors.divider),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Row(
+                if (isNested) ...[
+                  Icon(Icons.subdirectory_arrow_right,
+                      size: 14, color: colors.divider),
+                  const SizedBox(width: 4),
+                ],
+                _Avatar(
+                  imageUrl: reply.profileImage,
+                  size: avatarSize,
+                  nickname: reply.nickname,
+                  isNested: isNested,
+                  isRounded: true,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Flexible(
-                            child: Text(
-                              reply.nickname,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w600,
-                                color: colors.textSecondary,
-                              ),
+                          Text(
+                            reply.nickname,
+                            style: TextStyle(
+                              fontSize: isNested ? 13.0 : 14.0,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                              color: colors.textPrimary,
                             ),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 8),
                           Text(
                             relativeTimeFromString(reply.createdAt),
                             style: TextStyle(
-                              fontSize: 11,
+                              fontSize: 12,
                               fontFamily: 'Pretendard',
-                              color: colors.textTertiary,
+                              color: colors.textMuted,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    if (reply.isOwner && !isEditing)
-                      _buildReplyMenu(reply),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                if (isEditing) _buildEditField(reply) else _buildReplyBody(reply),
-                // 답글 트리거 — 부모 댓글에만 표시 (대댓글은 depth 1만 지원).
-                if (!isNested && !isEditing)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: GestureDetector(
-                      onTap: () => _setReplyTo(reply),
-                      behavior: HitTestBehavior.opaque,
-                      child: Text(
-                        '답글 달기',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                          color: colors.primarySoft,
+                      const SizedBox(height: 5),
+                      if (isEditing)
+                        _buildEditField(reply)
+                      else
+                        _buildReplyBody(reply, isNested: isNested),
+                      // 답글 달기 — 부모 댓글에만, 대댓글 없을 때만 표시.
+                      // 대댓글이 있으면 _buildThreadReplyButton이 담당.
+                      if (!isNested && !isEditing)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: GestureDetector(
+                            onTap: () => _setReplyTo(reply),
+                            behavior: HitTestBehavior.opaque,
+                            child: Text(
+                              '답글 달기',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                                color: colors.primarySoft,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                    ],
                   ),
+                ),
+                if (reply.isOwner && !isEditing) _buildReplyMenu(reply),
               ],
             ),
           ),
@@ -453,15 +484,42 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
     );
   }
 
-  Widget _buildReplyBody(ReplyInfo reply) {
+  Widget _buildThreadReplyButton(ReplyInfo parent) {
+    final colors = AppColors.of(context);
+    return Container(
+      color: colors.surfaceMuted,
+      padding: const EdgeInsets.only(left: 68, top: 4, bottom: 12),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _setReplyTo(parent),
+        child: Row(
+          children: [
+            Icon(Icons.reply_rounded, size: 14, color: colors.primarySoft),
+            const SizedBox(width: 4),
+            Text(
+              '답글 달기',
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+                color: colors.primarySoft,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReplyBody(ReplyInfo reply, {bool isNested = false}) {
     final colors = AppColors.of(context);
     return Text(
       reply.comment,
       style: TextStyle(
-        fontSize: 13,
+        fontSize: isNested ? 13.0 : 14.0,
         fontFamily: 'Pretendard',
         color: colors.textSecondary,
-        height: 1.4,
+        height: 1.5,
       ),
     );
   }
@@ -641,37 +699,37 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             ),
           Row(
             children: [
-              const _Avatar(imageUrl: null, size: 28),
-              const SizedBox(width: 8),
               Expanded(
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceVariant,
-                    borderRadius: BorderRadius.circular(20),
+                child: TextField(
+                  controller: _commentController,
+                  focusNode: _commentFocus,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontFamily: 'Pretendard',
+                    color: colors.textPrimary,
                   ),
-                  child: TextField(
-                    controller: _commentController,
-                    focusNode: _commentFocus,
-                    style: TextStyle(
-                      fontSize: 13,
+                  decoration: InputDecoration(
+                    hintText: isReplyMode ? '답글을 입력하세요.' : '댓글을 입력하세요.',
+                    hintStyle: TextStyle(
+                      color: colors.textMuted,
+                      fontSize: 14,
                       fontFamily: 'Pretendard',
-                      color: colors.textPrimary,
                     ),
-                    decoration: InputDecoration.collapsed(
-                      hintText: isReplyMode ? '답글을 입력하세요...' : '나도 한 마디...',
-                      hintStyle: TextStyle(
-                        color: colors.textMuted,
-                        fontFamily: 'Pretendard',
-                      ),
+                    filled: true,
+                    fillColor: colors.surfaceMuted,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(24),
+                      borderSide: BorderSide.none,
                     ),
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendComment(),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
                   ),
+                  maxLines: null,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendComment(),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Container(
                 width: 44,
                 height: 44,
@@ -720,23 +778,74 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
 class _Avatar extends StatelessWidget {
   final String? imageUrl;
   final double size;
-  const _Avatar({required this.imageUrl, required this.size});
+  final String? nickname;
+  final bool isNested;
+  final bool isRounded;
+
+  const _Avatar({
+    required this.imageUrl,
+    required this.size,
+    this.nickname,
+    this.isNested = false,
+    this.isRounded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
+    if (!isRounded) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: colors.surfaceVariant,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: imageUrl != null && imageUrl!.isNotEmpty
+            ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
+            : Icon(Icons.person_outline,
+                size: size * 0.6, color: colors.textMuted),
+      );
+    }
+    final radius = isNested ? 8.0 : 10.0;
+    final letter =
+        (nickname?.isNotEmpty == true) ? nickname![0].toUpperCase() : '?';
+    if (imageUrl != null && imageUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: CachedNetworkImage(
+          imageUrl: imageUrl!,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorWidget: (_, __, ___) =>
+              _buildInitials(colors, radius, letter),
+        ),
+      );
+    }
+    return _buildInitials(colors, radius, letter);
+  }
+
+  Widget _buildInitials(AppColors colors, double radius, String letter) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Container(
+        width: size,
+        height: size,
         color: colors.surfaceVariant,
+        child: Center(
+          child: Text(
+            letter,
+            style: TextStyle(
+              fontSize: size * 0.42,
+              fontWeight: FontWeight.bold,
+              color: colors.primary,
+              fontFamily: 'Pretendard',
+            ),
+          ),
+        ),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: imageUrl != null && imageUrl!.isNotEmpty
-          ? CachedNetworkImage(imageUrl: imageUrl!, fit: BoxFit.cover)
-          : Icon(Icons.person_outline,
-              size: size * 0.6, color: colors.textMuted),
     );
   }
 }
