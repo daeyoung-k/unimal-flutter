@@ -440,7 +440,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                           fontSize: 11,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
-                          color: colors.textTertiary,
+                          color: colors.primarySoft,
                         ),
                       ),
                     ),
@@ -468,32 +468,53 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
 
   Widget _buildReplyMenu(ReplyInfo reply) {
     final colors = AppColors.of(context);
-    return SizedBox(
-      width: 28,
-      height: 28,
-      child: PopupMenuButton<String>(
-        padding: EdgeInsets.zero,
-        iconSize: 18,
-        icon: Icon(Icons.more_horiz, color: colors.textMuted),
-        onSelected: (value) {
-          if (value == 'edit') _startEditReply(reply);
-          if (value == 'delete') _confirmDeleteReply(reply);
-        },
-        itemBuilder: (_) => [
-          const PopupMenuItem(
-            value: 'edit',
-            child: Text('수정',
-                style: TextStyle(fontFamily: 'Pretendard', fontSize: 13)),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          PopupMenuItem(
-            value: 'delete',
-            child: Text('삭제',
-                style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    color: colors.danger)),
+          builder: (ctx) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  decoration: BoxDecoration(
+                    color: colors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                ListTile(
+                  leading: Icon(Icons.edit_outlined, color: colors.textSecondary, size: 20),
+                  title: Text('수정',
+                      style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          color: colors.textPrimary,
+                          fontWeight: FontWeight.w500)),
+                  onTap: () { Navigator.pop(ctx); _startEditReply(reply); },
+                ),
+                ListTile(
+                  leading: Icon(Icons.delete_outline, color: colors.danger, size: 20),
+                  title: Text('삭제',
+                      style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          color: colors.danger,
+                          fontWeight: FontWeight.w500)),
+                  onTap: () { Navigator.pop(ctx); _confirmDeleteReply(reply); },
+                ),
+              ],
+            ),
           ),
-        ],
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(Icons.more_vert, size: 18, color: colors.primarySoft),
       ),
     );
   }
@@ -584,20 +605,22 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
           if (isReplyMode)
             Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: colors.primaryWash,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
+                  Icon(Icons.reply_rounded, size: 16, color: colors.primaryStrong),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '@${_replyToNickname ?? ''} 에게 답글',
+                      '@${_replyToNickname ?? ''} 에게 답글 달기',
                       style: TextStyle(
                         fontSize: 12,
                         fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.w500,
                         color: colors.primaryStrong,
                       ),
                       maxLines: 1,
@@ -610,7 +633,7 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                     child: Icon(
                       Icons.close_rounded,
                       size: 16,
-                      color: colors.textTertiary,
+                      color: colors.primaryStrong,
                     ),
                   ),
                 ],
@@ -649,19 +672,42 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                 ),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: _sendComment,
-                child: _isSending
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.primaryStrong,
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: _isSending
+                      ? null
+                      : LinearGradient(
+                          colors: [colors.primarySoft, colors.primaryStrong],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                      )
-                    : Icon(Icons.send_rounded,
-                        color: colors.primaryStrong, size: 22),
+                  color: _isSending ? colors.surfaceVariant : null,
+                  shape: BoxShape.circle,
+                  boxShadow: _isSending
+                      ? null
+                      : [
+                          BoxShadow(
+                            color: colors.primarySoft.withValues(alpha: 0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                ),
+                child: IconButton(
+                  icon: _isSending
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.send_rounded,
+                          color: Colors.white, size: 18),
+                  onPressed: _isSending ? null : _sendComment,
+                  padding: EdgeInsets.zero,
+                ),
               ),
             ],
           ),
