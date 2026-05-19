@@ -26,6 +26,9 @@ class PostInfoSection extends StatelessWidget {
   /// null이면 더보기 자체를 숨김(peek 카드).
   final VoidCallback? onShowMore;
 
+  /// 수정 아이콘 탭 핸들러. null이면 수정 버튼 숨김.
+  final VoidCallback? onEditTap;
+
   /// 좋아요 활성 상태. null이면 미설정(회색 outline).
   final bool isLiked;
 
@@ -41,6 +44,7 @@ class PostInfoSection extends StatelessWidget {
     this.onLikeTap,
     this.onReplyTap,
     this.onShowMore,
+    this.onEditTap,
     this.isLiked = false,
     this.likeCountOverride,
   });
@@ -108,14 +112,36 @@ class PostInfoSection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // 날짜: 항상 첫 줄 우측 상단 정렬
-                Text(
-                  relativeTimeFromString(post.createdAt),
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'Pretendard',
-                    color: colors.textTertiary,
-                  ),
+                // 날짜 + 수정 버튼 (내 글일 때)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      relativeTimeFromString(post.createdAt),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Pretendard',
+                        color: colors.textTertiary,
+                      ),
+                    ),
+                    if (onEditTap != null) ...[
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onEditTap,
+                        child: Container(
+                          width: 26,
+                          height: 26,
+                          decoration: BoxDecoration(
+                            color: colors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(Icons.edit_outlined,
+                              size: 13, color: colors.primaryStrong),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             );

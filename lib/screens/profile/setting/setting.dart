@@ -5,7 +5,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
 import 'package:unimal/state/auth_state.dart';
-import 'package:unimal/screens/profile/setting/terms_of_service.dart';
 
 class SettingScreen extends StatefulWidget {
   const SettingScreen({super.key});
@@ -122,7 +121,7 @@ class _SettingScreenState extends State<SettingScreen> {
           _buildItem(
             icon: Icons.description_outlined,
             title: '이용약관',
-            onTap: () => Get.to(() => const TermsOfServiceScreen()),
+            onTap: () => Get.toNamed('/webview', parameters: {'url': 'https://api.unimal.co.kr/stomap/terms', 'title': '이용약관'}),
           ),
           _buildDivider(),
           _buildItem(

@@ -75,6 +75,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
   bool _isLoadingMarkers = false;
+  // refreshMap() 호출 시 로드가 진행 중이면 완료 후 강제 새로고침을 실행하기 위한 플래그
+  bool _pendingForceRefresh = false;
 
   Worker? _pendingLocationWorker;
 
@@ -90,6 +92,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 마커 크기 — 한 곳에서 조절
   static const _normalMarkerSize = 32.0; // 일반(단일) 마커
   static const _clusterMarkerSize = 42.0; // 클러스터(2개 이상 합쳐진) 마커
+
+  // 백엔드 ZoomLevel enum과 동기화. postLimit = 해당 줌에서 서버가 반환하는 최대 게시글 수.
+  static const _zoomPostLimit = {
+    10: 30, 11: 30, 12: 30,
+    13: 40, 14: 40,
+    15: 50, 16: 50, 17: 50,
+    18: 100, 19: 100, 20: 100,
+  };
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
 
@@ -197,8 +207,41 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   void refreshMap() {
-    _mapController?.updateCamera(
-      NCameraUpdate.withParams(zoom: 15),
+    _cameraDebounce?.cancel();
+    if (_isLoadingMarkers) {
+      // 현재 로드가 끝난 뒤 강제 새로고침 — 마커 삭제 후 skipped 되는 race 방지
+      _pendingForceRefresh = true;
+      return;
+    }
+    _doForceRefresh();
+  }
+
+  Future<void> _doForceRefresh() async {
+    if (_mapController == null) return;
+    // 기존 마커 전부 제거 — 수정된 게시글 반영을 위해 재사용 없이 전체 재렌더
+    for (final id in _mapMarkerIds.toList()) {
+      try {
+        _mapController!.deleteOverlay(
+          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
+        );
+      } catch (_) {}
+    }
+    _mapMarkerIds.clear();
+    _markerRefs.clear();
+    _markerBaseZIndex.clear();
+    _markerIconCache.clear();
+    _markerBytesCache.clear();
+    _clusterIconCache.clear();
+    _clusterCurrentSize.clear();
+    _highlightedMarkerId = null;
+
+    final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
+    _lastQueriedTarget = null;
+    _loadMapMarkers(
+      camera.target.latitude,
+      camera.target.longitude,
+      camera.zoom.round(),
     );
   }
 
@@ -294,6 +337,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       await _loadMapMarkersInternal(latitude, longitude, zoom);
     } finally {
       _isLoadingMarkers = false;
+      // refreshMap()이 로드 중에 호출됐다면 지금 실행
+      if (_pendingForceRefresh && mounted) {
+        _pendingForceRefresh = false;
+        _doForceRefresh();
+      }
     }
   }
 
@@ -337,7 +385,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 점진적 표시: 같은 좌표 그룹이 너무 크면 상위 N개만 jitter로 표시.
     // 나머지는 클러스터링으로 줌인 시 펼쳐지도록 위임.
     const jitterRadius = 0.00015; // 위경도 약 17m
-    const maxJitterPerGroup = 5; // 한 좌표 그룹당 최대 jitter 마커 수
+    // 백엔드 ZoomLevel.postLimit 기준 — 서버가 이미 해당 줌에서 최대 N개만 반환하므로
+    // 클라이언트 jitter 한도도 같은 값으로 맞춰 불필요한 추가 컷 방지.
+    final maxJitterPerGroup = _zoomPostLimit[zoom] ?? 50;
     final List<({MapPost post, NLatLng position})> markerData = [];
     for (final group in grouped.values) {
       // score 상위 N개까지만 표시

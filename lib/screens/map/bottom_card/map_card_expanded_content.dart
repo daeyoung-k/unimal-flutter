@@ -22,6 +22,9 @@ class MapCardExpandedContent extends StatefulWidget {
   /// 댓글 작성/수정/삭제 후 호출 — 부모가 detail을 재로딩한다.
   final Future<void> Function()? onRefreshDetail;
 
+  /// 수정 버튼 탭 핸들러. null이면 수정 버튼 숨김.
+  final VoidCallback? onEditTap;
+
   const MapCardExpandedContent({
     super.key,
     required this.post,
@@ -31,6 +34,7 @@ class MapCardExpandedContent extends StatefulWidget {
     this.likeCountOverride,
     this.onLikeTap,
     this.onRefreshDetail,
+    this.onEditTap,
   });
 
   @override
@@ -240,13 +244,36 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              relativeTimeFromString(post.createdAt),
-              style: TextStyle(
-                fontSize: 12,
-                fontFamily: 'Pretendard',
-                color: colors.textTertiary,
-              ),
+            // 날짜 + 수정 버튼 (내 글일 때)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  relativeTimeFromString(post.createdAt),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'Pretendard',
+                    color: colors.textTertiary,
+                  ),
+                ),
+                if (widget.onEditTap != null) ...[
+                  const SizedBox(height: 4),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onEditTap,
+                    child: Container(
+                      width: 26,
+                      height: 26,
+                      decoration: BoxDecoration(
+                        color: colors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(Icons.edit_outlined,
+                          size: 13, color: colors.primaryStrong),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

@@ -2,6 +2,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_card_expanded_content.dart';
 import 'package:unimal/screens/map/bottom_card/post_group_navigator.dart';
 import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
@@ -251,6 +252,19 @@ class _MapBottomCardState extends State<MapBottomCard> {
 
   Future<void> _toggleLike() => _toggleLikeFor(_nav.currentPost);
 
+  // ── 수정 화면 이동 ──────────────────────────────────────────────────────
+
+  Future<void> _navigateToEdit() async {
+    if (_loadedDetail != null) {
+      Get.toNamed('/edit-board', arguments: _loadedDetail);
+      return;
+    }
+    await _loadDetail();
+    if (mounted && _loadedDetail != null) {
+      Get.toNamed('/edit-board', arguments: _loadedDetail);
+    }
+  }
+
   // ── PageView (그룹 좌우 스와이프) ─────────────────────────────────────
 
   void _onPageChanged(int idx) {
@@ -462,6 +476,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
             onLikeTap: () => _toggleLikeFor(post),
             onReplyTap: isCenter ? _expandCard : null,
             onShowMore: isCenter ? _expandCard : null,
+            onEditTap: (post.isOwner && isCenter) ? _navigateToEdit : null,
           ),
         ),
       ],
@@ -521,6 +536,23 @@ class _MapBottomCardState extends State<MapBottomCard> {
                         fontFamily: 'Pretendard',
                         color: colors.accent)),
               ),
+              if (post.isOwner && isCenter) ...[
+                const SizedBox(width: 6),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _navigateToEdit,
+                  child: Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: colors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(Icons.edit_outlined,
+                        size: 13, color: colors.primaryStrong),
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 10),
@@ -616,6 +648,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
             likeCountOverride: _currentLikeCount,
             onLikeTap: _toggleLike,
             onRefreshDetail: () => _loadDetail(force: true),
+            onEditTap: post.isOwner ? _navigateToEdit : null,
           ),
         ),
       ],
