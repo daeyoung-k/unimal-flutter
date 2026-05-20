@@ -10,12 +10,14 @@ class PostImageCarousel extends StatefulWidget {
   final List<FileInfo> images;
   final int initialIndex;
   final ValueChanged<int>? onIndexChanged;
+  final double height;
 
   const PostImageCarousel({
     super.key,
     required this.images,
     this.initialIndex = 0,
     this.onIndexChanged,
+    this.height = 220,
   });
 
   @override
@@ -71,12 +73,12 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
     if (widget.images.isEmpty) {
-      return SizedBox(height: 220, child: _placeholder(context));
+      return SizedBox(height: widget.height, child: _placeholder(context));
     }
 
     final total = widget.images.length;
     return SizedBox(
-      height: 220,
+      height: widget.height,
       child: Stack(
         children: [
           PageView.builder(

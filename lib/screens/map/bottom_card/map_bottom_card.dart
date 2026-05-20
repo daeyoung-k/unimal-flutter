@@ -450,37 +450,49 @@ class _MapBottomCardState extends State<MapBottomCard> {
     return _buildTextPostDefault(post, isCenter: isCenter);
   }
 
+  // PostInfoSection에 항상 확보할 최소 높이.
+  // (패딩 27 + 헤더~46 + 타이틀~36 + 내용 2줄~46 + 좋아요행~20 = ~175)
+  static const _infoSectionReserved = 175.0;
+  static const _imageHeightMin = 120.0;
+  static const _imageHeightMax = 250.0;
+
   Widget _buildImagePostDefault(MapPost post, {required bool isCenter}) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: PostImageCarousel(
-              images: post.fileInfoList,
-              initialIndex: isCenter ? _nav.currentImageIndex : 0,
-              onIndexChanged: (i) {
-                if (isCenter) _nav.updateImageIndex(i);
-              },
+    return LayoutBuilder(builder: (context, constraints) {
+      // 이미지 하단 패딩(4px)을 포함해 PostInfoSection이 _infoSectionReserved를 확보하도록 계산.
+      final imageH = (constraints.maxHeight - _infoSectionReserved - 4)
+          .clamp(_imageHeightMin, _imageHeightMax);
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: PostImageCarousel(
+                images: post.fileInfoList,
+                height: imageH,
+                initialIndex: isCenter ? _nav.currentImageIndex : 0,
+                onIndexChanged: (i) {
+                  if (isCenter) _nav.updateImageIndex(i);
+                },
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: PostInfoSection(
-            post: post,
-            padding: const EdgeInsets.fromLTRB(10, 12, 10, 15),
-            showDetailButton: false,
-            isLiked: _isLikedFor(post),
-            likeCountOverride: _likeCountFor(post),
-            onLikeTap: () => _toggleLikeFor(post),
-            onReplyTap: isCenter ? _expandCard : null,
-            onShowMore: isCenter ? _expandCard : null,
-            onEditTap: (post.isOwner && isCenter) ? _navigateToEdit : null,
+          Expanded(
+            child: PostInfoSection(
+              post: post,
+              padding: const EdgeInsets.fromLTRB(10, 12, 10, 15),
+              showDetailButton: false,
+              isLiked: _isLikedFor(post),
+              likeCountOverride: _likeCountFor(post),
+              onLikeTap: () => _toggleLikeFor(post),
+              onReplyTap: isCenter ? _expandCard : null,
+              onShowMore: isCenter ? _expandCard : null,
+              onEditTap: (post.isOwner && isCenter) ? _navigateToEdit : null,
+            ),
           ),
-        ),
-      ],
-    );
+        ],
+      );
+    });
   }
 
   Widget _buildTextPostDefault(MapPost post, {required bool isCenter}) {
