@@ -64,12 +64,10 @@ class AccountService {
         return true;
       } else {
         stateClear();
-        logger.e("토큰 재발급 실패.. ${bodyData['message']}");
         return false;
       }
     } catch (error) {
       stateClear();
-      logger.e("토큰 재발급 실패.. ${error.toString()}");
       return false;
     }
   }
@@ -90,10 +88,8 @@ class AccountService {
         await _googleLogout();
         break;
       case LoginType.manual:
-        print("일반 로그인 타입 로그아웃");
         break;
       case LoginType.none:
-        print("로그인 상태가 아닙니다.");
         break;
     }
 

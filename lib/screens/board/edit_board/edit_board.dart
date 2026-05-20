@@ -151,7 +151,7 @@ class _EditBoardScreenState extends State<EditBoardScreen>
 
     final success = await _boardApiService.deleteBoard(_boardPost.boardId);
     if (success) {
-      Get.offAllNamed('/board');
+      Get.offAllNamed('/map');
     } else {
       Get.dialog(
         AlertDialog(

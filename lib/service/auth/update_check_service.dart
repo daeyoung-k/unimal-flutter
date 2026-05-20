@@ -206,8 +206,7 @@ class UpdateCheckService {
         url = 'https://play.google.com/store/apps/details?id=com.unimal.android.stomap';
       } else if (Platform.isIOS) {
         // App Store URL
-        // TODO: 실제 앱 ID로 변경 필요
-        url = 'https://apps.apple.com/app/id1234567890';
+        url = 'https://apps.apple.com/app/id6762319739';
       } else {
         _logger.w('지원하지 않는 플랫폼입니다.');
         return false;

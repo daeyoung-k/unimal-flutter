@@ -1,10 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
 import 'package:unimal/service/auth/device_info_service.dart';
+import 'package:unimal/service/user/user_info_service.dart';
+import 'package:unimal/state/auth_state.dart';
 
 /// Firebase Cloud Messaging 푸시 알림 서비스
 ///
@@ -12,7 +16,7 @@ import 'package:unimal/service/auth/device_info_service.dart';
 /// 1. FCM 토큰 관리 및 백엔드 서버로 전송
 /// 2. 포그라운드/백그라운드/종료 상태에서의 알림 수신 처리
 /// 3. 로컬 알림 표시
-class PushNotificationService {
+class PushNotificationService with WidgetsBindingObserver {
   static final PushNotificationService _instance =
       PushNotificationService._internal();
   factory PushNotificationService() => _instance;
@@ -60,10 +64,19 @@ class PushNotificationService {
 
       // FCM 토큰 획득 및 업데이트 리스너 설정
       await _deviceInfoService.getFCMToken();
-      _firebaseMessaging.onTokenRefresh.listen((newToken) {
-        _logger.i('FCM 토큰이 갱신되었습니다: $newToken');
-        _deviceInfoService.setFCMToken(newToken);
+      // 이미 로그인된 상태라면 앱 시작 시마다 현재 토큰을 서버에 동기화
+      // (TestFlight/재설치 등으로 토큰이 바뀌어도 onTokenRefresh가 미발생할 수 있음)
+      final authState = Get.find<AuthState>();
+      if (authState.accessToken.value.isNotEmpty) {
+        await _syncTokenToServer();
+      }
+      _firebaseMessaging.onTokenRefresh.listen((newToken) async {
+        await _deviceInfoService.setFCMToken(newToken);
+        await _syncTokenToServer();
       });
+
+      // 앱 포그라운드 복귀 시 토큰 재시도를 위한 옵저버 등록
+      WidgetsBinding.instance.addObserver(this);
 
       // 포그라운드 메시지 핸들러 설정
       FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
@@ -155,8 +168,8 @@ class PushNotificationService {
     _logger.d('알림 제목: ${message.notification?.title}');
     _logger.d('알림 본문: ${message.notification?.body}');
 
-    // 로컬 알림으로 표시
-    if (message.notification != null) {
+    // iOS는 setForegroundNotificationPresentationOptions가 자동으로 표시하므로 로컬 알림 중복 방지
+    if (message.notification != null && !Platform.isIOS) {
       await _showLocalNotification(message);
     }
   }
@@ -256,10 +269,48 @@ class PushNotificationService {
     }
   }
 
+  /// 앱이 포그라운드로 돌아올 때 FCM 토큰이 없으면 재시도
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _retryFCMTokenIfNeeded();
+    }
+  }
+
+  Future<void> _retryFCMTokenIfNeeded() async {
+    try {
+      final authState = Get.find<AuthState>();
+      if (authState.accessToken.value.isEmpty) return;
+
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (!granted) return;
+
+      await _deviceInfoService.getFCMToken();
+      await _syncTokenToServer();
+    } catch (_) {}
+  }
+
+  Future<void> _syncTokenToServer() async {
+    try {
+      final deviceInfo = await _deviceInfoService.getSimpleDeviceInfo();
+      if (deviceInfo.isEmpty || !deviceInfo.containsKey('fcmToken')) {
+        _logger.w('FCM 토큰 없음 - 서버 동기화 건너뜀');
+        return;
+      }
+      await UserInfoService().updateDeviceInfo(deviceInfo);
+      _logger.i('FCM 토큰 서버 동기화 완료');
+    } catch (e, stackTrace) {
+      _logger.e('FCM 토큰 서버 동기화 실패', error: e, stackTrace: stackTrace);
+    }
+  }
+
   /// 리소스 정리
   ///
   /// 앱 종료 시 호출하여 스트림 컨트롤러를 닫습니다.
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tokenController.close();
     _messageController.close();
   }

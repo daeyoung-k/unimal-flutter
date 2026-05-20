@@ -81,7 +81,7 @@ class CommentInput extends StatelessWidget {
                     controller: controller,
                     focusNode: focusNode,
                     decoration: InputDecoration(
-                      hintText: replyToNickname != null ? '답글을 입력하세요...' : '댓글을 입력하세요...',
+                      hintText: replyToNickname != null ? '답글을 입력하세요.' : '댓글을 입력하세요.',
                       hintStyle: const TextStyle(
                         color: Color(0xFF9CA3AF),
                         fontSize: 14,

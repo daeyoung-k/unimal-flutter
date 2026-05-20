@@ -307,7 +307,7 @@ class BoardApiService {
     required double longitude,
     int zoom = 14,
   }) async {
-    final url = ApiUri.resolve('board/map/location/post', {
+    final url = ApiUri.resolve('board/map/post', {
       'latitude': latitude.toString(),
       'longitude': longitude.toString(),
       'zoom': zoom.toString(),

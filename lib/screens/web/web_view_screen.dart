@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class WebViewScreen extends StatefulWidget {
@@ -27,6 +28,14 @@ class _WebViewScreenState extends State<WebViewScreen> {
           onPageStarted: (_) => setState(() => _isLoading = true),
           onPageFinished: (_) => setState(() => _isLoading = false),
           onWebResourceError: (_) => setState(() => _isLoading = false),
+          onNavigationRequest: (request) async {
+            final uri = Uri.tryParse(request.url);
+            if (uri != null && uri.scheme != 'https' && uri.scheme != 'http') {
+              if (await canLaunchUrl(uri)) launchUrl(uri);
+              return NavigationDecision.prevent;
+            }
+            return NavigationDecision.navigate;
+          },
         ),
       )
       ..loadRequest(Uri.parse(url));

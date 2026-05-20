@@ -187,7 +187,7 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
       if (Get.previousRoute.isNotEmpty) {
         Get.back();
       } else {
-        Get.offAllNamed('/board');
+        Get.offAllNamed('/map');
       }
     });
   }

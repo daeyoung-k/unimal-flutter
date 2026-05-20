@@ -69,9 +69,19 @@ class DeviceInfoService {
   /// - String?: FCM 토큰 (실패 시 null)
   Future<String?> getFCMToken() async {
     try {
+      if (Platform.isIOS) {
+        final iosInfo = await _deviceInfo.iosInfo;
+        if (!iosInfo.isPhysicalDevice) {
+          _logger.w('FCM 토큰 건너뜀: iOS 시뮬레이터는 APNs 미지원');
+          return null;
+        }
+      }
       final token = await _firebaseMessaging.getToken();
+      if (token == null) {
+        return null;
+      }
       _logger.i('FCM 토큰 획득 성공');
-      _authState.setFCMToken(token!);  
+      _authState.setFCMToken(token);
       return token;
     } catch (e, stackTrace) {
       _logger.e('FCM 토큰 획득 실패', error: e, stackTrace: stackTrace);
@@ -163,9 +173,9 @@ class DeviceInfoService {
   /// - Map<String, dynamic>: 간단한 디바이스 정보
   Future<Map<String, dynamic>> getSimpleDeviceInfo() async {
     try {
-      final Map<String, dynamic> info = {
-        'fcmToken': await getFCMToken(),
-      };
+      final token = await getFCMToken();
+      final Map<String, dynamic> info = {};
+      if (token != null) info['fcmToken'] = token;
 
       if (Platform.isAndroid) {
         final AndroidDeviceInfo androidInfo = await _deviceInfo.androidInfo;
