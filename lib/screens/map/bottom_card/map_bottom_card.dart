@@ -38,6 +38,9 @@ class MapBottomCard extends StatefulWidget {
   /// (좌우 카드 스와이프) parent는 카메라 이동 + 마커 하이라이트 + 스트립 위치 갱신을 처리한다.
   final ValueChanged<int>? onGroupChanged;
 
+  /// 카드 확장/축소 상태 변경 시 parent에 알림.
+  final ValueChanged<bool>? onExpandedChanged;
+
   const MapBottomCard({
     super.key,
     required this.groups,
@@ -45,6 +48,7 @@ class MapBottomCard extends StatefulWidget {
     required this.onClose,
     required this.minTopMargin,
     this.onGroupChanged,
+    this.onExpandedChanged,
   });
 
   @override
@@ -107,12 +111,14 @@ class _MapBottomCardState extends State<MapBottomCard> {
         initialPage: widget.initialGroupIndex,
         viewportFraction: _pageViewportFraction,
       );
+      widget.onExpandedChanged?.call(false);
     } else if (indexChanged) {
       // 외부 트리거(마커 탭 등) — PageView를 새 인덱스로 애니메이션.
       _nav.jumpToGroup(widget.initialGroupIndex);
       _cardState = _CardState.default_;
       _loadedDetail = null;
       _isLoadingDetail = false;
+      widget.onExpandedChanged?.call(false);
       if (_pageController.hasClients) {
         final current = _pageController.page?.round();
         if (current != widget.initialGroupIndex) {
@@ -194,6 +200,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
           _cardState = _CardState.expanded;
           _isHandleDragging = false;
         });
+        widget.onExpandedChanged?.call(true);
       } else if (drag > _handleDragThreshold || v > _handleVelocityThreshold) {
         setState(() => _isHandleDragging = false);
         widget.onClose();
@@ -208,6 +215,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
           _loadedDetail = null;
           _isHandleDragging = false;
         });
+        widget.onExpandedChanged?.call(false);
       } else {
         setState(() => _isHandleDragging = false);
       }
@@ -226,6 +234,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
     if (_cardState == _CardState.expanded) return;
     _loadDetail();
     setState(() => _cardState = _CardState.expanded);
+    widget.onExpandedChanged?.call(true);
   }
 
   // ── 좋아요 ────────────────────────────────────────────────────────────
@@ -375,18 +384,23 @@ class _MapBottomCardState extends State<MapBottomCard> {
     // expanded 상태에선 내부 SingleChildScrollView가 스크롤을 가져가야 하므로 비활성.
     final enableContentDrag =
         isHandleInteractive && _cardState == _CardState.default_;
+    final isExpanded = _cardState == _CardState.expanded;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.of(context).surface,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.of(context).shadow,
-            blurRadius: 20,
-            offset: const Offset(0, -4),
-          ),
-        ],
+        borderRadius: isExpanded
+            ? const BorderRadius.vertical(top: Radius.circular(24))
+            : BorderRadius.circular(24),
+        boxShadow: isExpanded
+            ? []
+            : [
+                BoxShadow(
+                  color: AppColors.of(context).shadow,
+                  blurRadius: 20,
+                  offset: const Offset(0, -4),
+                ),
+              ],
       ),
       child: Column(
         children: [
@@ -451,8 +465,9 @@ class _MapBottomCardState extends State<MapBottomCard> {
   }
 
   // PostInfoSection에 항상 확보할 최소 높이.
-  // (패딩 27 + 헤더~46 + 타이틀~36 + 내용 2줄~46 + 좋아요행~20 = ~175)
-  static const _infoSectionReserved = 175.0;
+  // (패딩 27 + 헤더~47(수정버튼 포함) + 타이틀~24 + SizedBox 20 + 내용 2줄~40 + 좋아요행~19 = ~177)
+  // 여유분 포함해 185로 설정.
+  static const _infoSectionReserved = 185.0;
   static const _imageHeightMin = 120.0;
   static const _imageHeightMax = 250.0;
 

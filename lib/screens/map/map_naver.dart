@@ -61,6 +61,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 커스텀 마커 탭 관련 상태
   List<List<MapPost>> _postGroups = [];
   int? _selectedGroupIndex;
+  bool _isCardExpanded = false;
   List<MapPost> get _selectedPosts =>
       _selectedGroupIndex == null ? const [] : _postGroups[_selectedGroupIndex!];
 
@@ -1188,10 +1189,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             ),
           ),
           // 마커 탭 시 바텀시트 카드 — 등장/소실 시 슬라이드 + 페이드
-          Positioned(
+          // 확장 상태일 때는 네비게이션 바에 바로 붙도록 bottom: 0
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: _isCardExpanded ? 0 : 20,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               reverseDuration: const Duration(milliseconds: 260),
@@ -1225,11 +1229,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       onClose: () {
                         setState(() {
                           _selectedGroupIndex = null;
+                          _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
                       },
                       onGroupChanged: (newIdx) {
                         _selectMarker(newIdx);
+                      },
+                      onExpandedChanged: (expanded) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) setState(() => _isCardExpanded = expanded);
+                        });
                       },
                     )
                   : const SizedBox.shrink(key: ValueKey('empty')),
