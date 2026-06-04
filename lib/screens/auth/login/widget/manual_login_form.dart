@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/theme/app_colors.dart';
 import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/service/login/manual_login_service.dart';
 
@@ -22,11 +23,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
   final TextEditingController _passwordController = TextEditingController();
   bool _isLoading = false;
 
-  static const Color _primary = Color(0xFF4D91FF);
-  static const Color _fieldBg = Color(0xFFF3F4F6);
-  static const Color _labelColor = Color(0xFF374151);
-  static const Color _hintColor = Color(0xFF9CA3AF);
-  static const Color _dividerColor = Color(0xFFE5E7EB);
+  static const Color _hintColor = Color(0xFFCBD5E1);
 
   @override
   void dispose() {
@@ -57,53 +54,62 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
     }
   }
 
+  InputDecoration _inputDecoration({
+    required String hint,
+    required IconData icon,
+    required AppColors colors,
+  }) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(
+        color: _hintColor,
+        fontSize: 15,
+        fontFamily: 'Pretendard',
+      ),
+      filled: true,
+      fillColor: colors.surface,
+      prefixIcon: Icon(icon, color: _hintColor, size: 20),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: colors.primaryStrong, width: 1.5),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 17, vertical: 16),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 제목
-        const Text(
-          '이메일로 로그인',
+        Text(
+          '이메일 로그인',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xFF1A1A2E),
-            fontSize: 20,
+            color: colors.textPrimary,
+            fontSize: 19,
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
 
         // 이메일 필드
         TextField(
           controller: _emailController,
           keyboardType: TextInputType.emailAddress,
-          style: const TextStyle(
-            fontSize: 15,
-            fontFamily: 'Pretendard',
-            color: _labelColor,
-          ),
-          decoration: InputDecoration(
-            hintText: '이메일',
-            hintStyle: const TextStyle(
-              color: _hintColor,
-              fontSize: 15,
-              fontFamily: 'Pretendard',
-            ),
-            filled: true,
-            fillColor: _fieldBg,
-            prefixIcon: const Icon(Icons.mail_outline_rounded, color: _hintColor, size: 20),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _primary, width: 1.5),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          ),
+          style: TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: colors.textSecondary),
+          decoration: _inputDecoration(hint: '이메일', icon: Icons.mail_outline_rounded, colors: colors),
         ),
         const SizedBox(height: 12),
 
@@ -111,46 +117,21 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
         TextField(
           controller: _passwordController,
           obscureText: true,
-          style: const TextStyle(
-            fontSize: 15,
-            fontFamily: 'Pretendard',
-            color: _labelColor,
-          ),
-          decoration: InputDecoration(
-            hintText: '비밀번호',
-            hintStyle: const TextStyle(
-              color: _hintColor,
-              fontSize: 15,
-              fontFamily: 'Pretendard',
-            ),
-            filled: true,
-            fillColor: _fieldBg,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, color: _hintColor, size: 20),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: _primary, width: 1.5),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          ),
+          style: TextStyle(fontSize: 15, fontFamily: 'Pretendard', color: colors.textSecondary),
+          decoration: _inputDecoration(hint: '비밀번호', icon: Icons.lock_outline_rounded, colors: colors),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
 
         // 로그인 버튼
         SizedBox(
-          height: 50,
+          height: 56,
           child: ElevatedButton(
             onPressed: _isLoading ? null : _manualLogin,
             style: ElevatedButton.styleFrom(
-              backgroundColor: _primary,
-              disabledBackgroundColor: _primary.withOpacity(0.6),
+              backgroundColor: colors.primary,
+              disabledBackgroundColor: colors.primary.withValues(alpha: 0.6),
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
             ),
             child: _isLoading
@@ -164,11 +145,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                   )
                 : const Text(
                     '로그인',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'Pretendard',
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, fontFamily: 'Pretendard'),
                   ),
           ),
         ),
@@ -185,17 +162,9 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                '아이디찾기',
-                style: TextStyle(
-                  color: _hintColor,
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: Text('아이디찾기', style: TextStyle(color: colors.textMuted, fontSize: 13, fontFamily: 'Pretendard')),
             ),
-            Container(width: 1, height: 12, color: _dividerColor, margin: const EdgeInsets.symmetric(horizontal: 8)),
+            Container(width: 1, height: 12, color: colors.divider, margin: const EdgeInsets.symmetric(horizontal: 8)),
             TextButton(
               onPressed: () => Get.toNamed("/password-find"),
               style: TextButton.styleFrom(
@@ -203,17 +172,9 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                '비밀번호찾기',
-                style: TextStyle(
-                  color: _hintColor,
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: Text('비밀번호찾기', style: TextStyle(color: colors.textMuted, fontSize: 13, fontFamily: 'Pretendard')),
             ),
-            Container(width: 1, height: 12, color: _dividerColor, margin: const EdgeInsets.symmetric(horizontal: 8)),
+            Container(width: 1, height: 12, color: colors.divider, margin: const EdgeInsets.symmetric(horizontal: 8)),
             TextButton(
               onPressed: () => Get.toNamed("/signup"),
               style: TextButton.styleFrom(
@@ -221,15 +182,7 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              child: const Text(
-                '회원가입',
-                style: TextStyle(
-                  color: _primary,
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: Text('회원가입', style: TextStyle(color: colors.primaryStrong, fontSize: 13, fontFamily: 'Pretendard', fontWeight: FontWeight.w600)),
             ),
           ],
         ),
@@ -238,14 +191,9 @@ class _ManualLoginFormWidgetState extends State<ManualLoginFormWidget> {
         // 소셜 로그인으로 돌아가기
         TextButton(
           onPressed: _isLoading ? null : widget.onBackPressed,
-          child: const Text(
+          child: Text(
             '← 소셜 로그인으로 돌아가기',
-            style: TextStyle(
-              color: _hintColor,
-              fontSize: 14,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w500,
-            ),
+            style: TextStyle(color: colors.textMuted, fontSize: 14, fontFamily: 'Pretendard'),
           ),
         ),
       ],
