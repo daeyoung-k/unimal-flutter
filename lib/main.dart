@@ -63,11 +63,11 @@ Future<void> main() async {
   // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
   await PermissionService().requestNotificationPermission();
 
-  // 푸시 알림 서비스 초기화
-  await PushNotificationService().initialize();
-
-  // 앱 업데이트 체크
+  // 푸시 알림 초기화 + 업데이트 체크는 runApp() 이후 위젯 트리가 준비된 뒤 실행.
+  // runApp() 이전에 실행하면 ApiClient._refresh()가 네비게이터 없는 상태에서
+  // Get.dialog()를 호출해 로그인 화면 위에 경고창이 뒤늦게 뜨는 문제가 있었음.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await PushNotificationService().initialize();
     final updateCheckService = UpdateCheckService();
     await updateCheckService.initialize();
     await updateCheckService.checkAndHandleUpdate();

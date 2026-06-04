@@ -7,6 +7,7 @@ import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/service/login/google_login_service.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 class LoginScreens extends StatefulWidget {
   const LoginScreens({super.key});
@@ -18,9 +19,6 @@ class LoginScreens extends StatefulWidget {
 class _LoginScreensState extends State<LoginScreens>
     with SingleTickerProviderStateMixin {
   bool _showEmailLogin = false;
-
-  static const Color _primary = Color(0xFF7AB3FF);
-  static const Color _primaryDark = Color(0xFF3578E5);
 
   late AnimationController _ctrl;
   late Animation<double> _logoScale;
@@ -80,143 +78,132 @@ class _LoginScreensState extends State<LoginScreens>
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              _primaryDark,
-              _primary,
-              Color(0xFFA8CCFF),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.of(context).size.height -
-                    MediaQuery.of(context).padding.top -
-                    MediaQuery.of(context).padding.bottom,
-              ),
-              child: IntrinsicHeight(
-                child: Column(
-                  children: [
-                    const SizedBox(height: 60),
-                    // 로고
-                    FadeTransition(
-                      opacity: _logoFade,
-                      child: ScaleTransition(
-                        scale: _logoScale,
-                        child: const _AppIcon(),
-                      ),
+      backgroundColor: colors.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  MediaQuery.of(context).padding.bottom,
+            ),
+            child: IntrinsicHeight(
+              child: Column(
+                children: [
+                  const SizedBox(height: 60),
+                  // 로고
+                  FadeTransition(
+                    opacity: _logoFade,
+                    child: ScaleTransition(
+                      scale: _logoScale,
+                      child: const _AppIcon(),
                     ),
-                    const SizedBox(height: 24),
-                    // 타이틀
-                    FadeTransition(
-                      opacity: _titleFade,
-                      child: SlideTransition(
-                        position: _titleSlide,
-                        child: const Column(
-                          children: [
-                            Text(
-                              '스토맵',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 32,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              '지도 위에 당신의 이야기를 남기세요',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    // 로그인 카드
-                    FadeTransition(
-                      opacity: _cardFade,
-                      child: SlideTransition(
-                        position: _cardSlide,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.95),
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: _primaryDark.withOpacity(0.25),
-                                  blurRadius: 24,
-                                  offset: const Offset(0, 10),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 32),
-                            child: AnimatedSwitcher(
-                              duration: const Duration(milliseconds: 280),
-                              switchInCurve: Curves.easeOut,
-                              switchOutCurve: Curves.easeIn,
-                              transitionBuilder: (child, animation) {
-                                return FadeTransition(
-                                  opacity: animation,
-                                  child: ScaleTransition(
-                                    scale: Tween<double>(begin: 0.97, end: 1.0)
-                                        .animate(animation),
-                                    child: child,
-                                  ),
-                                );
-                              },
-                              child: _showEmailLogin
-                                  ? _EmailLoginSection(
-                                      key: const ValueKey('email'),
-                                      onBack: () =>
-                                          setState(() => _showEmailLogin = false),
-                                    )
-                                  : _SocialLoginSection(
-                                      key: const ValueKey('social'),
-                                      onEmailLogin: () =>
-                                          setState(() => _showEmailLogin = true),
-                                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // 타이틀
+                  FadeTransition(
+                    opacity: _titleFade,
+                    child: SlideTransition(
+                      position: _titleSlide,
+                      child: Column(
+                        children: [
+                          Text(
+                            '스토맵',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 31,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '지도위에 남기는 나의 스토리',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 15,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const Spacer(),
-                    // 하단 약관 텍스트
-                    FadeTransition(
-                      opacity: _bottomFade,
+                  ),
+                  const SizedBox(height: 40),
+                  // 로그인 카드
+                  FadeTransition(
+                    opacity: _cardFade,
+                    child: SlideTransition(
+                      position: _cardSlide,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 32, vertical: 24),
-                        child: Text(
-                          '로그인하면 서비스 이용약관 및 개인정보 보호정책에 동의하게 됩니다',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.75),
-                            fontSize: 12,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w400,
+                        padding: const EdgeInsets.symmetric(horizontal: 23),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: colors.surfaceMuted,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: colors.border),
+                            boxShadow: [
+                              BoxShadow(
+                                color: colors.shadow,
+                                blurRadius: 12,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          padding: const EdgeInsets.fromLTRB(25, 33, 25, 33),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            switchInCurve: Curves.easeOut,
+                            switchOutCurve: Curves.easeIn,
+                            transitionBuilder: (child, animation) {
+                              return FadeTransition(
+                                opacity: animation,
+                                child: ScaleTransition(
+                                  scale: Tween<double>(begin: 0.97, end: 1.0)
+                                      .animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: _showEmailLogin
+                                ? _EmailLoginSection(
+                                    key: const ValueKey('email'),
+                                    onBack: () =>
+                                        setState(() => _showEmailLogin = false),
+                                  )
+                                : _SocialLoginSection(
+                                    key: const ValueKey('social'),
+                                    onEmailLogin: () =>
+                                        setState(() => _showEmailLogin = true),
+                                  ),
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  const Spacer(),
+                  // 하단 약관 텍스트
+                  FadeTransition(
+                    opacity: _bottomFade,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 32, vertical: 24),
+                      child: Text(
+                        '로그인하면 서비스 이용약관 및 개인정보 보호정책에 동의하게 됩니다',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.textMuted,
+                          fontSize: 11,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w300,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -231,35 +218,10 @@ class _AppIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SvgPicture.asset(
+      'assets/img/login_logo.svg',
       width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F2FF),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Center(
-        child: SvgPicture.string(
-          '''<svg width="60" height="60" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#7AB3FF"/>
-  <g transform="translate(12, 9)">
-    <rect x="-3.5" y="-2.5" width="7" height="5" rx="1" fill="#FF6B6B"/>
-    <path d="M -1.5 2.5 L -0.5 3.5 L 0.5 2.5" fill="#FF6B6B"/>
-    <rect x="-2.5" y="-1.2" width="5" height="0.6" rx="0.3" fill="white" opacity="0.9"/>
-    <rect x="-2.5" y="0.6" width="3.5" height="0.6" rx="0.3" fill="white" opacity="0.9"/>
-  </g>
-</svg>''',
-          width: 62,
-          height: 62,
-        ),
-      ),
+      height: 120,
     );
   }
 }
@@ -292,11 +254,11 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           '시작하기',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xFF1A1A2E),
+            color: AppColors.of(context).textPrimary,
             fontSize: 20,
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w700,
@@ -336,7 +298,7 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
                 width: 22,
                 height: 22,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Center(
@@ -367,8 +329,8 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
         const SizedBox(height: 12),
         _LoginButton(
           onPressed: busy ? null : () => _login('google', GoogleLoginService().login),
-          backgroundColor: Colors.white,
-          border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
+          backgroundColor: AppColors.of(context).surface,
+          border: Border.all(color: AppColors.of(context).border),
           isLoading: _loadingType == 'google',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -376,10 +338,10 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
               SvgPicture.asset('assets/icon/svg/google_icon.svg',
                   width: 22, height: 22),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 '구글로 시작하기',
                 style: TextStyle(
-                  color: Color(0xFF333333),
+                  color: AppColors.of(context).textPrimary,
                   fontSize: 16,
                   fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w600,
@@ -393,13 +355,13 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
           onPressed: busy ? null : widget.onEmailLogin,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: const [
-              Icon(Icons.mail_outline, color: Color(0xFF888888), size: 18),
-              SizedBox(width: 6),
+            children: [
+              Icon(Icons.mail_outline, color: AppColors.of(context).textMuted, size: 18),
+              const SizedBox(width: 6),
               Text(
                 '이메일로 로그인',
                 style: TextStyle(
-                  color: Color(0xFF888888),
+                  color: AppColors.of(context).textMuted,
                   fontSize: 14,
                   fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w500,
@@ -455,14 +417,14 @@ class _LoginButtonState extends State<_LoginButton> {
           opacity: disabled ? 0.55 : (_pressed ? 0.75 : 1.0),
           duration: const Duration(milliseconds: 80),
           child: Container(
-            height: 54,
+            height: 56,
             decoration: BoxDecoration(
               color: widget.backgroundColor,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               border: widget.border,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(_pressed ? 0.03 : 0.06),
+                  color: AppColors.of(context).shadow,
                   blurRadius: _pressed ? 4 : 8,
                   offset: const Offset(0, 2),
                 ),
