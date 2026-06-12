@@ -14,6 +14,7 @@ import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/nav_controller.dart';
+import 'package:unimal/utils/display_title.dart';
 
 class ProfileScreens extends StatefulWidget {
   const ProfileScreens({super.key});
@@ -592,7 +593,7 @@ class _ProfileScreensState extends State<ProfileScreens>
           ] else ...[
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => Get.find<NavController>().selectedIndex.value = 1,
+              onPressed: () => Get.find<NavController>().requestShareSheet(),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.black,
@@ -660,9 +661,9 @@ class _ProfileScreensState extends State<ProfileScreens>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 타이틀
+                    // 타이틀 — 비어 있으면 본문 첫 줄로 유도 (그리드 카드라 숨기지 않음)
                     Text(
-                      post.title.isNotEmpty ? post.title : '제목 없음',
+                      displayTitle(post.title, post.content),
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,

@@ -1,8 +1,6 @@
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
-import 'package:unimal/screens/add/add_item.dart';
 import 'package:unimal/screens/board/edit_board/edit_board.dart';
 import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
@@ -19,7 +17,6 @@ import 'package:unimal/screens/web/web_view_screen.dart';
 class AppRoutes {
   final GlobalKey mapScreenKey = GlobalKey();
   final GlobalKey profileScreenKey = GlobalKey();
-  final GlobalKey addItemScreenKey = GlobalKey();
 
   List<GetPage> pages() {
     return [
@@ -31,7 +28,8 @@ class AppRoutes {
   List<GetPage> _rootRoutes() {
     return [
       GetPage(name: '/map', page: () => RootScreen(selectedIndex: 0)),
-      GetPage(name: '/add', page: () => RootScreen(selectedIndex: 1)),
+      // 공유하기 탭 제거 — 딥링크 호환을 위해 지도 탭 진입 후 시트 자동 오픈.
+      GetPage(name: '/add', page: () => RootScreen(selectedIndex: 0, openShareSheet: true)),
       GetPage(name: '/mypage', page: () => RootScreen(selectedIndex: 2)),
     ];
   }
@@ -51,36 +49,13 @@ class AppRoutes {
     ];
   }
 
-  // 하단 네비게이션 바 아이템
-  List<Map<String, dynamic>> get _bottomNavigationItems => [
-    {
-      "page": MapNaverScreens(key: mapScreenKey),
-      "bottomNavigationIcon": BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/map_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/map_bold_icon.svg'),
-        label: '지도')
-    },
-    {
-      "page": AddItemScreens(key: addItemScreenKey),
-      "bottomNavigationIcon": BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/additem_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/additem_bold_icon.svg'),
-        label: '공유하기')
-    },
-    {
-      "page": ProfileScreens(key: profileScreenKey),
-      "bottomNavigationIcon": BottomNavigationBarItem(
-        icon: SvgPicture.asset('assets/icon/svg/user_icon.svg'),
-        activeIcon: SvgPicture.asset('assets/icon/svg/user_bold_icon.svg'),
-        label: 'My')
-    },
-  ];
-
+  /// 하단 네비게이션 스택 페이지.
+  /// 네비 아이템은 3개(지도/공유하기/My)지만 공유하기는 액션 버튼(시트)이라
+  /// 스택 페이지는 2개다. (탭 0 → 스택 0, 탭 2 → 스택 1)
   List<Widget> bottomNavigationPages() {
-    return _bottomNavigationItems.map((item) => item["page"] as Widget).toList();
-  }
-
-  List<BottomNavigationBarItem> bottomNavigationIcons() {
-   return _bottomNavigationItems.map((item) => item["bottomNavigationIcon"] as BottomNavigationBarItem).toList();
+    return [
+      MapNaverScreens(key: mapScreenKey),
+      ProfileScreens(key: profileScreenKey),
+    ];
   }
 }

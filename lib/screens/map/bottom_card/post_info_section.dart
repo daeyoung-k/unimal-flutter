@@ -146,23 +146,25 @@ class PostInfoSection extends StatelessWidget {
               ],
             );
           }),
-          // 타이틀
-          const SizedBox(height: 14),
-          Text(
-            post.title.isNotEmpty ? post.title : '제목 없음',
-            style: TextStyle(
-              fontSize: 17,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
+          // 타이틀 — 비어 있으면 행 자체를 숨긴다 (본문 첫 줄이 타이틀 역할).
+          if (post.title.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              post.title,
+              style: TextStyle(
+                fontSize: 17,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          ],
           // 내용 — contentMaxLines 초과 시 마지막 줄 우측에 "더보기" 오버레이.
           // Stack을 쓰는 이유: 별도 row를 추가하면 카드 영역을 넘어 overflow 발생.
           if (post.content.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            SizedBox(height: post.title.isNotEmpty ? 6 : 14),
             Builder(builder: (context) {
               final contentStyle = TextStyle(
                 fontSize: 14,

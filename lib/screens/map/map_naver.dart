@@ -13,6 +13,7 @@ import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/theme/app_colors.dart';
+import 'package:unimal/utils/display_title.dart';
 
 class MapNaverScreens extends StatefulWidget {
   const MapNaverScreens({super.key});
@@ -494,10 +495,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         size: const Size(_normalMarkerSize, _normalMarkerSize),
         tags: {
           'score': topPost.score.toString(),
-          'title': topPost.title,
+          // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
+          // 여기서 계산해 담는다.
+          'title': displayTitle(topPost.title, topPost.content),
         },
         caption: NOverlayCaption(
-          text: _truncateMarkerTitle(topPost.title),
+          text: _truncateMarkerTitle(
+              displayTitle(topPost.title, topPost.content)),
           textSize: 13,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
