@@ -99,6 +99,41 @@ class UserInfoService {
     }
   }
 
+  /// 회원가입 v2 — tel 필드 없이 가입 후 전화번호 인증 화면으로 이동하는 플로우
+  /// 반환값:
+  ///   'TEL_REQUIRED:{email}' — 가입 성공, 전화번호 인증 필요 (code 1009)
+  ///   'ok'                   — 가입 즉시 완료 (code 200, 예외 케이스)
+  ///   그 외 문자열            — 오류 메시지
+  Future<String> signupV2({
+    required String nickname,
+    required String email,
+    required String password,
+    required String checkPassword,
+  }) async {
+    final url = ApiUri.resolve('/user/auth/signup/v2/manual');
+    final body = jsonEncode({
+      'nickname': nickname,
+      'email': email,
+      'password': password,
+      'checkPassword': checkPassword,
+    });
+    try {
+      final res = await http.post(url, headers: _jsonHeaders, body: body);
+      final data = jsonDecode(utf8.decode(res.bodyBytes));
+      if (data['code'] == 1009) {
+        return 'TEL_REQUIRED:${data['data']}';
+      }
+      if (data['code'] == 200) {
+        await AccountService().stateClear();
+        return 'ok';
+      }
+      return data['message'] ?? '회원가입에 실패했습니다.';
+    } catch (e) {
+      _logger.e('회원가입 v2 실패: $e');
+      return '회원가입 실패\n잠시 후 다시 시도해주세요.';
+    }
+  }
+
   // ── 인증 필요 메서드들 (ApiClient 사용) ────────────────────────────
 
   Future<UserInfoModel?> getMemberInfo(String accessToken) async {

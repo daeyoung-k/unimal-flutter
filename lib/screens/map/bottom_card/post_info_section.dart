@@ -95,7 +95,7 @@ class PostInfoSection extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 dummyStreetName,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
@@ -146,24 +146,30 @@ class PostInfoSection extends StatelessWidget {
               ],
             );
           }),
-          // 타이틀
-          const SizedBox(height: 14),
-          Text(
-            post.title.isNotEmpty ? post.title : '제목 없음',
-            style: TextStyle(
-              fontSize: 17,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
+          // 타이틀 — 비어 있으면 행 자체를 숨긴다 (본문 첫 줄이 타이틀 역할).
+          if (post.title.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            Text(
+              post.title,
+              style: TextStyle(
+                fontSize: 17,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                color: colors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+          ],
           // 내용 — contentMaxLines 초과 시 마지막 줄 우측에 "더보기" 오버레이.
           // Stack을 쓰는 이유: 별도 row를 추가하면 카드 영역을 넘어 overflow 발생.
           if (post.content.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Builder(builder: (context) {
+            SizedBox(height: post.title.isNotEmpty ? 6 : 14),
+            // 본문을 Expanded로 채워 좋아요 행을 카드 바닥에 고정하고, 공간이 부족하면
+            // 본문이 잘리도록 한다. (고정 높이 추정(_infoSectionReserved)이 빗나가도
+            // overflow 줄무늬 대신 본문이 흡수 — Stack 기본 clip이 넘친 텍스트를 잘라줌)
+            Expanded(
+              child: Builder(builder: (context) {
               final contentStyle = TextStyle(
                 fontSize: 14,
                 fontFamily: 'Pretendard',
@@ -224,9 +230,11 @@ class PostInfoSection extends StatelessWidget {
                 );
               });
             }),
+            ),
           ],
-          // 좋아요 · 댓글 — Spacer로 카드 바닥에 고정 (콘텐츠 길이와 무관)
-          const Spacer(),
+          // 본문이 없을 때만 Spacer로 좋아요 행을 바닥에 고정.
+          // (본문이 있으면 위 Expanded가 공간을 채우므로 Spacer 불필요)
+          if (post.content.isEmpty) const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

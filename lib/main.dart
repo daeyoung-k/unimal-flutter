@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:unimal/screens/map/marker/text_marker_demo.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
@@ -32,6 +34,20 @@ Future<void> main() async {
   // Flutter 바인딩 초기화 (비동기 작업 전에 필수)
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
+  // flutter_naver_map 클러스터 마커의 Android race로 인한 비동기 PlatformException
+  // ("overlay can't found")은 setIcon 등이 내부적으로 await되지 않아 우리 try/catch
+  // 밖에서 '미처리'로 떠오른다. 디버그에서 '미처리 예외 중단'이 켜져 있으면 이때 메인
+  // 스레드가 멈춰 ANR처럼 보인다. 데이터상 비치명적이므로 이 예외만 로깅 후 흡수하고,
+  // 그 외 에러는 기존대로 전파해 진짜 버그를 숨기지 않는다.
+  widgetsBinding.platformDispatcher.onError = (error, stack) {
+    if (error is PlatformException &&
+        (error.message?.contains("overlay can't found") ?? false)) {
+      debugPrint('[naverMap] 무시된 오버레이 race: ${error.message}');
+      return true; // 처리됨 — 전파/중단 막음
+    }
+    return false; // 그 외는 평소대로 처리되도록
+  };
 
   // Firebase 초기화 (다른 초기화 작업보다 먼저 수행)
   try {
@@ -63,11 +79,11 @@ Future<void> main() async {
   // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
   await PermissionService().requestNotificationPermission();
 
-  // 푸시 알림 서비스 초기화
-  await PushNotificationService().initialize();
-
-  // 앱 업데이트 체크
+  // 푸시 알림 초기화 + 업데이트 체크는 runApp() 이후 위젯 트리가 준비된 뒤 실행.
+  // runApp() 이전에 실행하면 ApiClient._refresh()가 네비게이터 없는 상태에서
+  // Get.dialog()를 호출해 로그인 화면 위에 경고창이 뒤늦게 뜨는 문제가 있었음.
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    await PushNotificationService().initialize();
     final updateCheckService = UpdateCheckService();
     await updateCheckService.initialize();
     await updateCheckService.checkAndHandleUpdate();

@@ -22,7 +22,11 @@ class ManualLoginService {
     try {
       var headers = {"Content-Type": "application/json;charset=utf-8"};
       var url = ApiUri.resolve('user/auth/login/manual');
-      var res = await http.post(url, headers: headers, body: body);
+      // 서버가 연결만 받고 무응답이면 await가 영원히 안 끝나 무한 스피너에 빠진다.
+      // 타임아웃을 걸면 TimeoutException이 나고 아래 catch가 잡아 스피너가 풀린다.
+      var res = await http
+          .post(url, headers: headers, body: body)
+          .timeout(const Duration(seconds: 10));
 
       var bodyData = jsonDecode(res.body);
 
@@ -31,7 +35,11 @@ class ManualLoginService {
           var accessToken = res.headers['x-unimal-access-token'].toString();
           var refreshToken = res.headers['x-unimal-refresh-token'].toString();
           var email = res.headers['x-unimal-email'].toString();
-          await accountService.login(accessToken, refreshToken, email, LoginType.manual);
+          final ok = await accountService.login(accessToken, refreshToken, email, LoginType.manual);
+          if (!ok) {
+            customAlert.showTextAlert("로그인 오류", "로그인 정보를 받지 못했어요.\n잠시 후 다시 시도해주세요.");
+            return;
+          }
 
         Get.offAllNamed("/map");
       } else if (bodyData['code'] == 1001) {

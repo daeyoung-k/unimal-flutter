@@ -63,8 +63,12 @@ class NaverLoginService {
           var accessToken = res.headers['x-unimal-access-token'].toString();
           var refreshToken = res.headers['x-unimal-refresh-token'].toString();
           var email = res.headers['x-unimal-email'].toString();
-          await accountService.login(accessToken, refreshToken, email, LoginType.naver);
+          final ok = await accountService.login(accessToken, refreshToken, email, LoginType.naver);
           if (!completer.isCompleted) completer.complete();
+          if (!ok) {
+            customAlert.showTextAlert("로그인 오류", "로그인 정보를 받지 못했어요.\n잠시 후 다시 시도해주세요.");
+            return;
+          }
           Get.offAllNamed("/map");
         } else if (bodyData['code'] == 1009) {
           if (!completer.isCompleted) completer.complete();

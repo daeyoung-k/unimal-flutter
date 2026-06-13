@@ -277,20 +277,22 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
             ),
           ],
         ),
-        // 타이틀
-        const SizedBox(height: 14),
-        Text(
-          post.title.isNotEmpty ? post.title : '제목 없음',
-          style: TextStyle(
-            fontSize: 22,
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w700,
-            color: colors.textPrimary,
+        // 타이틀 — 비어 있으면 행 자체를 숨긴다 (본문 첫 줄이 타이틀 역할).
+        if (post.title.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            post.title,
+            style: TextStyle(
+              fontSize: 22,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
           ),
-        ),
+        ],
         // 내용 — textPrimary 사용으로 다크모드에서 거의 흰색 (라이트는 본문이 약간 더 진해짐)
         if (post.content.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          SizedBox(height: post.title.isNotEmpty ? 6 : 14),
           Text(
             post.content,
             style: TextStyle(

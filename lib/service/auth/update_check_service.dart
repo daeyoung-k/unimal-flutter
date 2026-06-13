@@ -1,14 +1,12 @@
-// import 'dart:convert'; // 실제 서버 API 연동 시 주석 해제
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// import 'package:flutter_dotenv/flutter_dotenv.dart'; // 실제 서버 API 연동 시 주석 해제
 import 'package:get/get.dart';
-// import 'package:http/http.dart' as http; // 실제 서버 API 연동 시 주석 해제
+import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:unimal/utils/api_uri.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 앱 업데이트 확인 서비스
@@ -25,13 +23,6 @@ class UpdateCheckService {
   UpdateCheckService._internal();
 
   final Logger _logger = Logger();
-  
-  // 실제 서버 API 연동 시 주석 해제
-  // final host = Platform.isAndroid
-  //     ? dotenv.env['ANDORID_SERVER']
-  //     : dotenv.env['IOS_SERVER'];
-  
-  // final headers = {"Content-Type": "application/json;charset=utf-8"};
 
   PackageInfo? _packageInfo;
   String? _currentVersion;
@@ -74,49 +65,50 @@ class UpdateCheckService {
   /// Returns:
   /// - UpdateInfo?: 최신 버전 정보 (실패 시 null)
   Future<UpdateInfo?> checkLatestVersion() async {
-    // 임시: 테스트용 고정 값 (실제 서버 API 연동 시 아래 주석 해제)
-    return UpdateInfo.fromJson({
-      'version': '1.0.0',
-      'buildNumber': 1,
-      'isForceUpdate': false,
-      'updateMessage': '새로운 버전이 출시되었습니다.',
-      'releaseNotes': '버그 수정 및 성능 개선',
-    });
-    
-    /* 실제 서버 API 연동 시 사용
     try {
-      final url = ApiUri.resolve('/app/version/check');
-      
-      final response = await http.get(
-        url,
-        headers: headers,
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          _logger.w('버전 확인 요청 타임아웃');
-          throw TimeoutException('버전 확인 요청이 시간 초과되었습니다.');
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final bodyData = jsonDecode(utf8.decode(response.bodyBytes));
-        
-        if (bodyData['code'] == 200) {
-          final data = bodyData['data'];
-          return UpdateInfo.fromJson(data);
-        } else {
-          _logger.w('버전 확인 실패: ${bodyData['message']}');
-          return null;
-        }
+      if (Platform.isIOS) {
+        return await _checkiOSVersion();
       } else {
-        _logger.w('버전 확인 실패: HTTP ${response.statusCode}');
-        return null;
+        return await _checkAndroidVersion();
       }
     } catch (e, stackTrace) {
       _logger.e('버전 확인 중 오류 발생', error: e, stackTrace: stackTrace);
       return null;
     }
-    */
+  }
+
+  Future<UpdateInfo?> _checkiOSVersion() async {
+    final url = Uri.parse('https://itunes.apple.com/lookup?id=6762319739');
+    final response = await http.get(url).timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) return null;
+
+    final data = jsonDecode(response.body);
+    final results = data['results'] as List?;
+    if (results == null || results.isEmpty) return null;
+
+    final version = results.first['version'] as String?;
+    if (version == null) return null;
+
+    _logger.i('iOS App Store 최신 버전: $version');
+    return UpdateInfo(version: version, isForceUpdate: false);
+  }
+
+  Future<UpdateInfo?> _checkAndroidVersion() async {
+    final url = Uri.parse(
+      'https://play.google.com/store/apps/details?id=com.unimal.android.stomap&hl=ko',
+    );
+    final response = await http.get(url).timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) return null;
+
+    final match = RegExp(r'\[\[\["(\d+\.\d+\.\d+)"\]\]').firstMatch(response.body);
+    if (match == null) {
+      _logger.w('Play Store 버전 파싱 실패');
+      return null;
+    }
+
+    final version = match.group(1)!;
+    _logger.i('Play Store 최신 버전: $version');
+    return UpdateInfo(version: version, isForceUpdate: false);
   }
 
   /// 업데이트 필요 여부 확인
@@ -268,7 +260,7 @@ class UpdateCheckService {
               children: [
                 // 제목
                 const Text(
-                  '업데이트',
+                  '업데이트 안내',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -278,7 +270,7 @@ class UpdateCheckService {
                 const SizedBox(height: 16),
                 // 메시지
                 Text(
-                  '업데이트를 진행해주세요.',
+                  '안정적인 서비스 사용을 위해\n최신 버전으로 업데이트를 진행해주세요.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 16,

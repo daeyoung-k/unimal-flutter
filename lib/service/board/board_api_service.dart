@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
@@ -75,13 +74,10 @@ class BoardApiService {
   }
 
   void _handleCreateBoardResponse(http.Response response) {
-    if (response.statusCode == 200) {
-      final bodyData = jsonDecode(utf8.decode(response.bodyBytes));
-      final id = bodyData['data']['boardId']?.toString() ?? '';
-      Get.toNamed('/detail-board', parameters: {'id': id});
-    } else {
+    if (response.statusCode != 200) {
       _logger.e('게시글 생성 실패: ${response.statusCode} ${response.body}');
       _customAlert.showTextAlert('게시글 생성 실패', '게시글 생성에 실패했습니다.\n잠시 후 다시 시도해주세요.');
+      throw Exception('게시글 생성 실패: ${response.statusCode}');
     }
   }
 

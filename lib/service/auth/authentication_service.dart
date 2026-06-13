@@ -86,7 +86,12 @@ class AuthenticationCodeService {
         var accessToken = res.headers['x-unimal-access-token'].toString();
         var refreshToken = res.headers['x-unimal-refresh-token'].toString();
         var email = res.headers['x-unimal-email'].toString();
-        accountService.login(accessToken, refreshToken, email, loginType);
+        // await 필수 — 토큰 저장 전에 "ok"를 반환하면 다음 화면이 토큰 없이 떠버린다.
+        final ok = await accountService.login(accessToken, refreshToken, email, loginType);
+        if (!ok) {
+          logger.e("인증 후 로그인 실패: 응답에 토큰이 없습니다.");
+          return "로그인 정보를 받지 못했습니다. 잠시 후 다시 시도해주세요.";
+        }
 
         return "ok";
       } else {

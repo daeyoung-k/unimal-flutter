@@ -166,7 +166,7 @@ class _BoardScreensState extends State<BoardScreens> {
         backgroundColor: const Color(0xFFF0F7FF),
         floatingActionButton: FloatingActionButton.small(
           heroTag: 'board_fab',
-          onPressed: () => Get.find<NavController>().selectedIndex.value = 1,
+          onPressed: () => Get.find<NavController>().requestShareSheet(),
           backgroundColor: _primary,
           shape: const CircleBorder(),
           child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),

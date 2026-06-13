@@ -7,12 +7,14 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
+import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/theme/app_colors.dart';
+import 'package:unimal/utils/display_title.dart';
 
 class MapNaverScreens extends StatefulWidget {
   const MapNaverScreens({super.key});
@@ -41,6 +43,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   final Map<String, NClusterableMarker> _markerRefs = {};
   // 마커 ID → 기본 z-index (score 기반). 선택 해제 시 이 값으로 복원.
   final Map<String, int> _markerBaseZIndex = {};
+  // 텍스트 마커 ID → 마지막으로 그린 모드(true=카드/줌인, false=원/줌아웃).
+  // 줌이 임계(16)를 넘나들면 모드가 바뀌므로 재생성 판단에 사용.
+  final Map<String, bool> _textMarkerCardMode = {};
+  // 화면 전체 텍스트 마커 표현 모드(true=카드, false=점). 줌 히스테리시스로 갱신.
+  // 경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게 하는 핵심 상태.
+  bool _textCardMode = false;
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -61,6 +69,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 커스텀 마커 탭 관련 상태
   List<List<MapPost>> _postGroups = [];
   int? _selectedGroupIndex;
+  bool _isCardExpanded = false;
   List<MapPost> get _selectedPosts =>
       _selectedGroupIndex == null ? const [] : _postGroups[_selectedGroupIndex!];
 
@@ -92,6 +101,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 마커 크기 — 한 곳에서 조절
   static const _normalMarkerSize = 32.0; // 일반(단일) 마커
   static const _clusterMarkerSize = 42.0; // 클러스터(2개 이상 합쳐진) 마커
+  // 텍스트 카드 마커 크기 (fromWidget size 와 NMarker size 를 동일하게 — 스케일 왜곡 방지)
+  // 줌아웃 점은 사진 마커처럼 _normalMarkerSize 사용(바이트 이미지 200x200 → 스케일).
+  static const Size _textCardSize = Size(204, 110); // 줌인 카드 (꼬리 끝=하단 중앙)
+  // 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 17.5).
+  static const double _textCardCameraZoom = 17.5;
+  // 텍스트 마커 표현(점↔카드) 전환 히스테리시스.
+  // enter 이상으로 줌인하면 카드로, 그 후 exit 미만으로 줌아웃해야 점으로 복귀.
+  // 단일 임계값(17.5)을 쓰면 파킹 줌과 경계가 겹쳐 카메라 미세 흔들림에 깜빡였다.
+  // enter(17.3)는 파킹 줌(17.5)보다 살짝 낮춰 fly 언더슈트(17.49)에도 카드 진입 보장.
+  static const double _textCardEnterZoom = 17.3;
+  static const double _textCardExitZoom = 16.8;
 
   // 백엔드 ZoomLevel enum과 동기화. postLimit = 해당 줌에서 서버가 반환하는 최대 게시글 수.
   static const _zoomPostLimit = {
@@ -153,6 +173,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _mapMarkerIds.clear();
     _markerRefs.clear();
     _markerBaseZIndex.clear();
+    _textMarkerCardMode.clear();
     _markerIconCache.clear();
     _markerBytesCache.clear();
     _clusterIconCache.clear();
@@ -166,6 +187,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         target.latitude,
         target.longitude,
         _lastQueriedZoom.round(),
+        rawZoom: _lastQueriedZoom,
       );
     } else {
       final camera = await _mapController!.getCameraPosition();
@@ -174,6 +196,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         camera.target.latitude,
         camera.target.longitude,
         camera.zoom.round(),
+        rawZoom: camera.zoom,
       );
     }
   }
@@ -229,6 +252,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _mapMarkerIds.clear();
     _markerRefs.clear();
     _markerBaseZIndex.clear();
+    _textMarkerCardMode.clear();
     _markerIconCache.clear();
     _markerBytesCache.clear();
     _clusterIconCache.clear();
@@ -242,6 +266,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       camera.target.latitude,
       camera.target.longitude,
       camera.zoom.round(),
+      rawZoom: camera.zoom,
     );
   }
 
@@ -314,7 +339,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
-  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom) async {
+  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom,
+      {double? rawZoom}) async {
     if (_mapController == null) {
       debugPrint('[map] _loadMapMarkers skipped (controller null)');
       return;
@@ -332,9 +358,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 사전에 갱신. Android에서 의도/자동 _loadMapMarkers가 연속 호출될 때
     // native overlay race("overlay can't found")가 발생하는 원인이었다.
     _lastQueriedTarget = NLatLng(latitude, longitude);
-    _lastQueriedZoom = zoom.toDouble();
+    // 실제 카메라 줌(소수)을 저장 — 반올림 정수를 쓰면 경계(17.5) 비교가 불안정해진다.
+    _lastQueriedZoom = rawZoom ?? zoom.toDouble();
     try {
-      await _loadMapMarkersInternal(latitude, longitude, zoom);
+      await _loadMapMarkersInternal(latitude, longitude, zoom, rawZoom: rawZoom);
     } finally {
       _isLoadingMarkers = false;
       // refreshMap()이 로드 중에 호출됐다면 지금 실행
@@ -346,7 +373,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   Future<void> _loadMapMarkersInternal(
-      double latitude, double longitude, int zoom) async {
+      double latitude, double longitude, int zoom,
+      {double? rawZoom}) async {
     // await 이후 context 사용을 피하기 위해 함수 시작 시점에 캡처.
     // 다크모드 토글 시 기존 마커는 그대로, 다음 재조회부터 새 색 반영.
     final captionTokens = AppColors.of(context);
@@ -430,6 +458,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _clusterIconCache.removeWhere((key, _) => key.startsWith('${id}_'));
         _markerRefs.remove(id);
         _markerBaseZIndex.remove(id);
+        _textMarkerCardMode.remove(id);
         // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
         if (_highlightedMarkerId == id) {
           _highlightedMarkerId = null;
@@ -456,16 +485,41 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final topPost = data.post;
       final pos = data.position;
 
-      // 이미 화면에 있는 마커 → 재사용
+      final bool isTextPost = topPost.fileInfoList.isEmpty;
+      // 텍스트 마커: 점↔카드 전환은 줌 히스테리시스로 결정(경계 깜빡임 방지).
+      // 단일 임계값(zoom>=18) 대신 enter/exit 밴드를 둬 카메라가 경계에 멈춰도 안정.
+      final bool textCardMode = _resolveTextCardMode(rawZoom ?? zoom.toDouble());
+
+      // 이미 화면에 있는 마커 → 재사용.
+      // 단, 텍스트 마커는 줌 모드(카드↔원)가 바뀌었으면 제거 후 아래에서 재생성한다.
+      // (사진 마커는 줌에 따라 모양이 안 바뀌므로 그대로 재사용 — 기존 동작 보존)
       if (_mapMarkerIds.contains(topPost.id)) {
-        visibleGroups.add([topPost]);
-        continue;
+        final bool needsRebuild =
+            isTextPost && _textMarkerCardMode[topPost.id] != textCardMode;
+        if (!needsRebuild) {
+          visibleGroups.add([topPost]);
+          continue;
+        }
+        // 모드 변경 → 제거하고 fall-through 하여 재생성
+        try {
+          _mapController!.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.clusterableMarker, id: topPost.id),
+          );
+        } catch (_) {}
+        _mapMarkerIds.remove(topPost.id);
+        _markerIconCache.remove(topPost.id);
+        _markerRefs.remove(topPost.id);
+        _markerBaseZIndex.remove(topPost.id);
       }
 
-      // 신규 마커 — 이미지 fetch + 생성
+      // 신규(또는 모드 변경) 마커 생성
       NOverlayImage? icon;
       Uint8List? baseBytes;
-      if (topPost.fileInfoList.isNotEmpty) {
+      Size markerSize = const Size(_normalMarkerSize, _normalMarkerSize);
+      bool suppressCaption = false;
+
+      if (!isTextPost) {
+        // ── 사진 글: 기존 이미지 마커 (변경 없음) ──
         try {
           final firstUrl = topPost.fileInfoList.first.fileUrl;
           final stream = await _imageService.getImageStream(firstUrl);
@@ -474,11 +528,33 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         } catch (_) {
           continue;
         }
+      } else {
+        // ── 텍스트 글 ──
+        // 실패해도 continue 하지 않음 — 기본 마커로 진행해 사진 마커 흐름 보호.
+        try {
+          if (textCardMode) {
+            // 줌인 카드 (fromWidget). 17.5+ 는 클러스터링이 없어 바이트 불필요.
+            icon = await _buildTextCardIcon(topPost);
+            markerSize = _textCardSize;
+            suppressCaption = true; // 카드에 제목/본문 포함 → 하단 캡션 중복 방지
+          } else {
+            // 줌아웃 점: 사진 마커와 동일한 바이트 파이프라인으로 생성.
+            // → baseBytes 가 _markerBytesCache 에 저장되어 클러스터 +N 뱃지가
+            //   사진 마커와 똑같이 자동 합성된다. markerSize 는 기본값(_normalMarkerSize).
+            baseBytes = await _imageService.createTextDotImage();
+            icon = await NOverlayImage.fromByteArray(baseBytes);
+          }
+        } catch (e) {
+          debugPrint('[map] 텍스트 마커 생성 실패 ${topPost.id}: $e');
+        }
+        _textMarkerCardMode[topPost.id] = textCardMode;
       }
 
       visibleGroups.add([topPost]);
 
-      // 클러스터 빌더에서 재사용할 캐시 저장
+      // 클러스터 빌더에서 재사용할 캐시 저장.
+      // 텍스트 마커는 icon 만 캐시(bytes 없음) → 텍스트가 top 인 클러스터의 +N 뱃지
+      // 합성은 생략된다(원 글리프만 표시). 사진이 top 이면 기존대로 뱃지 합성됨.
       if (icon != null) {
         _markerIconCache[topPost.id] = icon;
       }
@@ -486,17 +562,23 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerBytesCache[topPost.id] = baseBytes;
       }
 
+      final derivedTitle = displayTitle(topPost.title, topPost.content);
       final marker = NClusterableMarker(
         id: topPost.id,
         position: pos,
         icon: icon,
-        size: const Size(_normalMarkerSize, _normalMarkerSize),
+        size: markerSize,
         tags: {
           'score': topPost.score.toString(),
-          'title': topPost.title,
+          // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
+          // 여기서 계산해 담는다.
+          'title': derivedTitle,
+          // 클러스터 빌더에서 텍스트/이미지 구분 → 탭 시 줌 동작 분기.
+          'isText': isTextPost ? '1' : '0',
         },
         caption: NOverlayCaption(
-          text: _truncateMarkerTitle(topPost.title),
+          // 카드 모드는 캡션 비움(카드에 제목 포함). 그 외엔 제목 캡션 표시.
+          text: suppressCaption ? '' : _truncateMarkerTitle(derivedTitle),
           textSize: 13,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
@@ -512,8 +594,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       marker.setGlobalZIndex(baseZIndex);
 
       final markerPostId = topPost.id;
+      final bool markerIsText = isTextPost;
+      final NLatLng markerPos = pos;
       marker.setOnTapListener((_) async {
         _focusNode.unfocus();
+        // 텍스트 마커: 17.5 미만이면 카드가 펼쳐지도록 17.5로 줌인 후 종료.
+        // (이미지 마커는 기존대로 줌 유지 + 선택)
+        if (markerIsText) {
+          final camera = await _mapController?.getCameraPosition();
+          if (camera != null && camera.zoom < _textCardEnterZoom) {
+            await _zoomToTextCard(markerPos);
+            return;
+          }
+        }
         final idx = _postGroups
             .indexWhere((g) => g.isNotEmpty && g.first.id == markerPostId);
         if (idx < 0) return;
@@ -683,7 +776,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final dLng = (currentTarget.longitude - _lastQueriedTarget!.longitude).abs();
       positionChanged = dLat > 0.0005 || dLng > 0.0005;
     }
-    if (!zoomChanged && !positionChanged) {
+    // 텍스트 마커 점↔카드 모드가 실제로 바뀔 때만 재조회(히스테리시스 기반).
+    // 경계에서 카메라가 미세하게 흔들려도 모드가 안 바뀌면 재조회하지 않아 깜빡임 제거.
+    final modeFlipped = _peekTextCardMode(currentZoom) != _textCardMode;
+    if (!zoomChanged && !positionChanged && !modeFlipped) {
       debugPrint('[map] cameraIdle below threshold → skip auto-reload');
       return;
     }
@@ -700,12 +796,28 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         currentTarget.latitude,
         currentTarget.longitude,
         currentZoom.round(),
+        rawZoom: currentZoom,
       );
     });
   }
 
   String _truncateMarkerTitle(String title) =>
       title.length > 10 ? '${title.substring(0, 10)}...' : title;
+
+  /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
+  /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
+  bool _resolveTextCardMode(double rawZoom) {
+    if (_textCardMode) {
+      if (rawZoom < _textCardExitZoom) _textCardMode = false;
+    } else {
+      if (rawZoom >= _textCardEnterZoom) _textCardMode = true;
+    }
+    return _textCardMode;
+  }
+
+  /// 상태를 바꾸지 않고 현재 줌에서의 모드만 예측 (onCameraIdle 재조회 판단용).
+  bool _peekTextCardMode(double rawZoom) =>
+      _textCardMode ? rawZoom >= _textCardExitZoom : rawZoom >= _textCardEnterZoom;
 
   void _closeAllCards() {
     if (_searchMarkerAdded && _mapController != null) {
@@ -717,6 +829,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPlace = null;
       _isLoadingPlace = false;
       _selectedGroupIndex = null;
+      _isCardExpanded = false;
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
@@ -750,6 +863,38 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
+  /// 텍스트 글 — 줌인 카드 아이콘. 꼬리 끝이 박스 하단 중앙(anchor 기본 0.5,1.0)에 오도록
+  /// bottomCenter 정렬. 제목 없으면 본문만 카드.
+  Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
+    final String? title =
+        post.title.trim().isNotEmpty ? post.title.trim() : null;
+    return NOverlayImage.fromWidget(
+      context: context,
+      size: _textCardSize,
+      widget: SizedBox(
+        width: _textCardSize.width,
+        height: _textCardSize.height,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: TextMarkerCard(title: title, body: post.content, maxLines: 2),
+        ),
+      ),
+    );
+  }
+
+  /// 텍스트 마커/클러스터 탭 시 카드가 펼쳐지도록 17.5로 줌인.
+  Future<void> _zoomToTextCard(NLatLng target) async {
+    if (_mapController == null) return;
+    final update = NCameraUpdate.scrollAndZoomTo(
+      target: target,
+      zoom: _textCardCameraZoom,
+    )..setAnimation(
+        animation: NCameraAnimation.fly,
+        duration: const Duration(milliseconds: 600),
+      );
+    await _mapController!.updateCamera(update);
+  }
+
   /// 클러스터 마커 빌더.
   /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
@@ -759,6 +904,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     String? topId;
     String? topTitle;
     NLatLng? topPosition;
+    bool topIsText = false;
     double topScore = -1;
     for (final child in info.children) {
       final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
@@ -767,6 +913,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         topId = child.id;
         topTitle = child.tags['title'];
         topPosition = child.position;
+        topIsText = child.tags['isText'] == '1';
       }
     }
 
@@ -816,8 +963,18 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // NClusterMarker에 직접 listener를 달아 선택 흐름으로 전달.
     if (info.size == 1 && topId != null) {
       final singleId = topId;
-      clusterMarker.setOnTapListener((_) {
+      final bool isTxt = topIsText;
+      final NLatLng? tpos = topPosition;
+      clusterMarker.setOnTapListener((_) async {
         _focusNode.unfocus();
+        // 텍스트 단일 마커: 17.5 미만이면 17.5로 줌인(카드). 이미지는 기존대로 선택.
+        if (isTxt && tpos != null) {
+          final camera = await _mapController?.getCameraPosition();
+          if (camera != null && camera.zoom < _textCardEnterZoom) {
+            await _zoomToTextCard(tpos);
+            return;
+          }
+        }
         final idx = _postGroups
             .indexWhere((g) => g.isNotEmpty && g.first.id == singleId);
         if (idx < 0) return;
@@ -830,11 +987,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 카드/스트립으로 진입.
     if (info.size > 1 && topPosition != null) {
       final target = topPosition;
+      final bool isTxt = topIsText;
       clusterMarker.setOnTapListener((_) async {
         if (_mapController == null) return;
         _focusNode.unfocus();
         final camera = await _mapController!.getCameraPosition();
-        final nextZoom = camera.zoom < 16 ? 16.0 : camera.zoom;
+        // 텍스트 클러스터 → 17.5(카드). 이미지 클러스터 → 기존(16+ 확대) 유지.
+        final nextZoom = isTxt
+            ? _textCardCameraZoom
+            : (camera.zoom < 16 ? 16.0 : camera.zoom);
         final update = NCameraUpdate.scrollAndZoomTo(
           target: target,
           zoom: nextZoom,
@@ -933,6 +1094,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         duration: const Duration(milliseconds: 600),
       );
     _lastQueriedTarget = adjustedTarget;
+    // 줌도 함께 기준값으로 갱신 — 카드 넘김 시 idle에서 불필요한 재조회가 도는 것 방지.
+    _lastQueriedZoom = targetZoom;
     await _mapController!.updateCamera(update);
   }
 
@@ -1188,10 +1351,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             ),
           ),
           // 마커 탭 시 바텀시트 카드 — 등장/소실 시 슬라이드 + 페이드
-          Positioned(
+          // 확장 상태일 때는 네비게이션 바에 바로 붙도록 bottom: 0
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
             left: 0,
             right: 0,
-            bottom: 0,
+            bottom: _isCardExpanded ? 0 : 20,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 320),
               reverseDuration: const Duration(milliseconds: 260),
@@ -1225,11 +1391,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       onClose: () {
                         setState(() {
                           _selectedGroupIndex = null;
+                          _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
                       },
                       onGroupChanged: (newIdx) {
                         _selectMarker(newIdx);
+                      },
+                      onExpandedChanged: (expanded) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted) setState(() => _isCardExpanded = expanded);
+                        });
+                      },
+                      onPostEdited: () {
+                        // 내 글 수정/삭제 반영 — 카드 닫고 마커 새로고침.
+                        _closeAllCards();
+                        refreshMap();
                       },
                     )
                   : const SizedBox.shrink(key: ValueKey('empty')),
