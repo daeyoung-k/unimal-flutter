@@ -95,7 +95,7 @@ class PostInfoSection extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 dummyStreetName,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   fontSize: 12,
@@ -165,7 +165,11 @@ class PostInfoSection extends StatelessWidget {
           // Stack을 쓰는 이유: 별도 row를 추가하면 카드 영역을 넘어 overflow 발생.
           if (post.content.isNotEmpty) ...[
             SizedBox(height: post.title.isNotEmpty ? 6 : 14),
-            Builder(builder: (context) {
+            // 본문을 Expanded로 채워 좋아요 행을 카드 바닥에 고정하고, 공간이 부족하면
+            // 본문이 잘리도록 한다. (고정 높이 추정(_infoSectionReserved)이 빗나가도
+            // overflow 줄무늬 대신 본문이 흡수 — Stack 기본 clip이 넘친 텍스트를 잘라줌)
+            Expanded(
+              child: Builder(builder: (context) {
               final contentStyle = TextStyle(
                 fontSize: 14,
                 fontFamily: 'Pretendard',
@@ -226,9 +230,11 @@ class PostInfoSection extends StatelessWidget {
                 );
               });
             }),
+            ),
           ],
-          // 좋아요 · 댓글 — Spacer로 카드 바닥에 고정 (콘텐츠 길이와 무관)
-          const Spacer(),
+          // 본문이 없을 때만 Spacer로 좋아요 행을 바닥에 고정.
+          // (본문이 있으면 위 Expanded가 공간을 채우므로 Spacer 불필요)
+          if (post.content.isEmpty) const Spacer(),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [

@@ -35,3 +35,31 @@ String relativeTimeFromString(String iso, {DateTime? reference}) {
     return '방금 전';
   }
 }
+
+/// 작성 [createdAt] 기준 [limitHours]시간 뒤 만료까지 남은 시간을 한국어로.
+/// 텍스트 카드의 노출 제한(기본 48시간)을 "남은 시간"으로 보여줄 때 사용.
+/// - 이미 만료/계산 불가 → "" (호출부에서 뱃지 숨김)
+/// - `< 1시간` → "곧 사라짐"
+/// - `< 24시간` → "N시간 남음"
+/// - 그 외 → "N일 남음"
+String remainingTime(DateTime createdAt,
+    {int limitHours = 48, DateTime? reference}) {
+  final now = reference ?? DateTime.now();
+  final left = createdAt.add(Duration(hours: limitHours)).difference(now);
+  if (left.isNegative) return '';
+  if (left.inHours < 1) return '곧 사라짐';
+  if (left.inHours < 24) return '${left.inHours}시간 남음';
+  return '${left.inDays}일 남음';
+}
+
+/// ISO-8601 문자열 버전. 파싱 실패/빈 값이면 "" 반환(뱃지 숨김).
+String remainingTimeFromString(String iso,
+    {int limitHours = 48, DateTime? reference}) {
+  if (iso.isEmpty) return '';
+  try {
+    return remainingTime(DateTime.parse(iso),
+        limitHours: limitHours, reference: reference);
+  } catch (_) {
+    return '';
+  }
+}

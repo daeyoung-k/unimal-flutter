@@ -2,7 +2,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:get/get.dart';
+import 'package:unimal/screens/add/share_card_sheet.dart';
 import 'package:unimal/screens/map/bottom_card/map_card_expanded_content.dart';
 import 'package:unimal/screens/map/bottom_card/post_group_navigator.dart';
 import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
@@ -41,6 +41,10 @@ class MapBottomCard extends StatefulWidget {
   /// 카드 확장/축소 상태 변경 시 parent에 알림.
   final ValueChanged<bool>? onExpandedChanged;
 
+  /// 내 글 수정/삭제(공유 시트)가 성공해 변경이 생겼을 때 parent에 알림.
+  /// parent는 카드를 닫고 지도 마커를 새로고침한다.
+  final VoidCallback? onPostEdited;
+
   const MapBottomCard({
     super.key,
     required this.groups,
@@ -49,6 +53,7 @@ class MapBottomCard extends StatefulWidget {
     required this.minTopMargin,
     this.onGroupChanged,
     this.onExpandedChanged,
+    this.onPostEdited,
   });
 
   @override
@@ -264,13 +269,21 @@ class _MapBottomCardState extends State<MapBottomCard> {
   // ── 수정 화면 이동 ──────────────────────────────────────────────────────
 
   Future<void> _navigateToEdit() async {
-    if (_loadedDetail != null) {
-      Get.toNamed('/edit-board', arguments: _loadedDetail);
-      return;
+    // 상세가 아직 없으면 먼저 로드(공유 시트가 제목/내용/이미지를 채우는 데 필요).
+    if (_loadedDetail == null) {
+      await _loadDetail();
     }
-    await _loadDetail();
-    if (mounted && _loadedDetail != null) {
-      Get.toNamed('/edit-board', arguments: _loadedDetail);
+    if (!mounted || _loadedDetail == null) return;
+    // 별도 화면 이동 대신, 올라오는 공유 시트를 "수정 모드"로 띄운다.
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ShareCardSheet(editPost: _loadedDetail),
+    );
+    // 수정/삭제 성공 → 카드 닫고 지도 새로고침은 parent가 처리.
+    if (changed == true) {
+      widget.onPostEdited?.call();
     }
   }
 
@@ -392,15 +405,8 @@ class _MapBottomCardState extends State<MapBottomCard> {
         borderRadius: isExpanded
             ? const BorderRadius.vertical(top: Radius.circular(24))
             : BorderRadius.circular(24),
-        boxShadow: isExpanded
-            ? []
-            : [
-                BoxShadow(
-                  color: AppColors.of(context).shadow,
-                  blurRadius: 20,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+        // 카드 그림자 제거 — peek 영역에서 그림자가 지도 위로 번져 보이는 것 방지(요청).
+        boxShadow: const [],
       ),
       child: Column(
         children: [
@@ -464,18 +470,27 @@ class _MapBottomCardState extends State<MapBottomCard> {
     return _buildTextPostDefault(post, isCenter: isCenter);
   }
 
-  // PostInfoSection에 항상 확보할 최소 높이.
-  // (패딩 27 + 헤더~47(수정버튼 포함) + 타이틀~24 + SizedBox 20 + 내용 2줄~40 + 좋아요행~19 = ~177)
-  // 여유분 포함해 185로 설정.
+  // PostInfoSection에 이상적으로 확보할 높이(본문 2줄까지 여유).
   static const _infoSectionReserved = 185.0;
+  // 정보 영역이 반드시 확보해야 하는 최소 높이(줄일 수 없는 요소 합).
+  // 패딩 27 + 헤더 47(내 글=수정버튼 포함) + 제목 24 + 간격 20 + 좋아요행 19 ≈ 137 → 여유 포함 150.
+  // 카드가 짧으면 이미지를 이 값 확보를 위해 _imageHeightMin(120) 밑으로도 줄인다.
+  static const _infoSectionMin = 150.0;
   static const _imageHeightMin = 120.0;
   static const _imageHeightMax = 250.0;
 
   Widget _buildImagePostDefault(MapPost post, {required bool isCenter}) {
     return LayoutBuilder(builder: (context, constraints) {
-      // 이미지 하단 패딩(4px)을 포함해 PostInfoSection이 _infoSectionReserved를 확보하도록 계산.
-      final imageH = (constraints.maxHeight - _infoSectionReserved - 4)
-          .clamp(_imageHeightMin, _imageHeightMax);
+      // 이미지 하단 패딩(4px)을 제외한 사용 가능 높이.
+      final double available = constraints.maxHeight - 4;
+      // 카드가 짧을 때 정보 최소 높이를 우선 확보 → 이미지가 가질 수 있는 상한.
+      final double maxImageForInfo =
+          (available - _infoSectionMin).clamp(0.0, _imageHeightMax).toDouble();
+      // 이상적으로는 reserved(185)를 정보에 양보하지만, 정보 최소 확보가 우선.
+      final double imageH = (available - _infoSectionReserved)
+          .clamp(_imageHeightMin, _imageHeightMax)
+          .clamp(0.0, maxImageForInfo)
+          .toDouble();
       return Column(
         children: [
           Padding(
@@ -512,6 +527,8 @@ class _MapBottomCardState extends State<MapBottomCard> {
 
   Widget _buildTextPostDefault(MapPost post, {required bool isCenter}) {
     final colors = AppColors.of(context);
+    // 노출 제한(48시간)까지 남은 시간. 만료/계산불가면 빈 문자열 → 뱃지 숨김.
+    final remaining = remainingTimeFromString(post.createdAt);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Column(
@@ -550,19 +567,30 @@ class _MapBottomCardState extends State<MapBottomCard> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                    color: colors.accent.withValues(alpha: 0.13),
-                    border: Border.all(
-                        color: colors.accent.withValues(alpha: 0.4)),
-                    borderRadius: BorderRadius.circular(10)),
-                child: Text('24h',
-                    style: TextStyle(
-                        fontSize: 10,
-                        fontFamily: 'Pretendard',
-                        color: colors.accent)),
-              ),
+              // 노출 만료까지 남은 시간 뱃지 (시계 아이콘 + "N시간/N일 남음")
+              if (remaining.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                      color: colors.accent.withValues(alpha: 0.13),
+                      border: Border.all(
+                          color: colors.accent.withValues(alpha: 0.4)),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.schedule, size: 11, color: colors.accent),
+                      const SizedBox(width: 3),
+                      Text(remaining,
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                              color: colors.accent)),
+                    ],
+                  ),
+                ),
               if (post.isOwner && isCenter) ...[
                 const SizedBox(width: 6),
                 GestureDetector(

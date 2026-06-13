@@ -46,7 +46,6 @@ app.*.map.json
 
 
 #custom
-lib/firebase_options.dart
 .env*
 /pubspec.lock
 /ios/Podfile.lock
@@ -58,4 +57,3 @@ firebase.json
 .claude/
 .superpowers/
 CLAUDE.md
-docs/

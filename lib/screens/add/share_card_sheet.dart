@@ -6,19 +6,26 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/board/model/file_info.dart';
 import 'package:unimal/service/map/geocoding_api_service.dart';
 import 'package:unimal/service/map/models/geocoding_models.dart';
 import 'package:unimal/theme/app_colors.dart';
 
-/// 지도 위에 올라오는 공유하기 바텀시트.
+/// 지도 위에 올라오는 공유하기 / 수정하기 바텀시트.
 ///
 /// 기존 전체 화면 [`AddItemScreens`]를 대체. 타이틀은 선택, 위치는 필수.
 /// docs/share-card-redesign.md §4 디자인 스펙 참고.
 ///
-/// 업로드 성공 시 `Navigator.pop(true)` — 시트를 연 쪽에서 지도 새로고침과
-/// 스낵바를 처리한다.
+/// [editPost]가 주어지면 "수정 모드"로 동작한다:
+///   - 제목/내용/기존 이미지를 미리 채움. 위치는 기존 값 고정(GPS 재조회 없음).
+///   - 기존 이미지 삭제 + 새 이미지 추가 가능, 헤더에 게시글 삭제 버튼 노출.
+/// 성공(업로드/수정/삭제) 시 `Navigator.pop(true)` — 연 쪽에서 새로고침 처리.
 class ShareCardSheet extends StatefulWidget {
-  const ShareCardSheet({super.key});
+  /// null이면 공유(생성) 모드, 값이 있으면 수정 모드.
+  final BoardPost? editPost;
+
+  const ShareCardSheet({super.key, this.editPost});
 
   @override
   State<ShareCardSheet> createState() => _ShareCardSheetState();
@@ -34,17 +41,30 @@ class _ShareCardSheetState extends State<ShareCardSheet>
   static const int _maxImages = 10;
 
   final List<File> _images = [];
+  // 수정 모드: 남아있는 기존(서버) 이미지와 삭제 대상 fileId.
+  final List<FileInfo> _existingFiles = [];
+  final List<String> _removedFileIds = [];
   GeocodingModel? _myLocation;
   bool _isLoadingLocation = false;
   bool _locationFailed = false;
   bool _locationServiceDisabled = false;
   bool _isUploading = false;
 
+  bool get _isEdit => widget.editPost != null;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _getCurrentLocation();
+    if (_isEdit) {
+      // 수정 모드: 기존 값 채우고 위치는 고정(재조회 안 함).
+      final p = widget.editPost!;
+      _titleController.text = p.title;
+      _contentController.text = p.content;
+      _existingFiles.addAll(p.fileInfoList);
+    } else {
+      _getCurrentLocation();
+    }
   }
 
   @override
@@ -57,17 +77,21 @@ class _ShareCardSheetState extends State<ShareCardSheet>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed &&
+    // 수정 모드는 위치를 고정하므로 복귀 시 재조회하지 않는다.
+    if (!_isEdit &&
+        state == AppLifecycleState.resumed &&
         _myLocation == null &&
         !_isLoadingLocation) {
       _retryLocationSilently();
     }
   }
 
-  bool _canUpload() =>
-      _contentController.text.trim().isNotEmpty &&
-      _myLocation != null &&
-      _myLocation!.streetName.isNotEmpty;
+  // 제출 가능 조건. 공유: 내용 + 위치 필수. 수정: 위치 고정이므로 내용만 필수.
+  bool _canUpload() {
+    if (_contentController.text.trim().isEmpty) return false;
+    if (_isEdit) return true;
+    return _myLocation != null && _myLocation!.streetName.isNotEmpty;
+  }
 
   // ────────────────────────────────────────────────────────────────
   // 위치
@@ -320,24 +344,91 @@ class _ShareCardSheetState extends State<ShareCardSheet>
     if (_isUploading) return;
     setState(() => _isUploading = true);
     try {
-      await _boardApiService.createBoard(
-        _titleController.text.trim(),
-        _contentController.text.trim(),
-        _images,
-        true, // 지도 노출 토글 제거 — 항상 공개
-        _myLocation?.latitude ?? 0,
-        _myLocation?.longitude ?? 0,
-        _myLocation?.postalCode ?? '',
-        _myLocation?.streetName ?? '',
-        _myLocation?.siDo ?? '',
-        _myLocation?.guGun ?? '',
-        _myLocation?.dong ?? '',
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
+      if (_isEdit) {
+        await _submitEdit();
+      } else {
+        await _boardApiService.createBoard(
+          _titleController.text.trim(),
+          _contentController.text.trim(),
+          _images,
+          true, // 지도 노출 토글 제거 — 항상 공개
+          _myLocation?.latitude ?? 0,
+          _myLocation?.longitude ?? 0,
+          _myLocation?.postalCode ?? '',
+          _myLocation?.streetName ?? '',
+          _myLocation?.siDo ?? '',
+          _myLocation?.guGun ?? '',
+          _myLocation?.dong ?? '',
+        );
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       // 실패 알림은 BoardApiService 가 표시 — 폼 상태는 유지.
       if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  /// 수정 제출: 삭제할 기존 파일 제거 → 새 파일 업로드 → 본문 수정.
+  /// 위치는 수정 대상이 아니므로 그대로 둔다(updateBoard 가 위치를 받지 않음).
+  Future<void> _submitEdit() async {
+    final boardId = widget.editPost!.boardId;
+    if (_removedFileIds.isNotEmpty) {
+      await _boardApiService.deleteBoardFiles(boardId, _removedFileIds);
+    }
+    if (_images.isNotEmpty) {
+      await _boardApiService.uploadBoardFiles(boardId, _images);
+    }
+    final ok = await _boardApiService.updateBoard(
+      boardId: boardId,
+      title: _titleController.text.trim(),
+      content: _contentController.text.trim(),
+      // 공유 시트엔 노출 토글이 없으므로 기존 공개 상태를 보존.
+      isShow: widget.editPost!.show == 'PUBLIC',
+    );
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _isUploading = false);
+    }
+  }
+
+  /// 게시글 삭제(수정 모드 전용). 확인 다이얼로그 후 삭제, 성공 시 시트를 닫고 true 반환.
+  Future<void> _onDelete() async {
+    if (_isUploading) return;
+    final colors = AppColors.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('게시글 삭제',
+            style: TextStyle(fontFamily: 'Pretendard', fontWeight: FontWeight.w700, fontSize: 16)),
+        content: const Text('게시글을 삭제하면 복구할 수 없어요.\n정말 삭제할까요?',
+            style: TextStyle(fontFamily: 'Pretendard', fontSize: 14, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('취소', style: TextStyle(fontFamily: 'Pretendard', color: colors.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('삭제', style: TextStyle(fontFamily: 'Pretendard', color: colors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isUploading = true);
+    final ok = await _boardApiService.deleteBoard(widget.editPost!.boardId);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop(true);
+    } else {
+      setState(() => _isUploading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('삭제에 실패했어요. 잠시 후 다시 시도해주세요.')),
+      );
     }
   }
 
@@ -385,7 +476,12 @@ class _ShareCardSheetState extends State<ShareCardSheet>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _Header(color: colors.textPrimary),
+                        _Header(
+                          color: colors.textPrimary,
+                          title: _isEdit ? '수정하기' : '공유하기',
+                          onDelete: _isEdit ? _onDelete : null,
+                          deleteColor: colors.textMuted,
+                        ),
                         const SizedBox(height: 16),
                         _TitleField(
                           controller: _titleController,
@@ -402,20 +498,31 @@ class _ShareCardSheetState extends State<ShareCardSheet>
                         const SizedBox(height: 16),
                         _PhotoRow(
                           images: _images,
+                          existingImages: _existingFiles,
                           maxImages: _maxImages,
                           colors: colors,
                           onTap: _onTapAddPhoto,
                           onRemove: (index) =>
                               setState(() => _images.removeAt(index)),
+                          onRemoveExisting: (fileId) => setState(() {
+                            _existingFiles
+                                .removeWhere((f) => f.fileId == fileId);
+                            _removedFileIds.add(fileId);
+                          }),
                         ),
                         const SizedBox(height: 16),
                         _LocationCard(
-                          streetName: _myLocation?.streetName,
-                          isLoading: _isLoadingLocation,
-                          hasFailed: _locationFailed,
-                          showHint: _images.isEmpty,
+                          // 수정 모드: 기존 위치 고정 표시(탭/재조회 없음, 힌트 숨김).
+                          streetName: _isEdit
+                              ? widget.editPost!.streetName
+                              : _myLocation?.streetName,
+                          isLoading: _isEdit ? false : _isLoadingLocation,
+                          hasFailed: _isEdit ? false : _locationFailed,
+                          showHint: _isEdit ? false : _images.isEmpty,
                           colors: colors,
-                          onTap: _isLoadingLocation ? null : _getCurrentLocation,
+                          onTap: _isEdit
+                              ? null
+                              : (_isLoadingLocation ? null : _getCurrentLocation),
                           onOpenSettings: _openLocationSettings,
                         ),
                         const SizedBox(height: 16),
@@ -423,6 +530,9 @@ class _ShareCardSheetState extends State<ShareCardSheet>
                           enabled: _canUpload() && !_isUploading,
                           isUploading: _isUploading,
                           colors: colors,
+                          label: _isEdit ? '수정 완료' : '소식 업로드',
+                          loadingLabel: _isEdit ? '저장 중...' : '업로드 중...',
+                          icon: _isEdit ? Icons.check_rounded : Icons.send_rounded,
                           onPressed: _onUpload,
                         ),
                       ],
@@ -464,18 +574,40 @@ class _DragHandle extends StatelessWidget {
 
 class _Header extends StatelessWidget {
   final Color color;
-  const _Header({required this.color});
+  final String title;
+  final VoidCallback? onDelete;
+  final Color deleteColor;
+  const _Header({
+    required this.color,
+    required this.title,
+    this.onDelete,
+    required this.deleteColor,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      '공유하기',
-      style: TextStyle(
-        fontFamily: 'Pretendard',
-        fontSize: 20,
-        fontWeight: FontWeight.w700,
-        color: color,
-      ),
+    return Row(
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+        const Spacer(),
+        // 수정 모드에서만 게시글 삭제 버튼 노출.
+        if (onDelete != null)
+          IconButton(
+            onPressed: onDelete,
+            icon: Icon(Icons.delete_outline, color: deleteColor, size: 22),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: '삭제',
+          ),
+      ],
     );
   }
 }
@@ -568,22 +700,27 @@ class _ContentField extends StatelessWidget {
 
 class _PhotoRow extends StatelessWidget {
   final List<File> images;
+  final List<FileInfo> existingImages;
   final int maxImages;
   final AppColors colors;
   final VoidCallback onTap;
   final void Function(int index) onRemove;
+  final void Function(String fileId) onRemoveExisting;
 
   const _PhotoRow({
     required this.images,
+    this.existingImages = const [],
     required this.maxImages,
     required this.colors,
     required this.onTap,
     required this.onRemove,
+    required this.onRemoveExisting,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (images.isEmpty) {
+    final total = existingImages.length + images.length;
+    if (total == 0) {
       return Row(
         children: [
           GestureDetector(
@@ -643,13 +780,31 @@ class _PhotoRow extends StatelessWidget {
       children: [
         SizedBox(
           height: 72,
-          child: ListView.separated(
+          child: ListView(
             scrollDirection: Axis.horizontal,
-            itemCount: images.length + 1,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              if (index == images.length) {
-                return GestureDetector(
+            children: [
+              // 기존(서버) 이미지 — 네트워크 썸네일
+              for (int i = 0; i < existingImages.length; i++) ...[
+                _ExistingThumbnail(
+                  file: existingImages[i],
+                  isFirst: i == 0,
+                  colors: colors,
+                  onRemove: () => onRemoveExisting(existingImages[i].fileId),
+                ),
+                const SizedBox(width: 8),
+              ],
+              // 새로 추가한 이미지 — 로컬 파일 썸네일
+              for (int i = 0; i < images.length; i++) ...[
+                _Thumbnail(
+                  image: images[i],
+                  isFirst: existingImages.isEmpty && i == 0,
+                  colors: colors,
+                  onRemove: () => onRemove(i),
+                ),
+                const SizedBox(width: 8),
+              ],
+              if (total < maxImages)
+                GestureDetector(
                   onTap: onTap,
                   child: _DashedBorder(
                     color: colors.border,
@@ -667,7 +822,7 @@ class _PhotoRow extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${images.length}/$maxImages',
+                            '$total/$maxImages',
                             style: TextStyle(
                               fontFamily: 'Pretendard',
                               fontSize: 12,
@@ -678,15 +833,8 @@ class _PhotoRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                );
-              }
-              return _Thumbnail(
-                image: images[index],
-                isFirst: index == 0,
-                colors: colors,
-                onRemove: () => onRemove(index),
-              );
-            },
+                ),
+            ],
           ),
         ),
         const SizedBox(height: 6),
@@ -768,6 +916,85 @@ class _Thumbnail extends StatelessWidget {
               child: const Icon(
                 Icons.close,
                 // 사진 위 오버레이 — 테마 무관 고정.
+                color: Color(0xFFFFFFFF),
+                size: 13,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 수정 모드의 기존(서버) 이미지 썸네일. [_Thumbnail]의 네트워크 버전.
+class _ExistingThumbnail extends StatelessWidget {
+  final FileInfo file;
+  final bool isFirst;
+  final AppColors colors;
+  final VoidCallback onRemove;
+
+  const _ExistingThumbnail({
+    required this.file,
+    required this.isFirst,
+    required this.colors,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            file.fileUrl,
+            width: 72,
+            height: 72,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              width: 72,
+              height: 72,
+              color: colors.surfaceMuted,
+              child: Icon(Icons.broken_image, color: colors.textMuted, size: 20),
+            ),
+          ),
+        ),
+        if (isFirst)
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0x8C000000),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: const Text(
+                '대표',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFFFFFFF),
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: GestureDetector(
+            onTap: onRemove,
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: colors.danger,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.close,
                 color: Color(0xFFFFFFFF),
                 size: 13,
               ),
@@ -884,12 +1111,14 @@ class _LocationCard extends StatelessWidget {
                         ),
                       ),
                     )
-                  else
+                  else if (onTap != null)
                     Icon(
                       Icons.chevron_right_rounded,
                       size: 16,
                       color: colors.textMuted,
-                    ),
+                    )
+                  else
+                    const SizedBox.shrink(),
                 ],
               ),
             ),
@@ -933,12 +1162,18 @@ class _UploadCta extends StatelessWidget {
   final bool enabled;
   final bool isUploading;
   final AppColors colors;
+  final String label;
+  final String loadingLabel;
+  final IconData icon;
   final VoidCallback onPressed;
 
   const _UploadCta({
     required this.enabled,
     required this.isUploading,
     required this.colors,
+    required this.label,
+    required this.loadingLabel,
+    required this.icon,
     required this.onPressed,
   });
 
@@ -977,7 +1212,7 @@ class _UploadCta extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    '업로드 중...',
+                    loadingLabel,
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: 16,
@@ -990,10 +1225,10 @@ class _UploadCta extends StatelessWidget {
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.send_rounded, size: 18, color: fg),
+                  Icon(icon, size: 18, color: fg),
                   const SizedBox(width: 8),
                   Text(
-                    '소식 업로드',
+                    label,
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: 16,

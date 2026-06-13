@@ -4,6 +4,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:unimal/screens/map/marker/text_marker_demo.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';

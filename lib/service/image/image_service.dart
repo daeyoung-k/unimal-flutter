@@ -172,4 +172,74 @@ class ImageService {
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
   }
+
+  /// 텍스트 전용(사진 없는) 글의 줌아웃 마커 이미지를 PNG bytes 로 생성.
+  /// 사진 마커(createMarkerImage)와 동일한 200x200 규격이라 addClusterBadge
+  /// 합성(+N 뱃지)을 그대로 탈 수 있다.
+  /// 모양: 작은 "말풍선"(둥근 본체 + 아래 꼬리) — 카드(줌인)와 같은 패밀리.
+  /// 꼬리 끝이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
+  /// 안에는 본문을 뜻하는 흰 줄 3개(왼쪽 정렬: 길게-길게-짧게).
+  Future<Uint8List> createTextDotImage() async {
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+    const Color bubbleBlue = Color(0xFF4D91FF); // app_colors primaryStrong
+
+    // 말풍선 외곽선 (본체 + 꼬리, 하나의 연속 path → 이음새 없음)
+    const double left = 22, top = 12, right = 178, bodyBottom = 150, r = 34;
+    const double cx = size / 2, tailHalf = 15, tipY = 198;
+    final bubble = Path()
+      ..moveTo(left + r, top)
+      ..lineTo(right - r, top)
+      ..arcToPoint(const Offset(right, top + r),
+          radius: const Radius.circular(r))
+      ..lineTo(right, bodyBottom - r)
+      ..arcToPoint(const Offset(right - r, bodyBottom),
+          radius: const Radius.circular(r))
+      ..lineTo(cx + tailHalf, bodyBottom)
+      ..lineTo(cx, tipY) // 꼬리 끝 = 지도 좌표
+      ..lineTo(cx - tailHalf, bodyBottom)
+      ..lineTo(left + r, bodyBottom)
+      ..arcToPoint(const Offset(left, bodyBottom - r),
+          radius: const Radius.circular(r))
+      ..lineTo(left, top + r)
+      ..arcToPoint(const Offset(left + r, top),
+          radius: const Radius.circular(r))
+      ..close();
+
+    // 부드러운 그림자 → 떠 있는 말풍선 느낌
+    canvas.drawShadow(bubble, const Color(0x33000000), 4, false);
+    // 채움(파랑) + 흰 테두리
+    canvas.drawPath(bubble, Paint()..color = bubbleBlue);
+    canvas.drawPath(
+      bubble,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeJoin = StrokeJoin.round
+        ..color = Colors.white,
+    );
+
+    // 본문 줄(흰색, 왼쪽 정렬: 길게-길게-짧게)
+    const double lineH = 13, lineLeft = 54;
+    const List<double> lineW = [92, 92, 56];
+    final linePaint = Paint()..color = Colors.white;
+    double ly = 48;
+    for (int i = 0; i < 3; i++) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(lineLeft, ly, lineW[i], lineH),
+          const Radius.circular(lineH / 2),
+        ),
+        linePaint,
+      );
+      ly += lineH + 13; // 줄 높이 + 간격
+    }
+
+    final ui.Image image =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final ByteData? byteData =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
 }
