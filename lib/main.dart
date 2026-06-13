@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -33,6 +34,20 @@ Future<void> main() async {
   // Flutter 바인딩 초기화 (비동기 작업 전에 필수)
   WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
+
+  // flutter_naver_map 클러스터 마커의 Android race로 인한 비동기 PlatformException
+  // ("overlay can't found")은 setIcon 등이 내부적으로 await되지 않아 우리 try/catch
+  // 밖에서 '미처리'로 떠오른다. 디버그에서 '미처리 예외 중단'이 켜져 있으면 이때 메인
+  // 스레드가 멈춰 ANR처럼 보인다. 데이터상 비치명적이므로 이 예외만 로깅 후 흡수하고,
+  // 그 외 에러는 기존대로 전파해 진짜 버그를 숨기지 않는다.
+  widgetsBinding.platformDispatcher.onError = (error, stack) {
+    if (error is PlatformException &&
+        (error.message?.contains("overlay can't found") ?? false)) {
+      debugPrint('[naverMap] 무시된 오버레이 race: ${error.message}');
+      return true; // 처리됨 — 전파/중단 막음
+    }
+    return false; // 그 외는 평소대로 처리되도록
+  };
 
   // Firebase 초기화 (다른 초기화 작업보다 먼저 수행)
   try {

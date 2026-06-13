@@ -17,15 +17,26 @@ class AccountService {
 
   final _authState = Get.find<AuthState>();
 
-  Future<void> login(
+  /// 로그인 성공 처리. 토큰 저장 후 기기정보 동기화.
+  /// 응답에 토큰이 없어 빈 값/"null"이 넘어오면 저장을 거부하고 false 반환 —
+  /// "로그인된 것처럼 보이지만 모든 인증 호출이 실패"하는 깨진 상태를 막는다.
+  Future<bool> login(
     String accessToken,
     String refreshToken,
     String email,
     LoginType loginType,
   ) async {
+    if (accessToken.isEmpty ||
+        accessToken == 'null' ||
+        refreshToken.isEmpty ||
+        refreshToken == 'null') {
+      logger.e('로그인 실패: 응답에 토큰이 없습니다. (저장 취소)');
+      return false;
+    }
     await _authState.setTokens(accessToken, refreshToken, email, loginType);
     final simpleDeviceInfo = await DeviceInfoService().getSimpleDeviceInfo();
     await UserInfoService().updateDeviceInfo(simpleDeviceInfo);
+    return true;
   }
 
   Future<void> logout() async {
@@ -55,10 +66,18 @@ class AccountService {
       var res = await http.get(url, headers: headers);
       var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
       if (bodyData['code'] == 200) {
+        final newAccess = res.headers['x-unimal-access-token'];
+        final newRefresh = res.headers['x-unimal-refresh-token'];
+        // 재발급 응답에 토큰 헤더가 없으면 "null" 저장 대신 실패 처리.
+        if (newAccess == null || newAccess.isEmpty || newAccess == 'null' ||
+            newRefresh == null || newRefresh.isEmpty || newRefresh == 'null') {
+          stateClear();
+          return false;
+        }
         await _authState.setTokens(
-          res.headers['x-unimal-access-token'].toString(),
-          res.headers['x-unimal-refresh-token'].toString(),
-          res.headers['x-unimal-email'].toString(),
+          newAccess,
+          newRefresh,
+          res.headers['x-unimal-email'] ?? '',
           _authState.provider.value,
         );
         return true;

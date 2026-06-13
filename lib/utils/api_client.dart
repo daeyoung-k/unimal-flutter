@@ -26,6 +26,16 @@ class ApiClient {
     final completer = Completer<String?>();
     _refreshCompleter = completer;
     try {
+      // 저장된 refresh 토큰이 없거나(미로그인/로그아웃/세션 클리어) 잘못 저장된 "null"이면
+      // 재발급할 세션 자체가 없는 것 → tokenReIssue 시도와 "인증 만료" 다이얼로그 없이
+      // 조용히 실패한다. (신규 설치/로그아웃 상태의 백그라운드 인증 호출이 401을 받아도
+      // 로그인 화면 위에 만료 팝업이 뜨지 않도록)
+      final refresh = await _secureStorage.getRefreshToken();
+      if (refresh == null || refresh.isEmpty || refresh == 'null') {
+        completer.complete(null);
+        return null;
+      }
+
       final success = await AccountService().tokenReIssue();
       if (!success) {
         _customAlert.pageMovingWithshowTextAlert(
