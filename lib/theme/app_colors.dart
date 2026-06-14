@@ -84,6 +84,9 @@ class AppColors {
   /// 텍스트 포스트, 강조 액센트.
   final Color accent;
 
+  /// 좋아요 하트 코랄 색.
+  final Color accentCoral;
+
   // ────────────────────────────────────────────────────────────────
   // External — 외부 브랜드 (다크모드에서도 고정)
   // ────────────────────────────────────────────────────────────────
@@ -116,6 +119,7 @@ class AppColors {
     required this.divider,
     required this.danger,
     required this.accent,
+    required this.accentCoral,
     required this.kakao,
     required this.shadow,
   });
@@ -137,7 +141,7 @@ class AppColors {
     primaryWash: Color(0xFFEEF6FF),
 
     // Surface
-    background: Color(0xFFFFFFFF),
+    background: Color(0xFFF7F8FA),
     surface: Color(0xFFFFFFFF),
     surfaceVariant: Color(0xFFF5F5F5),
     surfaceMuted: Color(0xFFF3F4F6),
@@ -156,6 +160,7 @@ class AppColors {
     // Semantic
     danger: Color(0xFFE53935),
     accent: Color(0xFFFF9F43),
+    accentCoral: Color(0xFFFF6B6B),
 
     // External
     kakao: Color(0xFFFEE500),
@@ -192,6 +197,7 @@ class AppColors {
     // Semantic — dark 에서 살짝 밝게
     danger: Color(0xFFFF6B6B),
     accent: Color(0xFFFFB872),
+    accentCoral: Color(0xFFFF8585),
 
     // External — 카카오 노란색 고정
     kakao: Color(0xFFFEE500),

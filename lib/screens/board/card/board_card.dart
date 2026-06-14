@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:unimal/screens/add/share_card_sheet.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/utils/time_utils.dart';
@@ -132,11 +133,21 @@ class _BoardCardState extends State<BoardCard> {
       ],
     ).then((value) {
       if (value == 'edit') {
-        Get.toNamed('/edit-board', arguments: widget.boardPost);
+        _openEditSheet();
       } else if (value == 'delete') {
         _confirmDelete();
       }
     });
+  }
+
+  /// 별도 수정 화면 대신, 공유하기 시트를 "수정 모드"로 띄운다.
+  void _openEditSheet() {
+    showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ShareCardSheet(editPost: widget.boardPost),
+    );
   }
 
   Future<void> _confirmDelete() async {

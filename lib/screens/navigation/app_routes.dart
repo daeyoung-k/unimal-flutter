@@ -1,7 +1,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:unimal/screens/board/edit_board/edit_board.dart';
 import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
 import 'package:unimal/screens/auth/signup.dart';
@@ -13,6 +12,7 @@ import 'package:unimal/screens/map/marker/text_marker_demo.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile/profile.dart';
+import 'package:unimal/screens/profile/mypage/story_list.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/web/web_view_screen.dart';
 class AppRoutes {
@@ -44,7 +44,7 @@ class AppRoutes {
       GetPage(name: '/signup', page: () => SignupScreens()),
       GetPage(name: '/board', page: () => BoardScreens()),
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
-      GetPage(name: '/edit-board', page: () => EditBoardScreen()),
+      GetPage(name: '/story-list', page: () => const StoryListScreen()),
       GetPage(name: '/notice-list', page: () => const NoticeListScreen()),
       GetPage(name: '/webview', page: () => const WebViewScreen()),
       // 텍스트 마커 데모 (프론트 전용 · 목 데이터). Get.toNamed('/text-marker-demo')

@@ -322,6 +322,43 @@ class BoardApiService {
     return [];
   }
 
+  // ── 내가 좋아요한 글 수 ─────────────────────────────────────────────
+  Future<int> getMyLikedTotal() async {
+    final url = ApiUri.resolve('board/post/like/stories/total');
+    final headers = await _authHeaders();
+    final response = await ApiClient.get(url, headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final data = body['data'];
+      return data is int ? data : 0;
+    }
+
+    _logger.e('좋아요한 글 수 조회 실패: ${response.statusCode}');
+    return 0;
+  }
+
+  // ── 내가 좋아요한 글 목록 (무한 스크롤) ────────────────────────────
+  Future<List<BoardPost>> getMyLikedPostList({int page = 0, int size = 20}) async {
+    final url = ApiUri.resolve('board/post/like/stories/list', {
+      'page': page.toString(),
+      'size': size.toString(),
+    });
+    final headers = await _authHeaders();
+    final response = await ApiClient.get(url, headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final data = body['data'];
+      if (data is List) {
+        return data.map((e) => BoardPost.fromJson(e as Map<String, dynamic>)).toList();
+      }
+    }
+
+    _logger.e('좋아요한 글 목록 조회 실패: ${response.statusCode}');
+    return [];
+  }
+
   // ── 좋아요 요청 ─────────────────────────────────────────────────────
   Future<LikeInfo?> requestLike(String boardId) async {
     final url = ApiUri.resolve('board/post/$boardId/like');

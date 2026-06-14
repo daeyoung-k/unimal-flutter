@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/profile/setting/permission_setting.dart';
 import 'package:unimal/state/auth_state.dart';
 
@@ -90,12 +89,6 @@ class _SettingScreenState extends State<SettingScreen> {
       ),
       body: ListView(
         children: [
-          _buildItem(
-            icon: Icons.campaign_outlined,
-            title: '공지사항',
-            onTap: () => Get.to(() => const NoticeListScreen()),
-          ),
-          _buildDivider(),
           _buildItem(
             icon: Icons.security_outlined,
             title: '권한설정',
