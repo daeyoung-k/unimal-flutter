@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/add/share_card_sheet.dart';
 import 'package:unimal/screens/map/bottom_card/map_card_expanded_content.dart';
+import 'package:unimal/screens/map/bottom_card/post_image_carousel.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/map/models/map_post.dart';
@@ -31,6 +32,7 @@ class _PostDetailSheetState extends State<_PostDetailSheet> {
   bool _isLoading = true;
   bool _isLiked = false;
   int? _likeCountOverride;
+  int _imageIndex = 0;
 
   @override
   void initState() {
@@ -78,6 +80,39 @@ class _PostDetailSheetState extends State<_PostDetailSheet> {
     }
   }
 
+  /// 지도 카드 확장 화면과 동일하게 이미지 게시물이면 본문 위에 캐러셀을 얹는다.
+  Widget _buildLoadedContent(BoardPost detail) {
+    final post = _boardPostToMapPost(detail);
+    return Column(
+      children: [
+        if (post.fileInfoList.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: PostImageCarousel(
+                images: post.fileInfoList,
+                initialIndex: _imageIndex,
+                onIndexChanged: (i) => _imageIndex = i,
+              ),
+            ),
+          ),
+        Expanded(
+          child: MapCardExpandedContent(
+            post: post,
+            detail: detail,
+            isLoading: false,
+            isLiked: _isLiked,
+            likeCountOverride: _likeCountOverride,
+            onLikeTap: _onLikeTap,
+            onRefreshDetail: _loadDetail,
+            onEditTap: detail.isOwner ? _openEditSheet : null,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
@@ -123,17 +158,7 @@ class _PostDetailSheetState extends State<_PostDetailSheet> {
                               ),
                             ),
                           )
-                        : MapCardExpandedContent(
-                            post: _boardPostToMapPost(_detail!),
-                            detail: _detail,
-                            isLoading: false,
-                            isLiked: _isLiked,
-                            likeCountOverride: _likeCountOverride,
-                            onLikeTap: _onLikeTap,
-                            onRefreshDetail: _loadDetail,
-                            onEditTap:
-                                _detail!.isOwner ? _openEditSheet : null,
-                          ),
+                        : _buildLoadedContent(_detail!),
               ),
             ],
           ),
