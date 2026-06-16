@@ -9,7 +9,8 @@ import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
 import 'package:unimal/screens/profile/mypage/story_list.dart';
 import 'package:unimal/screens/profile/mypage/story_thumbnail_card.dart';
 import 'package:unimal/screens/profile/setting/setting.dart';
-import 'package:unimal/service/ads/ad_banner.dart';
+// AdMob 인증 완료 후 광고 노출 시 주석 해제.
+// import 'package:unimal/service/ads/ad_banner.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/login/account_service.dart';
@@ -99,7 +100,8 @@ class _ProfileScreensState extends State<ProfileScreens> {
                 ),
                     ),
                   ),
-                  const AdBanner(),
+                  // AdMob 인증 완료 전까지 광고 미노출. 인증 완료 후 주석 해제.
+                  // const AdBanner(),
                 ],
               ),
             ),
