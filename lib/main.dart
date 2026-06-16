@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:unimal/screens/map/marker/text_marker_demo.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
+import 'package:unimal/service/ads/ad_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
@@ -71,6 +72,10 @@ Future<void> main() async {
 
   // 네이버 지도 초기화
   await NaverMapService().naverMapInit();
+
+  // AdMob(광고) SDK 초기화 — GetX에 등록하며 1회 초기화.
+  // 이후 화면에서는 AdService.to / const AdBanner() 로만 광고에 접근.
+  await Get.putAsync<AdService>(() => AdService().init());
 
   // 상태관리 초기화 (토큰 로드 완료까지 대기)
   final authState = await StateInit().stateInit();

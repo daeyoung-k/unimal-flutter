@@ -9,6 +9,7 @@ import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
 import 'package:unimal/screens/profile/mypage/story_list.dart';
 import 'package:unimal/screens/profile/mypage/story_thumbnail_card.dart';
 import 'package:unimal/screens/profile/setting/setting.dart';
+import 'package:unimal/service/ads/ad_banner.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/login/account_service.dart';
@@ -75,9 +76,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
               child: CircularProgressIndicator(
                   color: colors.primaryStrong, strokeWidth: 2))
           : SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                child: Column(
+              child: Column(
+                children: [
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                      child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeroCard(colors),
@@ -93,6 +97,10 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     _buildMoreCard(colors),
                   ],
                 ),
+                    ),
+                  ),
+                  const AdBanner(),
+                ],
               ),
             ),
     );

@@ -17,6 +17,11 @@
         <meta-data android:name="com.google.android.geo.API_KEY"
             android:value="${googleMapsApiKey}"/>
 
+        <!-- AdMob App ID (Android, 실제 발급). App ID는 비밀값이 아니라
+             앱 번들에 노출되므로 매니페스트 직접 기입이 표준. -->
+        <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-9450783467122178~9553199185"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
