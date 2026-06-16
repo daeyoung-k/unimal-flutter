@@ -16,7 +16,6 @@ import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
-import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/service/push/push_notification_service.dart';
 import 'package:unimal/state/state_init.dart';
@@ -79,7 +78,6 @@ Future<void> main() async {
 
   // 상태관리 초기화 (토큰 로드 완료까지 대기)
   final authState = await StateInit().stateInit();
-  final provider = authState.provider;
 
   // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
   await PermissionService().requestNotificationPermission();
@@ -95,7 +93,7 @@ Future<void> main() async {
   });
 
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
-  runApp(MyApp(loginChecked: provider.value != LoginType.none));
+  runApp(MyApp(loginChecked: authState.isLoggedIn));
 
   FlutterNativeSplash.remove();
 }

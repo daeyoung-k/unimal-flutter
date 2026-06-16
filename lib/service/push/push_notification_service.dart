@@ -67,7 +67,7 @@ class PushNotificationService with WidgetsBindingObserver {
       // 이미 로그인된 상태라면 앱 시작 시마다 현재 토큰을 서버에 동기화
       // (TestFlight/재설치 등으로 토큰이 바뀌어도 onTokenRefresh가 미발생할 수 있음)
       final authState = Get.find<AuthState>();
-      if (authState.accessToken.value.isNotEmpty) {
+      if (authState.isLoggedIn) {
         await _syncTokenToServer();
       }
       _firebaseMessaging.onTokenRefresh.listen((newToken) async {
@@ -280,7 +280,7 @@ class PushNotificationService with WidgetsBindingObserver {
   Future<void> _retryFCMTokenIfNeeded() async {
     try {
       final authState = Get.find<AuthState>();
-      if (authState.accessToken.value.isEmpty) return;
+      if (!authState.isLoggedIn) return;
 
       final settings = await _firebaseMessaging.getNotificationSettings();
       final granted = settings.authorizationStatus == AuthorizationStatus.authorized ||

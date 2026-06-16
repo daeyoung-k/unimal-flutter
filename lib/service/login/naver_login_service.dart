@@ -46,7 +46,6 @@ class NaverLoginService {
               ProfileCallback(onSuccess: (resultCode, message, response) async {
         final profile = NaverLoginProfile.fromJson(response: response);
         var body = jsonEncode({
-          "provider": "NAVER",
           "email": profile.email,
           "name": profile.name,
           "nickname": profile.nickName,

@@ -3,7 +3,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/auth/login/widget/manual_login_form.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
-import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/service/login/google_login_service.dart';
 import 'package:unimal/state/auth_state.dart';
@@ -64,7 +63,7 @@ class _LoginScreensState extends State<LoginScreens>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authState = Get.find<AuthState>();
-      if (authState.provider.value != LoginType.none) {
+      if (authState.isLoggedIn) {
         Get.offAllNamed("/map");
       }
     });

@@ -748,7 +748,7 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
         result['accessToken']!,
         result['refreshToken']!,
         result['email']!,
-        widget.authState.provider.value,
+        widget.authState.loginMethod.value,
       );
       if (mounted) Navigator.pop(context);
       widget.onSuccess();

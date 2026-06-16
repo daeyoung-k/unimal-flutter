@@ -12,6 +12,12 @@ import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/utils/api_uri.dart';
 
+enum TokenReissueResult {
+  success,
+  authExpired,
+  unavailable,
+}
+
 class AccountService {
   var logger = Logger();
 
@@ -24,7 +30,7 @@ class AccountService {
     String accessToken,
     String refreshToken,
     String email,
-    LoginType loginType,
+    LoginType loginMethod,
   ) async {
     if (accessToken.isEmpty ||
         accessToken == 'null' ||
@@ -33,7 +39,7 @@ class AccountService {
       logger.e('로그인 실패: 응답에 토큰이 없습니다. (저장 취소)');
       return false;
     }
-    await _authState.setTokens(accessToken, refreshToken, email, loginType);
+    await _authState.setTokens(accessToken, refreshToken, email, loginMethod);
     final simpleDeviceInfo = await DeviceInfoService().getSimpleDeviceInfo();
     await UserInfoService().updateDeviceInfo(simpleDeviceInfo);
     return true;
@@ -59,35 +65,46 @@ class AccountService {
     Get.offAllNamed("/login");
   }
 
-  Future<bool> tokenReIssue() async {
+  Future<TokenReissueResult> tokenReIssue({bool clearOnAuthExpired = true}) async {
     var url = ApiUri.resolve('/user/auth/token-reissue');
     var headers = {"Authorization": "Bearer ${_authState.refreshToken}"};
     try {
       var res = await http.get(url, headers: headers);
-      var bodyData = jsonDecode(utf8.decode(res.bodyBytes));
-      if (bodyData['code'] == 200) {
+      dynamic bodyData;
+      try {
+        bodyData = jsonDecode(utf8.decode(res.bodyBytes));
+      } catch (_) {
+        bodyData = null;
+      }
+      final responseCode = bodyData is Map ? bodyData['code'] : null;
+      if (res.statusCode == 200 && responseCode == 200) {
         final newAccess = res.headers['x-unimal-access-token'];
         final newRefresh = res.headers['x-unimal-refresh-token'];
         // 재발급 응답에 토큰 헤더가 없으면 "null" 저장 대신 실패 처리.
         if (newAccess == null || newAccess.isEmpty || newAccess == 'null' ||
             newRefresh == null || newRefresh.isEmpty || newRefresh == 'null') {
-          stateClear();
-          return false;
+          logger.w('토큰 재발급 실패: 응답 헤더에 새 토큰이 없습니다.');
+          return TokenReissueResult.unavailable;
         }
         await _authState.setTokens(
           newAccess,
           newRefresh,
           res.headers['x-unimal-email'] ?? '',
-          _authState.provider.value,
+          _authState.loginMethod.value,
         );
-        return true;
-      } else {
-        stateClear();
-        return false;
+        return TokenReissueResult.success;
       }
+      if (res.statusCode == 401 || responseCode == 401) {
+        if (clearOnAuthExpired) {
+          await stateClear();
+        }
+        return TokenReissueResult.authExpired;
+      }
+      logger.w('토큰 재발급 실패: status=${res.statusCode}, code=$responseCode');
+      return TokenReissueResult.unavailable;
     } catch (error) {
-      stateClear();
-      return false;
+      logger.w('토큰 재발급 일시 실패: $error');
+      return TokenReissueResult.unavailable;
     }
   }
 
@@ -96,7 +113,7 @@ class AccountService {
   }
 
   Future<void> _authStateClear() async {
-    switch (_authState.provider.value) {
+    switch (_authState.loginMethod.value) {
       case LoginType.naver:
         await _naverLogout();
         break;
