@@ -134,6 +134,48 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
   }
 
+  // 검색바 우측 '내 지도' 진입 버튼.
+  // 지도 핀 아이콘 + '내 지도' 텍스트 알약 — 무엇을 누르는지 글자로 명확히 보여준다.
+  // 탭 시 나만의 지도(owner)로 이동.
+  Widget _buildMyMapButton() {
+    final colors = AppColors.of(context);
+    return GestureDetector(
+      onTap: () => Get.toNamed('/my-story-map'),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 44,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.place, size: 18, color: colors.primaryStrong),
+            const SizedBox(width: 5),
+            Text(
+              '내 지도',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Pretendard',
+                color: colors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _measureSearchBar() {
     if (!mounted) return;
     final ctx = _searchBarKey.currentContext;
@@ -1328,6 +1370,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                 mapController: _mapController,
                 size: 40,
                 borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+          ),
+          // '내 지도' 진입 버튼 — 우측 하단(네비게이션 바 위). 카드 열리면 페이드아웃.
+          Positioned(
+            right: 16,
+            bottom: 45,
+            child: IgnorePointer(
+              ignoring: _isAnyCardOpen,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isAnyCardOpen ? 0 : 1,
+                child: _buildMyMapButton(),
               ),
             ),
           ),
