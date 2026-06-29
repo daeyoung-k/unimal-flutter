@@ -13,6 +13,7 @@ import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile/profile.dart';
 import 'package:unimal/screens/profile/mypage/story_list.dart';
+import 'package:unimal/screens/profile/mypage/my_story_map_screen.dart';
 import 'package:unimal/screens/profile/setting/notice/notice_list.dart';
 import 'package:unimal/screens/web/web_view_screen.dart';
 class AppRoutes {
@@ -45,6 +46,7 @@ class AppRoutes {
       GetPage(name: '/board', page: () => BoardScreens()),
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
       GetPage(name: '/story-list', page: () => const StoryListScreen()),
+      GetPage(name: '/my-story-map', page: () => const MyStoryMapScreen()),
       GetPage(name: '/notice-list', page: () => const NoticeListScreen()),
       GetPage(name: '/webview', page: () => const WebViewScreen()),
       // 텍스트 마커 데모 (프론트 전용 · 목 데이터). Get.toNamed('/text-marker-demo')

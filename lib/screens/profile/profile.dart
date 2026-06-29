@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:unimal/screens/profile/mypage/mypage.dart';
-import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
+import 'package:unimal/screens/profile/mypage/my_story_map_card.dart';
 import 'package:unimal/screens/profile/mypage/story_list.dart';
-import 'package:unimal/screens/profile/mypage/story_thumbnail_card.dart';
 import 'package:unimal/screens/profile/setting/setting.dart';
 // AdMob 인증 완료 후 광고 노출 시 주석 해제.
 // import 'package:unimal/service/ads/ad_banner.dart';
@@ -40,6 +39,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
   List<BoardPost> _myPosts = [];
   bool _isLoading = true;
   bool _isUploadingImage = false;
+
+  // 메뉴 영역 임시 숨김 (true로 바꾸면 부활).
+  // - '좋아요한 스토리'는 내 지도 화면에서 보는 버튼으로 이전 예정
+  // - 팔로우 등 기능이 추가되면 이 영역을 다시 노출
+  // 코드/데이터(_myLikedCount, _buildMenuCard 등)는 그대로 유지한다.
+  static bool _showMenuSection = false;
 
   @override
   void initState() {
@@ -88,10 +93,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     _buildHeroCard(colors),
                     const SizedBox(height: 16),
                     _buildStorySection(colors),
-                    const SizedBox(height: 14),
-                    _buildSectionLabel('메뉴', colors),
-                    const SizedBox(height: 8),
-                    _buildMenuCard(colors),
+                    if (_showMenuSection) ...[
+                      const SizedBox(height: 14),
+                      _buildSectionLabel('메뉴', colors),
+                      const SizedBox(height: 8),
+                      _buildMenuCard(colors),
+                    ],
                     const SizedBox(height: 14),
                     _buildSectionLabel('더보기', colors),
                     const SizedBox(height: 8),
@@ -270,7 +277,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
     );
   }
 
-  // ── 내 스토리 썸네일 스트립 ───────────────────────────────────────────
+  // ── 내 스토리 → 지도 미리보기 ──────────────────────────────────────────
   Widget _buildStorySection(AppColors colors) {
     // 스토리가 없으면 헤더 없이 빈 상태 카드만 노출.
     if (_myPosts.isEmpty) return _buildEmptyStripCard(colors);
@@ -280,47 +287,21 @@ class _ProfileScreensState extends State<ProfileScreens> {
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '내 스토리',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    fontFamily: 'Pretendard',
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: () => Get.toNamed('/story-list',
-                    arguments: {'mode': StoryListMode.myStories}),
-                child: Text(
-                  '전체보기 ›',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'Pretendard',
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ),
-            ],
+          child: Text(
+            '내 지도 보기',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              fontFamily: 'Pretendard',
+              color: colors.textPrimary,
+            ),
           ),
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          height: 128,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: _myPosts.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 10),
-            itemBuilder: (_, i) => StoryThumbnailCard(
-              post: _myPosts[i],
-              onTap: () =>
-                  showPostDetailSheet(context, _myPosts[i].boardId),
-            ),
-          ),
+        MyStoryMapCard(
+          posts: _myPosts,
+          storyCount: _myPostCount,
+          onTap: () => Get.toNamed('/my-story-map'),
         ),
       ],
     );
