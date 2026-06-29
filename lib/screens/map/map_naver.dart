@@ -89,11 +89,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Worker? _pendingLocationWorker;
 
-  // 검색바 실측 — 카드 최대 높이를 검색바 바로 아래까지로 정확히 제한하기 위해
-  // post-frame에서 RenderBox 위치를 측정한다. 0이면 아직 미측정.
-  final GlobalKey _searchBarKey = GlobalKey();
-  double _searchBarBottom = 0;
-
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   bool _searchMarkerAdded = false;
@@ -131,7 +126,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       Get.find<NavController>().pendingMapLat,
       (_) => _applyPendingLocation(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
   }
 
   // 검색바 우측 '내 지도' 진입 버튼.
@@ -174,19 +168,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         ),
       ),
     );
-  }
-
-  void _measureSearchBar() {
-    if (!mounted) return;
-    final ctx = _searchBarKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final offset = box.localToGlobal(Offset.zero);
-    final bottom = offset.dy + box.size.height;
-    if (bottom != _searchBarBottom) {
-      setState(() => _searchBarBottom = bottom);
-    }
   }
 
   @override
@@ -1241,7 +1222,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                 child: Column(
               children: [
                 Container(
-                  key: _searchBarKey,
                   decoration: BoxDecoration(
                     color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(24),
@@ -1440,9 +1420,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       key: const ValueKey('card'),
                       groups: _postGroups,
                       initialGroupIndex: _selectedGroupIndex!,
-                      minTopMargin: _searchBarBottom > 0
-                          ? _searchBarBottom + 30
-                          : MediaQuery.paddingOf(context).top + 80,
+                      // 확장 카드 상단 여백. 이 화면은 root의 bottomNavigationBar
+                      // (높이 64 + 하단 safe area)만큼 본문이 줄어든 영역이라,
+                      // 네비바 소비 높이를 더해 카드 상단 위치를 보정한다.
+                      // 비율(0.18)을 키울수록 카드가 더 아래에서 시작한다(짧아짐).
+                      // 확장 시 검색바는 페이드아웃돼 가려져도 무방.
+                      minTopMargin: MediaQuery.sizeOf(context).height * 0.15 +
+                          64 +
+                          MediaQuery.paddingOf(context).bottom,
                       onClose: () {
                         setState(() {
                           _selectedGroupIndex = null;
