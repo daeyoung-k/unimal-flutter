@@ -143,11 +143,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       onTap: () => Get.toNamed('/my-story-map'),
       behavior: HitTestBehavior.opaque,
       child: Container(
-        height: 44,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: colors.surface,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: colors.shadow,
@@ -159,12 +159,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.place, size: 18, color: colors.primaryStrong),
-            const SizedBox(width: 5),
+            Icon(Icons.place, size: 16, color: colors.primaryStrong),
+            const SizedBox(width: 4),
             Text(
               '내 지도',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 fontFamily: 'Pretendard',
                 color: colors.textPrimary,
@@ -1368,8 +1368,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               child: NMyLocationButtonWidget(
                 key: ValueKey(_isAnyCardOpen),
                 mapController: _mapController,
-                size: 40,
-                borderRadius: BorderRadius.circular(18),
+                size: 36,
+                borderRadius: BorderRadius.circular(16),
               ),
             ),
           ),
