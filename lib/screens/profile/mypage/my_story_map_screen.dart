@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
@@ -121,6 +123,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     if (located.isEmpty) return;
     _markersRendered = true;
 
+    // 같은 좌표에 뭉친 글은 줌인해도 좌표가 겹쳐 구분이 안 되므로, 메인 지도와
+    // 동일하게 약 17m 반경 원형으로 흩뿌린다(jitter). 줌 16+에서 클러스터가
+    // 풀리면 이 오프셋 덕분에 동일 좌표 글들이 개별 마커로 펼쳐진다.
+    final jittered = _computeJitteredPositions(located);
+
     final colors = AppColors.of(context);
     final markers = <NClusterableMarker>{};
     for (final p in located) {
@@ -144,7 +151,7 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       final title = displayTitle(p.title, p.content);
       final marker = NClusterableMarker(
         id: id,
-        position: NLatLng(p.latitude!, p.longitude!),
+        position: jittered[p.boardId]!,
         icon: icon,
         size: const Size(32, 32),
         tags: {'title': title, 'boardId': p.boardId},
@@ -165,12 +172,43 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     await controller.addOverlayAll(markers);
     await _fitCamera(
       controller,
-      located.map((p) => NLatLng(p.latitude!, p.longitude!)).toList(),
+      located.map((p) => jittered[p.boardId]!).toList(),
     );
   }
 
   String _markerCaption(String title) =>
       title.length > 12 ? '${title.substring(0, 12)}…' : title;
+
+  /// 같은 좌표에 뭉친 글을 원형으로 흩뿌린 표시 좌표 맵(boardId → 좌표)을 만든다.
+  /// 단일 좌표 그룹은 원좌표 그대로 둔다. 메인 지도(`map_naver.dart`)와 동일 방식 —
+  /// 줌 16+에서 클러스터가 풀릴 때 동일 좌표 글들이 겹치지 않고 펼쳐지도록 한다.
+  Map<String, NLatLng> _computeJitteredPositions(List<BoardPost> located) {
+    const jitterRadius = 0.00015; // 위경도 약 17m
+    final Map<String, List<BoardPost>> grouped = {};
+    for (final p in located) {
+      final key =
+          '${p.latitude!.toStringAsFixed(3)},${p.longitude!.toStringAsFixed(3)}';
+      grouped.putIfAbsent(key, () => []).add(p);
+    }
+    final Map<String, NLatLng> result = {};
+    for (final group in grouped.values) {
+      // boardId로 정렬해 재진입 시에도 동일한 배치(jitter 순서 안정화).
+      group.sort((a, b) => a.boardId.compareTo(b.boardId));
+      for (int i = 0; i < group.length; i++) {
+        final p = group[i];
+        if (group.length == 1) {
+          result[p.boardId] = NLatLng(p.latitude!, p.longitude!);
+        } else {
+          final angle = 2 * pi * i / group.length;
+          result[p.boardId] = NLatLng(
+            p.latitude! + jitterRadius * cos(angle),
+            p.longitude! + jitterRadius * sin(angle),
+          );
+        }
+      }
+    }
+    return result;
+  }
 
   /// 클러스터 마커 빌더 — "이 지역에 N개"를 보여주는 카운트 버블.
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
@@ -209,16 +247,30 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     } else {
       _composeClusterBubble(info.size, clusterMarker);
     }
-    // 클러스터 탭 → 해당 위치로 줌인(16+에서 클러스터 풀려 개별 마커로).
-    final pos = child?.position;
-    if (pos != null) {
+    // 클러스터 탭 → 클러스터 중심으로 fly 줌인(16+). 줌 16부터 클러스터링이 풀리며
+    // jitter된 동일 좌표 글들이 개별 마커로 펼쳐진다. (메인 지도와 동일 동선)
+    final children = info.children;
+    if (children.isNotEmpty) {
+      double sumLat = 0, sumLng = 0;
+      for (final c in children) {
+        sumLat += c.position.latitude;
+        sumLng += c.position.longitude;
+      }
+      final center =
+          NLatLng(sumLat / children.length, sumLng / children.length);
       clusterMarker.setOnTapListener((_) async {
-        final cam = await _mapController?.getCameraPosition();
-        final nextZoom =
-            (cam != null && cam.zoom < 16) ? 16.0 : (cam?.zoom ?? 16.0);
-        await _mapController?.updateCamera(
-          NCameraUpdate.scrollAndZoomTo(target: pos, zoom: nextZoom),
-        );
+        final controller = _mapController;
+        if (controller == null) return;
+        final cam = await controller.getCameraPosition();
+        final nextZoom = cam.zoom < 16 ? 16.0 : cam.zoom;
+        final update = NCameraUpdate.scrollAndZoomTo(
+          target: center,
+          zoom: nextZoom,
+        )..setAnimation(
+            animation: NCameraAnimation.fly,
+            duration: const Duration(milliseconds: 600),
+          );
+        await controller.updateCamera(update);
       });
     }
   }
