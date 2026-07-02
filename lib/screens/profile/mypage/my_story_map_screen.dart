@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
@@ -37,6 +40,20 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   // 클러스터 빌더 재사용: 마커 id → 개별 아이콘(size==1 복원), 카운트 → 버블 아이콘.
   final Map<String, NOverlayImage> _markerIcons = {};
   final Map<int, NOverlayImage> _clusterBubbleCache = {};
+  // count별 합성 중인 Future — 동일 이미지 동시 합성(쓰기 경합) 방지.
+  final Map<int, Future<NOverlayImage>> _clusterBubbleInflight = {};
+
+  // 텍스트(사진 없는) 마커의 점↔카드 전환 상태 — 메인 지도와 동일한 히스테리시스.
+  bool _textCardMode = false;
+  final Map<String, NClusterableMarker> _textMarkerRefs = {};
+  final Map<String, BoardPost> _textMarkerPosts = {};
+  final Map<String, NOverlayImage> _textCardIconCache = {};
+
+  // 선택(탭)된 마커 z-index 부스트 — 메인 지도와 동일 동작.
+  static const int _selectedMarkerZIndex = 999999999;
+  static const int _baseMarkerZIndex = 200000; // NMarker 기본 globalZIndex
+  final Map<String, NClusterableMarker> _markerRefs = {};
+  String? _highlightedMarkerId;
 
   List<BoardPost> _posts = [];
   UserInfoModel? _userInfo;
@@ -147,37 +164,63 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       }
 
       final id = 'mystory_${p.boardId}';
-      _markerIcons[id] = icon; // 클러스터 빌더 size==1 복원용
+      final bool isText = p.fileInfoList.isEmpty;
+      _markerIcons[id] = icon; // 클러스터 빌더 size==1 복원용 (텍스트는 점 아이콘)
       final title = displayTitle(p.title, p.content);
+      final position = jittered[p.boardId]!;
       final marker = NClusterableMarker(
         id: id,
-        position: jittered[p.boardId]!,
+        position: position,
         icon: icon,
-        size: const Size(32, 32),
-        tags: {'title': title, 'boardId': p.boardId},
+        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+        tags: {'title': title, 'boardId': p.boardId, 'isText': isText ? '1' : '0'},
         caption: NOverlayCaption(
           text: _markerCaption(title),
-          textSize: 13,
+          textSize: _markerCaptionTextSize,
           color: colors.textPrimary,
           haloColor: colors.background,
         ),
       );
+      _markerRefs[id] = marker;
+      if (isText) {
+        _textMarkerRefs[id] = marker;
+        _textMarkerPosts[id] = p;
+      }
       // 클러스터링 비활성 줌(16+)에서 단일 마커 탭.
-      marker.setOnTapListener((NClusterableMarker _) {
-        if (mounted) showPostDetailSheet(context, p.boardId);
+      // 텍스트 마커는 카드 줌 미만이면 카드가 펼쳐지도록 줌인만 (메인 지도와 동일).
+      marker.setOnTapListener((NClusterableMarker _) async {
+        if (!mounted) return;
+        if (isText) {
+          final cam = await _mapController?.getCameraPosition();
+          if (cam != null && cam.zoom < kTextCardEnterZoom) {
+            await _zoomToTextCard(position);
+            return;
+          }
+        }
+        if (!mounted) return;
+        // 탭한 마커를 최상위로 부스트 + 시트에 안 가리는 위치로 카메라 이동.
+        // 카메라는 시트와 동시에 움직이도록 await 하지 않는다.
+        _applySelectionHighlight(id);
+        unawaited(_moveCameraToMarker(position));
+        await showPostDetailSheet(context, p.boardId);
+        if (mounted) _applySelectionHighlight(null);
       });
       markers.add(marker);
     }
     if (!mounted) return;
-    await controller.addOverlayAll(markers);
+    // 카메라를 먼저 최종 위치로 이동시킨 뒤 마커를 얹는다.
+    // 마커를 먼저 그리면 fit 과정에서 줌이 바뀌며 클러스터 재병합이
+    // 그대로 보여 매끄럽지 않다. (즉시 이동 — 마커 없는 상태라 티 안 남)
     await _fitCamera(
       controller,
       located.map((p) => jittered[p.boardId]!).toList(),
     );
+    if (!mounted) return;
+    await controller.addOverlayAll(markers);
   }
 
-  String _markerCaption(String title) =>
-      title.length > 12 ? '${title.substring(0, 12)}…' : title;
+  // 공용 헬퍼 위임 — 메인 지도와 동일한 글자 수 제한.
+  String _markerCaption(String title) => truncateMarkerCaption(title);
 
   /// 같은 좌표에 뭉친 글을 원형으로 흩뿌린 표시 좌표 맵(boardId → 좌표)을 만든다.
   /// 단일 좌표 그룹은 원좌표 그대로 둔다. 메인 지도(`map_naver.dart`)와 동일 방식 —
@@ -221,18 +264,42 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       final icon = child != null ? _markerIcons[child.id] : null;
       if (icon != null) {
         clusterMarker.setIcon(icon);
-        clusterMarker.setSize(const Size(32, 32));
+        clusterMarker.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
       }
       clusterMarker.setCaption(NOverlayCaption(
         text: _markerCaption((child?.tags['title'] ?? '').trim()),
-        textSize: 13,
+        textSize: _markerCaptionTextSize,
         color: colors.textPrimary,
         haloColor: colors.background,
       ));
       final boardId = child?.tags['boardId'];
       if (boardId != null) {
-        clusterMarker.setOnTapListener((_) {
-          if (mounted) showPostDetailSheet(context, boardId);
+        final bool isText = (child?.tags['isText'] ?? '0') == '1';
+        final NLatLng? pos = child?.position;
+        final String? markerId = child?.id;
+        clusterMarker.setOnTapListener((_) async {
+          if (!mounted) return;
+          // 텍스트 마커: 카드 줌 미만이면 줌인해 카드로 펼침 (메인 지도와 동일).
+          if (isText && pos != null) {
+            final cam = await _mapController?.getCameraPosition();
+            if (cam != null && cam.zoom < kTextCardEnterZoom) {
+              await _zoomToTextCard(pos);
+              return;
+            }
+          }
+          if (!mounted) return;
+          // 클러스터 줌에선 화면에 보이는 건 NClusterMarker라 둘 다 부스트.
+          if (markerId != null) _applySelectionHighlight(markerId);
+          try {
+            clusterMarker.setGlobalZIndex(_selectedMarkerZIndex);
+          } catch (_) {}
+          if (pos != null) unawaited(_moveCameraToMarker(pos));
+          await showPostDetailSheet(context, boardId);
+          if (!mounted) return;
+          _applySelectionHighlight(null);
+          try {
+            clusterMarker.setGlobalZIndex(_baseMarkerZIndex);
+          } catch (_) {}
         });
       }
       return;
@@ -243,7 +310,7 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     final cached = _clusterBubbleCache[info.size];
     if (cached != null) {
       clusterMarker.setIcon(cached);
-      clusterMarker.setSize(const Size(46, 46));
+      clusterMarker.setSize(const Size(kClusterBubbleSize, kClusterBubbleSize));
     } else {
       _composeClusterBubble(info.size, clusterMarker);
     }
@@ -262,7 +329,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         final controller = _mapController;
         if (controller == null) return;
         final cam = await controller.getCameraPosition();
-        final nextZoom = cam.zoom < 16 ? 16.0 : cam.zoom;
+        // 메인 지도(_clusterExpandZoom)와 동일 — 16은 클러스터가 겨우 풀리는
+        // 수준이라 jitter 마커가 겹쳐 보임. 17로 당겨 개별 구분되게 한다.
+        final nextZoom = cam.zoom < _clusterExpandZoom
+            ? _clusterExpandZoom
+            : cam.zoom;
         final update = NCameraUpdate.scrollAndZoomTo(
           target: center,
           zoom: nextZoom,
@@ -279,25 +350,191 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       int count, NClusterMarker clusterMarker) async {
     if (!mounted) return;
     final colors = AppColors.of(context);
-    final icon = await NOverlayImage.fromWidget(
-      context: context,
-      size: const Size(46, 46),
-      widget: _ClusterBubble(count: count, color: colors.primary),
+    // 같은 count 버블은 동일 PNG → 플러그인이 같은 캐시 파일에 저장한다.
+    // 동시에 두 번 합성하면 같은 파일에 쓰기 경합이 나 0바이트 파일이 생기고
+    // iOS 크래시로 이어진다(플러그인 이슈 #251). in-flight Future를 공유해
+    // count당 합성이 한 번만 일어나게 한다.
+    final future = _clusterBubbleInflight.putIfAbsent(
+      count,
+      () => NOverlayImage.fromWidget(
+        context: context,
+        size: const Size(kClusterBubbleSize, kClusterBubbleSize),
+        widget: _ClusterBubble(count: count, color: colors.primary),
+      ),
     );
+    final icon = await future;
+    if (!mounted) return;
     _clusterBubbleCache[count] = icon;
     clusterMarker.setIcon(icon);
-    clusterMarker.setSize(const Size(46, 46));
+    clusterMarker.setSize(const Size(kClusterBubbleSize, kClusterBubbleSize));
+  }
+
+  /// 마커가 화면 세로 22% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
+  /// 상세 시트가 하단을 덮어도 마커가 보이는 위치. 줌이 [_clusterExpandZoom]
+  /// 미만이면 함께 줌인 — 메인 지도(_moveCameraToMarker)와 동일 알고리즘.
+  Future<void> _moveCameraToMarker(NLatLng markerPos) async {
+    final controller = _mapController;
+    if (controller == null || !mounted) return;
+    final size = MediaQuery.sizeOf(context);
+
+    final camera = await controller.getCameraPosition();
+    final currentZoom = camera.zoom;
+    final targetZoom =
+        currentZoom < _clusterExpandZoom ? _clusterExpandZoom : currentZoom;
+
+    // 카메라 target을 (markerPos + (cameraTarget - desiredCoord))로 두면
+    // 새 카메라에서 markerPos가 원하는 픽셀에 매핑된다. 줌이 바뀌면 오프셋을
+    // 2^(currentZoom - targetZoom) 비율로 스케일.
+    final desiredPixel = NPoint(size.width / 2, size.height * 0.22);
+    final desiredCoord = await controller.screenLocationToLatLng(desiredPixel);
+
+    var dLat = camera.target.latitude - desiredCoord.latitude;
+    var dLng = camera.target.longitude - desiredCoord.longitude;
+    if (targetZoom != currentZoom) {
+      final scale = pow(2, currentZoom - targetZoom).toDouble();
+      dLat *= scale;
+      dLng *= scale;
+    }
+
+    final adjustedTarget = NLatLng(
+      markerPos.latitude + dLat,
+      markerPos.longitude + dLng,
+    );
+    final update = NCameraUpdate.scrollAndZoomTo(
+      target: adjustedTarget,
+      zoom: targetZoom,
+    )..setAnimation(
+        animation: NCameraAnimation.fly,
+        duration: const Duration(milliseconds: 600),
+      );
+    await controller.updateCamera(update);
+  }
+
+  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트. [markerId]가 null이면
+  /// 부스트만 해제. 메인 지도(_applySelectionHighlight)와 동일한 방식.
+  void _applySelectionHighlight(String? markerId) {
+    final prevId = _highlightedMarkerId;
+    if (prevId != null && prevId != markerId) {
+      final prev = _markerRefs[prevId];
+      if (prev != null) {
+        try {
+          prev.setGlobalZIndex(_baseMarkerZIndex);
+        } catch (_) {/* 오버레이가 이미 제거된 경우 무시 */}
+      }
+    }
+    _highlightedMarkerId = markerId;
+    if (markerId != null) {
+      final marker = _markerRefs[markerId];
+      if (marker != null) {
+        try {
+          marker.setGlobalZIndex(_selectedMarkerZIndex);
+        } catch (_) {/* same */}
+      }
+    }
+  }
+
+  // ── 텍스트 마커 점↔카드 전환 (메인 지도와 동일 동작) ──────────────────
+
+  /// 텍스트 마커/클러스터 탭 시 카드가 펼쳐지도록 줌인.
+  Future<void> _zoomToTextCard(NLatLng target) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    final update = NCameraUpdate.scrollAndZoomTo(
+      target: target,
+      zoom: kTextCardCameraZoom,
+    )..setAnimation(
+        animation: NCameraAnimation.fly,
+        duration: const Duration(milliseconds: 600),
+      );
+    await controller.updateCamera(update);
+  }
+
+  /// 카메라 정지 시 텍스트 카드 모드 전환 판단 — 히스테리시스로 경계 깜빡임 방지.
+  Future<void> _onCameraIdle() async {
+    final controller = _mapController;
+    if (controller == null || _textMarkerRefs.isEmpty) return;
+    final cam = await controller.getCameraPosition();
+    if (!mounted) return;
+    final bool next = _textCardMode
+        ? cam.zoom >= kTextCardExitZoom
+        : cam.zoom >= kTextCardEnterZoom;
+    if (next == _textCardMode) return;
+    _textCardMode = next;
+    await _applyTextCardMode(next);
+  }
+
+  /// 텍스트 마커 아이콘을 점↔카드로 일괄 교체.
+  /// 마커 재생성 없이 setIcon/setSize/setCaption만 갱신 — 깜빡임 최소화.
+  Future<void> _applyTextCardMode(bool cardMode) async {
+    if (!mounted) return;
+    final colors = AppColors.of(context);
+    for (final entry in _textMarkerRefs.entries) {
+      final id = entry.key;
+      final marker = entry.value;
+      final post = _textMarkerPosts[id];
+      if (post == null) continue;
+      try {
+        if (cardMode) {
+          final icon = _textCardIconCache[id] ?? await _buildTextCardIcon(post);
+          _textCardIconCache[id] = icon;
+          if (!mounted) return;
+          marker.setIcon(icon);
+          marker.setSize(kTextCardSize);
+          // 카드에 제목/본문 포함 → 하단 캡션 중복 방지.
+          marker.setCaption(const NOverlayCaption(text: ''));
+        } else {
+          final dot = _markerIcons[id];
+          if (dot != null) marker.setIcon(dot);
+          marker.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
+          marker.setCaption(NOverlayCaption(
+            text: _markerCaption(displayTitle(post.title, post.content)),
+            textSize: _markerCaptionTextSize,
+            color: colors.textPrimary,
+            haloColor: colors.background,
+          ));
+        }
+      } catch (_) {
+        // 오버레이가 네이티브에서 제거된 경우 등 — 개별 마커 실패는 무시.
+      }
+    }
+  }
+
+  /// 텍스트 글 줌인 카드 아이콘 — 꼬리 끝이 하단 중앙(anchor 0.5,1.0)에 오도록
+  /// bottomCenter 정렬. 제목 없으면 본문만 카드. (메인 지도와 동일 위젯)
+  Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
+    final String? title =
+        post.title.trim().isNotEmpty ? post.title.trim() : null;
+    return NOverlayImage.fromWidget(
+      context: context,
+      size: kTextCardSize,
+      widget: SizedBox(
+        width: kTextCardSize.width,
+        height: kTextCardSize.height,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: TextMarkerCard(title: title, body: post.content, maxLines: 2),
+        ),
+      ),
+    );
   }
 
   // 진입 시 overview 줌 상한. 클러스터링은 줌 15까지 동작하므로(16+는 펼침)
   // 이 값 이하에서 시작해야 "이 지역 N개" 묶음이 보인다.
   static const double _maxFitZoom = 13.0;
 
+  // 클러스터 탭 줌·캡션 폰트 — marker_constants.dart 공용 값 (메인 지도와 동일).
+  static const double _clusterExpandZoom = kClusterExpandZoom;
+  static const double _markerCaptionTextSize = kMarkerCaptionTextSize;
+
+  /// 마커 추가 **전에** 호출된다 — 즉시 이동(무애니메이션)이라 빈 지도에서
+  /// 카메라가 움직여도 사용자에게는 처음부터 최종 위치로 보인다.
   Future<void> _fitCamera(
       NaverMapController controller, List<NLatLng> points) async {
     if (points.length == 1) {
       await controller.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: points.first, zoom: _maxFitZoom),
+        NCameraUpdate.scrollAndZoomTo(target: points.first, zoom: _maxFitZoom)
+          ..setAnimation(
+              animation: NCameraAnimation.none, duration: Duration.zero),
       );
       return;
     }
@@ -313,13 +550,16 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
           left: 56,
           right: 56,
         ),
-      ),
+      )..setAnimation(
+          animation: NCameraAnimation.none, duration: Duration.zero),
     );
     // fitBounds가 너무 깊게 줌인하면 상한으로 당긴다.
     final cam = await controller.getCameraPosition();
     if (cam.zoom > _maxFitZoom) {
       await controller.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: cam.target, zoom: _maxFitZoom),
+        NCameraUpdate.scrollAndZoomTo(target: cam.target, zoom: _maxFitZoom)
+          ..setAnimation(
+              animation: NCameraAnimation.none, duration: Duration.zero),
       );
     }
   }
@@ -340,22 +580,23 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
               ),
               mapType: isDark ? NMapType.navi : NMapType.basic,
               nightModeEnable: isDark,
+              // POI 심볼 축소 — 공용 상수 (메인 지도와 동일, 캡션 착시 방지).
+              symbolScale: kMapSymbolScale,
               consumeSymbolTapEvents: false,
             ),
             clusterOptions: NaverMapClusteringOptions(
               // 줌 15까지 묶고 16+ 부터 개별 마커로 펼침.
               enableZoomRange: const NInclusiveRange(0, 15),
               animationDuration: Duration.zero,
+              // 병합 거리 — 공용 상수 (메인 지도와 동일).
               mergeStrategy: const NClusterMergeStrategy(
-                willMergedScreenDistance: {
-                  NInclusiveRange(0, 12): 100.0,
-                  NInclusiveRange(13, 14): 80.0,
-                  NInclusiveRange(15, 15): 60.0,
-                },
+                willMergedScreenDistance: kClusterMergeDistances,
               ),
               clusterMarkerBuilder: _buildClusterMarker,
             ),
             onMapReady: _onMapReady,
+            // 텍스트 마커 점↔카드 전환 감지 (메인 지도와 동일).
+            onCameraIdle: _onCameraIdle,
           ),
           Positioned(
             top: 0,
@@ -518,10 +759,26 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     );
   }
 
+  /// 리스트에서 글 탭 — 해당 마커가 있으면(위치 있는 내 글) 마커 탭과 동일하게
+  /// 카메라 이동 + 최상위 부스트 후 상세 시트. 마커 없으면(위치 없는 글,
+  /// 좋아요한 글) 시트만 연다.
+  Future<void> _onListRowTap(BoardPost post) async {
+    final id = 'mystory_${post.boardId}';
+    final marker = _markerRefs[id];
+    if (marker == null) {
+      await showPostDetailSheet(context, post.boardId);
+      return;
+    }
+    _applySelectionHighlight(id);
+    unawaited(_moveCameraToMarker(marker.position));
+    await showPostDetailSheet(context, post.boardId);
+    if (mounted) _applySelectionHighlight(null);
+  }
+
   Widget _buildListRow(AppColors colors, BoardPost post) {
     final hasImage = post.fileInfoList.isNotEmpty;
     return GestureDetector(
-      onTap: () => showPostDetailSheet(context, post.boardId),
+      onTap: () => _onListRowTap(post),
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),

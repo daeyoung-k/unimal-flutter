@@ -31,22 +31,49 @@ class ImageService {
     final paint = Paint();
     const double size = 200.0;
 
-    final center = Offset(size / 2, size / 2);
-    const double borderWidth = 8.0;
-    final outerRadius = size / 2;
-    final innerRadius = outerRadius - borderWidth;
+    // 핀(티어드롭) 프레임 — 원형 썸네일이 지도 기본 POI 심볼과 구분이 안 된다는
+    // 피드백 반영. 흰 테두리 머리 원 + 아래 뾰족 꼬리로 "우리 마커" 형태를 만든다.
+    // 마커 anchor 기본값(0.5, 1.0) 기준으로 꼬리 끝이 지도 좌표를 가리킨다.
+    // 200x200 규격 유지 → addClusterBadge(+N 뱃지) 합성 그대로 호환.
+    const Offset headCenter = Offset(100, 82);
+    const double headRadius = 82.0;
+    const Offset tailTip = Offset(100, 198);
+    const double tailHalfAngle = 30 * math.pi / 180;
+    const double borderWidth = 10.0;
 
-    // 흰색 테두리 원
-    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.white);
+    final leftAngle = math.pi / 2 + tailHalfAngle;
+    final leftAnchor = Offset(
+      headCenter.dx + headRadius * math.cos(leftAngle),
+      headCenter.dy + headRadius * math.sin(leftAngle),
+    );
+    final pinPath = Path()
+      ..moveTo(leftAnchor.dx, leftAnchor.dy)
+      ..arcTo(
+        Rect.fromCircle(center: headCenter, radius: headRadius),
+        leftAngle,
+        2 * math.pi - 2 * tailHalfAngle,
+        false,
+      )
+      ..lineTo(tailTip.dx, tailTip.dy)
+      ..close();
 
-    // 이미지를 내부 원에 클립하여 그리기
+    canvas.drawShadow(pinPath, Colors.black.withValues(alpha: 0.25), 4, false);
+    canvas.drawPath(pinPath, Paint()..color = Colors.white);
+
+    // 사진을 머리 원 내부에 클립하여 그리기
+    const double innerRadius = headRadius - borderWidth;
     final clipPath = Path()
-      ..addOval(Rect.fromCircle(center: center, radius: innerRadius));
+      ..addOval(Rect.fromCircle(center: headCenter, radius: innerRadius));
     canvas.clipPath(clipPath);
 
-    final Rect dstRect = Rect.fromCircle(center: center, radius: innerRadius);
+    final Rect dstRect =
+        Rect.fromCircle(center: headCenter, radius: innerRadius);
+    // 원본 중앙 정사각형 크롭 — 비정사각 사진이 원 안에서 찌그러지지 않게 한다.
+    final double srcW = loadedImage.width.toDouble();
+    final double srcH = loadedImage.height.toDouble();
+    final double srcSide = math.min(srcW, srcH);
     final Rect srcRect = Rect.fromLTWH(
-        0, 0, loadedImage.width.toDouble(), loadedImage.height.toDouble());
+        (srcW - srcSide) / 2, (srcH - srcSide) / 2, srcSide, srcSide);
 
     canvas.drawImageRect(loadedImage, srcRect, dstRect, paint);
 

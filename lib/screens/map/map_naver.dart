@@ -7,6 +7,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
+import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/image/image_service.dart';
@@ -79,7 +80,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 주변 스토리 조회 버튼 관련 상태
   bool _mapInitialized = false;
   NLatLng? _lastQueriedTarget;
-  double _lastQueriedZoom = 15;
+  double _lastQueriedZoom = _defaultEntryZoom;
 
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
@@ -93,20 +94,26 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   static const _dismissThreshold = 80.0;
   bool _searchMarkerAdded = false;
 
-  // 마커 크기 — 한 곳에서 조절
-  static const _normalMarkerSize = 32.0; // 일반(단일) 마커
-  static const _clusterMarkerSize = 42.0; // 클러스터(2개 이상 합쳐진) 마커
-  // 텍스트 카드 마커 크기 (fromWidget size 와 NMarker size 를 동일하게 — 스케일 왜곡 방지)
-  // 줌아웃 점은 사진 마커처럼 _normalMarkerSize 사용(바이트 이미지 200x200 → 스케일).
-  static const Size _textCardSize = Size(204, 110); // 줌인 카드 (꼬리 끝=하단 중앙)
-  // 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 17.5).
-  static const double _textCardCameraZoom = 17.5;
-  // 텍스트 마커 표현(점↔카드) 전환 히스테리시스.
-  // enter 이상으로 줌인하면 카드로, 그 후 exit 미만으로 줌아웃해야 점으로 복귀.
-  // 단일 임계값(17.5)을 쓰면 파킹 줌과 경계가 겹쳐 카메라 미세 흔들림에 깜빡였다.
-  // enter(17.3)는 파킹 줌(17.5)보다 살짝 낮춰 fly 언더슈트(17.49)에도 카드 진입 보장.
-  static const double _textCardEnterZoom = 17.3;
-  static const double _textCardExitZoom = 16.8;
+  // 마커 크기·캡션 — marker_constants.dart 공용 값 (내지도와 반드시 동일).
+  static const _normalMarkerSize = kNormalMarkerSize; // 일반(단일) 마커
+  static const _clusterMarkerSize = kClusterMarkerSize; // 클러스터 마커
+  static const double _markerCaptionTextSize = kMarkerCaptionTextSize;
+  // 텍스트 카드 크기/줌 — marker_constants.dart 공용 값 (내지도와 동일).
+  static const Size _textCardSize = kTextCardSize;
+  static const double _textCardCameraZoom = kTextCardCameraZoom;
+  static const double _textCardEnterZoom = kTextCardEnterZoom;
+  static const double _textCardExitZoom = kTextCardExitZoom;
+  // 이미지 클러스터 탭 시 줌인 목표 — 공용 상수 (내지도와 동일).
+  // 단일 마커 선택(_selectMarker), 다른 화면발 위치 이동(_applyPendingLocation)도
+  // 같은 깊이로 통일.
+  static const double _clusterExpandZoom = kClusterExpandZoom;
+  // 장소(검색 결과·POI 심볼) 포커스 줌 — 스토리 마커가 아닌 장소 확인용이라
+  // 마커 선택보다 얕게 유지.
+  static const double _placeFocusZoom = 16.0;
+  // 기본 진입 줌. 14로 낮춰봤으나 넓은 범위가 들어오며 먼 마커끼리
+  // 클러스터로 묶여 보이는 문제가 있어 15로 유지 — 병합 거리 축소(40dp)와
+  // 조합해 "가까운 것만 묶임"이 되도록 한다.
+  static const double _defaultEntryZoom = 16.5;
 
   // 백엔드 ZoomLevel enum과 동기화. postLimit = 해당 줌에서 서버가 반환하는 최대 게시글 수.
   static const _zoomPostLimit = {
@@ -230,12 +237,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final lng = nav.pendingMapLng.value;
     if (lat == null || lng == null) return;
     debugPrint('[map] _applyPendingLocation → (${lat.toStringAsFixed(5)}, '
-        '${lng.toStringAsFixed(5)}) zoom=16');
+        '${lng.toStringAsFixed(5)}) zoom=$_clusterExpandZoom');
     if (_mapController != null) {
       _mapController!.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: NLatLng(lat, lng), zoom: 16),
+        NCameraUpdate.scrollAndZoomTo(
+            target: NLatLng(lat, lng), zoom: _clusterExpandZoom),
       );
-      _loadMapMarkers(lat, lng, 16);
+      _loadMapMarkers(lat, lng, _clusterExpandZoom.round());
     }
     nav.pendingMapLat.value = null;
     nav.pendingMapLng.value = null;
@@ -342,22 +350,25 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (!mounted) return;
       if (position != null) {
         debugPrint('[map] updateCamera → (${position.latitude.toStringAsFixed(5)}, '
-            '${position.longitude.toStringAsFixed(5)}) zoom=15');
+            '${position.longitude.toStringAsFixed(5)}) zoom=$_defaultEntryZoom');
         _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(position.latitude, position.longitude),
-            zoom: 15,
+            zoom: _defaultEntryZoom,
           ),
         );
-        _loadMapMarkers(position.latitude, position.longitude, 15);
+        _loadMapMarkers(
+            position.latitude, position.longitude, _defaultEntryZoom.round());
       } else {
         debugPrint('[map] fallback → seoulCityHall');
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude,
+            _defaultEntryZoom.round());
       }
     } catch (e) {
       debugPrint('[map] _moveToCurrentLocationOrDefault outer catch: $e → fallback');
       if (mounted) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude,
+            _defaultEntryZoom.round());
       }
     }
   }
@@ -602,7 +613,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         caption: NOverlayCaption(
           // 카드 모드는 캡션 비움(카드에 제목 포함). 그 외엔 제목 캡션 표시.
           text: suppressCaption ? '' : _truncateMarkerTitle(derivedTitle),
-          textSize: 13,
+          textSize: _markerCaptionTextSize,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
         ),
@@ -703,7 +714,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final position = NLatLng(result.lat, result.lng);
 
     _mapController?.updateCamera(
-      NCameraUpdate.scrollAndZoomTo(target: position, zoom: 16),
+      NCameraUpdate.scrollAndZoomTo(target: position, zoom: _placeFocusZoom),
     );
 
     _addSearchMarker(result, position);
@@ -761,7 +772,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
         target: symbolInfo.position,
-        zoom: 16,
+        zoom: _placeFocusZoom,
       ),
     );
 
@@ -824,8 +835,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
   }
 
-  String _truncateMarkerTitle(String title) =>
-      title.length > 10 ? '${title.substring(0, 10)}...' : title;
+  // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
+  String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
 
   /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
   /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
@@ -974,7 +985,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final title = (topTitle ?? '').trim();
     clusterMarker.setCaption(NOverlayCaption(
       text: title.isEmpty ? '' : _truncateMarkerTitle(title),
-      textSize: 13,
+      textSize: _markerCaptionTextSize,
       color: AppColors.of(context).textPrimary,
       haloColor: AppColors.of(context).background,
     ));
@@ -1005,9 +1016,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       });
     }
 
-    // 클러스터(size>1) 탭 → 줌 16+ 자동 확대. 줌 16부터 클러스터링이 비활성
-    // 이므로 자연스럽게 풀리며, 사용자가 펼쳐진 jitter 마커를 한 번 더 탭해서
-    // 카드/스트립으로 진입.
+    // 클러스터(size>1) 탭 → 줌 17 자동 확대. 줌 16부터 클러스터링이 비활성
+    // 이므로 풀리고, 17이면 jitter 마커 간격이 충분히 벌어진다. 사용자가
+    // 펼쳐진 마커를 한 번 더 탭해서 카드/스트립으로 진입.
     if (info.size > 1 && topPosition != null) {
       final target = topPosition;
       final bool isTxt = topIsText;
@@ -1015,10 +1026,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         if (_mapController == null) return;
         _focusNode.unfocus();
         final camera = await _mapController!.getCameraPosition();
-        // 텍스트 클러스터 → 17.5(카드). 이미지 클러스터 → 기존(16+ 확대) 유지.
+        // 텍스트 클러스터 → 17.5(카드). 이미지 클러스터 → 17.
+        // 16은 클러스터가 겨우 풀리는 수준이라 jitter(약 17m) 마커들이
+        // 겹쳐 보임 — 17이면 간격이 2배로 벌어져 개별 구분 가능.
         final nextZoom = isTxt
             ? _textCardCameraZoom
-            : (camera.zoom < 16 ? 16.0 : camera.zoom);
+            : (camera.zoom < _clusterExpandZoom
+                ? _clusterExpandZoom
+                : camera.zoom);
         final update = NCameraUpdate.scrollAndZoomTo(
           target: target,
           zoom: nextZoom,
@@ -1122,7 +1137,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     await _mapController!.updateCamera(update);
   }
 
-  /// 주어진 인덱스의 마커를 선택: 카메라 이동(필요시 줌16) + z-index 부스트 + 스트립 위치 갱신.
+  /// 주어진 인덱스의 마커를 선택: 카메라 이동(필요시 kClusterExpandZoom까지 줌인)
+  /// + z-index 부스트 + 스트립 위치 갱신.
   /// 마커 탭, 스트립 탭, 카드 좌우 스와이프 등 모든 그룹 전환 경로의 공통 진입점.
   Future<void> _selectMarker(int idx) async {
     if (idx < 0 || idx >= _postGroups.length) return;
@@ -1132,7 +1148,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         ?? NLatLng(post.latitude, post.longitude);
 
     final camera = await _mapController!.getCameraPosition();
-    final targetZoom = camera.zoom < 16 ? 16.0 : camera.zoom;
+    // 클러스터 탭과 동일한 깊이(kClusterExpandZoom)로 — 어디서 탭하든 일관되게
+    // jitter 마커가 구분되는 줌까지 들어간다. 이미 더 깊으면 현재 줌 유지.
+    final targetZoom =
+        camera.zoom < _clusterExpandZoom ? _clusterExpandZoom : camera.zoom;
 
     setState(() {
       _searchResults = [];
@@ -1171,8 +1190,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           NaverMap(
             options: NaverMapViewOptions(
               contentPadding: safeAreaPadding,
-              initialCameraPosition: NCameraPosition(target: seoulCityHall, zoom: 15),
+              initialCameraPosition:
+                  NCameraPosition(target: seoulCityHall, zoom: _defaultEntryZoom),
               consumeSymbolTapEvents: true,
+              // 기본 지도 POI 심볼 축소 — 공용 상수 (모든 지도 화면 동일).
+              symbolScale: kMapSymbolScale,
               minZoom: 10,
               maxZoom: 20,
               // 다크모드일 때만 navi 타입 + 야간 모드 (라이브러리 한계: nightMode는 navi 전용)
@@ -1186,15 +1208,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               enableZoomRange: const NInclusiveRange(0, 15),
               // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
               animationDuration: Duration.zero,
+              // 병합 거리 — 공용 상수 (내지도와 동일).
               mergeStrategy: const NClusterMergeStrategy(
-                willMergedScreenDistance: {
-                  // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
-                  NInclusiveRange(10, 12): 100.0,
-                  // 줌 13-14 (구·동): 85dp (동네 단위 정리)
-                  NInclusiveRange(13, 14): 85.0,
-                  // 줌 15 (기본 진입): 가까운 마커만 60dp 이내로 묶음
-                  NInclusiveRange(15, 15): 60.0,
-                },
+                willMergedScreenDistance: kClusterMergeDistances,
               ),
               clusterMarkerBuilder: _buildClusterMarker,
             ),
