@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -28,6 +31,21 @@ import 'package:unimal/state/state_init.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase가 초기화되어 있어야 하므로 여기서는 로깅만 수행
   // 실제 처리는 PushNotificationService에서 수행됩니다.
+}
+
+/// flutter_naver_map 이미지 캐시(fnm1_img) 삭제.
+/// 실패해도 앱 동작에는 지장 없으므로 로깅만 하고 넘어간다.
+Future<void> _clearNaverMapImageCache() async {
+  try {
+    final tmp = await getTemporaryDirectory();
+    final dir = Directory('${tmp.path}${Platform.pathSeparator}fnm1_img');
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+      debugPrint('[naverMap] 마커 이미지 캐시 정리 완료');
+    }
+  } catch (e) {
+    debugPrint('[naverMap] 마커 이미지 캐시 정리 실패(무시): $e');
+  }
 }
 
 Future<void> main() async {
@@ -68,6 +86,12 @@ Future<void> main() async {
   KakaoLoginService().kakaoInit();
   // 네이버 로그인 SDK 초기화
   NaverLoginService().naverInit();
+
+  // flutter_naver_map 마커 이미지 캐시 정리 — 플러그인이 마커 이미지를
+  // 임시 PNG 파일로 캐싱하는데, 쓰기 경합으로 0바이트 파일이 남으면 iOS
+  // 네이티브가 강제 언래핑하다 크래시한다(플러그인 이슈 #251, 1.4.4 미해결).
+  // 시작 시 캐시를 비워 깨진 파일이 재사용되지 않게 한다.
+  await _clearNaverMapImageCache();
 
   // 네이버 지도 초기화
   await NaverMapService().naverMapInit();

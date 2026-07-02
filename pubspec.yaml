@@ -60,6 +60,7 @@ dependencies:
   device_info_plus: ^10.1.0               # 디바이스 정보
   cached_network_image: ^3.4.1            # 이미지 디스크 캐싱
   flutter_naver_map: ^1.4.4               # 네이버 지도
+  path_provider: ^2.1.4                   # 캐시 디렉토리 접근 (네이버맵 이미지 캐시 정리용)
   google_mobile_ads: ^8.0.0               # AdMob 광고 (배너/네이티브/보상형)
 
   # The following adds the Cupertino Icons font to your application.
