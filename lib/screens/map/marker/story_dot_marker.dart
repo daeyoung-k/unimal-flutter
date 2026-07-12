@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/theme/app_colors.dart';
 
-/// 내 스토리 지도(미리보기 카드 · 전용 화면)의 공용 마커.
+/// 내 스토리 지도 미리보기(마이페이지 카드 · 우리지도 리스트)의 공용 도트 마커.
 ///
 /// 기본 네이버 핀 대신 화이트 링 + primary 채움의 원형 도트로 통일한다.
 /// 라이트/다크(navi) 지도 모두에서 화이트 링이 배경과 분리돼 잘 보인다.

@@ -1,74 +1,71 @@
-import 'package:flutter/material.dart';
-import 'dart:ui' as ui;
-import 'dart:async'; // Added for Completer
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
-class ImageService {
+import 'package:flutter/material.dart';
+import 'package:unimal/theme/app_colors.dart';
 
+/// 지도 마커 비트맵 팩토리 — 마커 이미지 합성을 한 곳에서 관리한다.
+///
+/// 기존 `service/image/image_service.dart`에 흩어져 있던 마커 합성 로직을
+/// 마커 시스템(`marker_constants.dart`)과 같은 폴더로 통합했다.
+/// 메인 지도(`map_naver.dart`)와 내지도(`my_story_map_screen.dart`)가 공유한다.
+///
+/// 색상 기본값은 `AppColors.light` 토큰이다. 마커 비트맵은 포스트 단위로
+/// 캐시되어 테마 전환에 실시간 반응하지 않으므로(기존 동작과 동일),
+/// 지도 라이트/다크 스타일 모두에서 잘 보이는 라이트 팔레트를 기본으로 쓴다.
+class MarkerImageFactory {
   Future<ImageStream> getImageStream(String url) async {
     final NetworkImage assetImage = NetworkImage(url);
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
     return stream;
   }
 
-  Future<Uint8List> createMarkerImage(ImageStream stream) async {
+  Future<ui.Image> _resolveImage(ImageStream stream) {
     final Completer<ui.Image> completer = Completer<ui.Image>();
-
     stream.addListener(ImageStreamListener(
       (ImageInfo info, bool _) {
         if (!completer.isCompleted) completer.complete(info.image);
       },
       onError: (exception, stackTrace) {
-        if (!completer.isCompleted) completer.completeError(exception, stackTrace);
+        if (!completer.isCompleted) {
+          completer.completeError(exception, stackTrace);
+        }
       },
     ));
+    return completer.future;
+  }
 
-    final loadedImage = await completer.future;
+  /// 사진 글 마커 — 흰 링 + 원형 썸네일 (기존 커스텀 마커, 2026-07 복귀).
+  ///
+  /// 한때 티어드롭 핀 프레임으로 바꿨으나(bae1eec) 원형으로 되돌렸다.
+  /// 핀 시절의 개선점은 유지: 원본 **중앙 정사각 크롭**으로 비정사각 사진이
+  /// 원 안에서 찌그러지지 않는다.
+  /// 200x200 규격 — [addClusterBadge](+N 뱃지) 합성을 그대로 탈 수 있다.
+  Future<Uint8List> createMarkerImage(ImageStream stream) async {
+    final loadedImage = await _resolveImage(stream);
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final paint = Paint();
     const double size = 200.0;
 
-    // 핀(티어드롭) 프레임 — 원형 썸네일이 지도 기본 POI 심볼과 구분이 안 된다는
-    // 피드백 반영. 흰 테두리 머리 원 + 아래 뾰족 꼬리로 "우리 마커" 형태를 만든다.
-    // 마커 anchor 기본값(0.5, 1.0) 기준으로 꼬리 끝이 지도 좌표를 가리킨다.
-    // 200x200 규격 유지 → addClusterBadge(+N 뱃지) 합성 그대로 호환.
-    const Offset headCenter = Offset(100, 82);
-    const double headRadius = 82.0;
-    const Offset tailTip = Offset(100, 198);
-    const double tailHalfAngle = 30 * math.pi / 180;
-    const double borderWidth = 10.0;
+    const center = Offset(size / 2, size / 2);
+    const double borderWidth = 8.0;
+    const double outerRadius = size / 2;
+    const double innerRadius = outerRadius - borderWidth;
 
-    final leftAngle = math.pi / 2 + tailHalfAngle;
-    final leftAnchor = Offset(
-      headCenter.dx + headRadius * math.cos(leftAngle),
-      headCenter.dy + headRadius * math.sin(leftAngle),
-    );
-    final pinPath = Path()
-      ..moveTo(leftAnchor.dx, leftAnchor.dy)
-      ..arcTo(
-        Rect.fromCircle(center: headCenter, radius: headRadius),
-        leftAngle,
-        2 * math.pi - 2 * tailHalfAngle,
-        false,
-      )
-      ..lineTo(tailTip.dx, tailTip.dy)
-      ..close();
+    // 흰색 테두리 원
+    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.white);
 
-    canvas.drawShadow(pinPath, Colors.black.withValues(alpha: 0.25), 4, false);
-    canvas.drawPath(pinPath, Paint()..color = Colors.white);
-
-    // 사진을 머리 원 내부에 클립하여 그리기
-    const double innerRadius = headRadius - borderWidth;
+    // 이미지를 내부 원에 클립하여 그리기
     final clipPath = Path()
-      ..addOval(Rect.fromCircle(center: headCenter, radius: innerRadius));
+      ..addOval(Rect.fromCircle(center: center, radius: innerRadius));
     canvas.clipPath(clipPath);
 
-    final Rect dstRect =
-        Rect.fromCircle(center: headCenter, radius: innerRadius);
-    // 원본 중앙 정사각형 크롭 — 비정사각 사진이 원 안에서 찌그러지지 않게 한다.
+    final Rect dstRect = Rect.fromCircle(center: center, radius: innerRadius);
+    // 원본 중앙 정사각형 크롭 — 비정사각 사진 왜곡 방지 (핀 시절 개선점 유지)
     final double srcW = loadedImage.width.toDouble();
     final double srcH = loadedImage.height.toDouble();
     final double srcSide = math.min(srcW, srcH);
@@ -85,8 +82,12 @@ class ImageService {
   }
 
   /// 마커 이미지 위에 우상단 +N 뱃지를 합성해 새 PNG bytes 반환.
-  /// 클러스터 마커용. base는 createMarkerImage 결과(200x200 가정).
-  Future<Uint8List> addClusterBadge(Uint8List baseBytes, int count) async {
+  /// 클러스터 마커용. base는 [createMarkerImage] 결과(200x200 가정).
+  Future<Uint8List> addClusterBadge(
+    Uint8List baseBytes,
+    int count, {
+    Color? badgeColor,
+  }) async {
     final codec = await ui.instantiateImageCodec(baseBytes);
     final frame = await codec.getNextFrame();
     final base = frame.image;
@@ -105,18 +106,18 @@ class ImageService {
 
     // 우상단 뱃지
     const double badgeRadius = 40.0;
-    final badgeCenter = Offset(size - badgeRadius, badgeRadius);
+    const badgeCenter = Offset(size - badgeRadius, badgeRadius);
     // 외곽 흰 테두리
     canvas.drawCircle(
       badgeCenter,
       badgeRadius + 4,
       Paint()..color = Colors.white,
     );
-    // 브랜드 푸른색 원 (선택 핀 마커와 동일 톤으로 통일)
+    // 브랜드 푸른색 원 (검색 핀 마커와 동일 톤으로 통일)
     canvas.drawCircle(
       badgeCenter,
       badgeRadius,
-      Paint()..color = const Color(0xFF3578E5),
+      Paint()..color = (badgeColor ?? AppColors.light.primary),
     );
     // +N 텍스트
     final tp = TextPainter(
@@ -147,10 +148,10 @@ class ImageService {
     return byteData!.buffer.asUint8List();
   }
 
-  /// 선택된 마커에 사용할 단색 푸른 핀 이미지를 만들어 PNG bytes 반환.
+  /// 검색 결과 위치 표시용 단색 푸른 핀 이미지를 만들어 PNG bytes 반환.
   /// 모양: 티어드롭(원형 머리 + 뾰족 꼬리). 가운데 작은 흰 점.
   /// 좌표 anchor = bottom-center(NPoint(0.5, 1.0))에 맞춰 꼬리 끝이 캔버스 맨 아래.
-  Future<Uint8List> createPinMarkerImage() async {
+  Future<Uint8List> createPinMarkerImage({Color? pinColor}) async {
     const double width = 200.0;
     const double height = 256.0;
     const Offset headCenter = Offset(100, 95);
@@ -158,7 +159,7 @@ class ImageService {
     const Offset tailTip = Offset(100, 252);
     // 머리 원의 수직 아래 기준 좌우 각도. 35도면 꼬리 폭이 적당.
     const double tailHalfAngle = 35 * math.pi / 180;
-    const Color pinColor = Color(0xFF3578E5);
+    final Color color = pinColor ?? AppColors.light.primary;
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -183,7 +184,7 @@ class ImageService {
       ..close();
 
     canvas.drawShadow(pinPath, Colors.black.withValues(alpha: 0.25), 4, false);
-    canvas.drawPath(pinPath, Paint()..color = pinColor);
+    canvas.drawPath(pinPath, Paint()..color = color);
     canvas.drawPath(
       pinPath,
       Paint()
@@ -201,16 +202,16 @@ class ImageService {
   }
 
   /// 텍스트 전용(사진 없는) 글의 줌아웃 마커 이미지를 PNG bytes 로 생성.
-  /// 사진 마커(createMarkerImage)와 동일한 200x200 규격이라 addClusterBadge
+  /// 사진 마커([createMarkerImage])와 동일한 200x200 규격이라 [addClusterBadge]
   /// 합성(+N 뱃지)을 그대로 탈 수 있다.
   /// 모양: 작은 "말풍선"(둥근 본체 + 아래 꼬리) — 카드(줌인)와 같은 패밀리.
   /// 꼬리 끝이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
   /// 안에는 본문을 뜻하는 흰 줄 3개(왼쪽 정렬: 길게-길게-짧게).
-  Future<Uint8List> createTextDotImage() async {
+  Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const double size = 200.0;
-    const Color bubbleBlue = Color(0xFF4D91FF); // app_colors primaryStrong
+    final Color bubbleBlue = bubbleColor ?? AppColors.light.primaryStrong;
 
     // 말풍선 외곽선 (본체 + 꼬리, 하나의 연속 path → 이음새 없음)
     const double left = 22, top = 12, right = 178, bodyBottom = 150, r = 34;

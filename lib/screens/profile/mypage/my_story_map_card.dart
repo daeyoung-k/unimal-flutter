@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
-import 'package:unimal/screens/profile/mypage/story_marker.dart';
+import 'package:unimal/screens/map/marker/story_dot_marker.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/theme/app_colors.dart';
 

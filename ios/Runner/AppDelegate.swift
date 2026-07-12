@@ -1,6 +1,5 @@
 import Flutter
 import UIKit
-import GoogleMaps
 import NaverThirdPartyLogin
 
 @main
@@ -9,7 +8,6 @@ import NaverThirdPartyLogin
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    GMSServices.provideAPIKey(Storage().googleMapsApiKey)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

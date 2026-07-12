@@ -19,6 +19,14 @@ const double kNormalMarkerSize = 50.0;
 /// 클러스터(2개 이상) 마커 표시 크기 — 메인 지도 썸네일+뱃지 스타일.
 const double kClusterMarkerSize = 58.0;
 
+/// 선택된 사진 마커 확대 배율.
+///
+/// 선택 표현은 z-index 부스트 + setSize 확대만 사용한다. 아이콘 재합성
+/// (링 오버레이 등)은 iOS 마커 이미지 캐시 경합 크래시 이력 때문에 배제 —
+/// setSize는 비트맵을 다시 만들지 않아 캐시/경합 리스크가 없다.
+/// 텍스트 카드 마커(가변 크기)에는 적용하지 않는다.
+const double kSelectedMarkerScale = 1.18;
+
 /// 내지도 클러스터 카운트 버블 크기.
 const double kClusterBubbleSize = 46.0;
 

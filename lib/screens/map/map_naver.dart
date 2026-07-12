@@ -10,7 +10,7 @@ import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/service/board/board_api_service.dart';
-import 'package:unimal/service/image/image_service.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
@@ -27,7 +27,7 @@ class MapNaverScreens extends StatefulWidget {
 class _MapNaverScreensState extends State<MapNaverScreens>
     with WidgetsBindingObserver {
   NaverMapController? _mapController;
-  final ImageService _imageService = ImageService();
+  final MarkerImageFactory _markerImageFactory = MarkerImageFactory();
   final NaverSearchService _searchService = NaverSearchService();
   final BoardApiService _boardApiService = BoardApiService();
   final List<String> _mapMarkerIds = [];
@@ -556,8 +556,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         // ── 사진 글: 기존 이미지 마커 (변경 없음) ──
         try {
           final firstUrl = topPost.fileInfoList.first.fileUrl;
-          final stream = await _imageService.getImageStream(firstUrl);
-          baseBytes = await _imageService.createMarkerImage(stream);
+          final stream = await _markerImageFactory.getImageStream(firstUrl);
+          baseBytes = await _markerImageFactory.createMarkerImage(stream);
           icon = await NOverlayImage.fromByteArray(baseBytes);
         } catch (_) {
           continue;
@@ -575,7 +575,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             // 줌아웃 점: 사진 마커와 동일한 바이트 파이프라인으로 생성.
             // → baseBytes 가 _markerBytesCache 에 저장되어 클러스터 +N 뱃지가
             //   사진 마커와 똑같이 자동 합성된다. markerSize 는 기본값(_normalMarkerSize).
-            baseBytes = await _imageService.createTextDotImage();
+            baseBytes = await _markerImageFactory.createTextDotImage();
             icon = await NOverlayImage.fromByteArray(baseBytes);
           }
         } catch (e) {
@@ -728,7 +728,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _searchMarkerAdded = false;
     }
 
-    final bytes = await _imageService.createPinMarkerImage();
+    final bytes = await _markerImageFactory.createPinMarkerImage();
     if (!mounted) return;
     final icon = await NOverlayImage.fromByteArray(bytes);
 
@@ -884,6 +884,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             prevMarker.setGlobalZIndex(baseZ);
           } catch (_) {/* overlay가 이미 네이티브에서 제거된 경우 무시 */}
         }
+        // 사진 마커만 원래 크기로 복원 (텍스트 마커는 카드/점 크기 가변이라 제외)
+        if (!_textMarkerCardMode.containsKey(prevId)) {
+          try {
+            prevMarker.setSize(
+                const Size(_normalMarkerSize, _normalMarkerSize));
+          } catch (_) {/* same */}
+        }
       }
     }
     _highlightedMarkerId = markerId;
@@ -893,6 +900,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         try {
           marker.setGlobalZIndex(_selectedMarkerZIndex);
         } catch (_) {/* same */}
+        // 선택 강조: 사진 마커는 살짝 확대 (아이콘 재합성 없이 setSize만 —
+        // iOS 마커 이미지 캐시 경합 리스크 없음. marker_constants 참고)
+        if (!_textMarkerCardMode.containsKey(markerId)) {
+          try {
+            marker.setSize(const Size(
+                _normalMarkerSize * kSelectedMarkerScale,
+                _normalMarkerSize * kSelectedMarkerScale));
+          } catch (_) {/* same */}
+        }
       }
     }
   }
@@ -1059,7 +1075,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
     debugPrint('[map] composeCluster start topId=$topId size=$size');
     try {
-      final composedBytes = await _imageService.addClusterBadge(baseBytes, size);
+      final composedBytes = await _markerImageFactory.addClusterBadge(baseBytes, size);
       final composedIcon = await NOverlayImage.fromByteArray(composedBytes);
       if (!mounted) return;
       _clusterIconCache['${topId}_$size'] = composedIcon;

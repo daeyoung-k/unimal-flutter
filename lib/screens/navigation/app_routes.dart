@@ -8,7 +8,6 @@ import 'package:unimal/screens/board/detail_board/detail_board.dart';
 import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/map/map_naver.dart';
-import 'package:unimal/screens/map/marker/text_marker_demo.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
 import 'package:unimal/screens/auth/tel_verification.dart';
 import 'package:unimal/screens/profile/profile.dart';
@@ -49,10 +48,6 @@ class AppRoutes {
       GetPage(name: '/my-story-map', page: () => const MyStoryMapScreen()),
       GetPage(name: '/notice-list', page: () => const NoticeListScreen()),
       GetPage(name: '/webview', page: () => const WebViewScreen()),
-      // 텍스트 마커 데모 (프론트 전용 · 목 데이터). Get.toNamed('/text-marker-demo')
-      GetPage(
-          name: '/text-marker-demo',
-          page: () => const TextMarkerDemoScreen()),
     ];
   }
 

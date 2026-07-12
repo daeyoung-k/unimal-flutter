@@ -11,7 +11,7 @@ import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
-import 'package:unimal/service/image/image_service.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
@@ -32,7 +32,7 @@ class MyStoryMapScreen extends StatefulWidget {
 class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   final _boardApi = BoardApiService();
   final _userInfoService = UserInfoService();
-  final _imageService = ImageService();
+  final _markerImageFactory = MarkerImageFactory();
   final _authState = Get.find<AuthState>();
 
   NaverMapController? _mapController;
@@ -152,11 +152,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       try {
         if (p.fileInfoList.isNotEmpty) {
           final stream =
-              await _imageService.getImageStream(p.fileInfoList.first.fileUrl);
-          final bytes = await _imageService.createMarkerImage(stream);
+              await _markerImageFactory.getImageStream(p.fileInfoList.first.fileUrl);
+          final bytes = await _markerImageFactory.createMarkerImage(stream);
           icon = await NOverlayImage.fromByteArray(bytes);
         } else {
-          final bytes = await _imageService.createTextDotImage();
+          final bytes = await _markerImageFactory.createTextDotImage();
           icon = await NOverlayImage.fromByteArray(bytes);
         }
       } catch (_) {
@@ -410,8 +410,8 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     await controller.updateCamera(update);
   }
 
-  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트. [markerId]가 null이면
-  /// 부스트만 해제. 메인 지도(_applySelectionHighlight)와 동일한 방식.
+  /// 선택된 마커를 z-index 부스트 + (사진 마커) 확대로 강조. [markerId]가
+  /// null이면 강조 해제. 메인 지도(_applySelectionHighlight)와 동일한 방식.
   void _applySelectionHighlight(String? markerId) {
     final prevId = _highlightedMarkerId;
     if (prevId != null && prevId != markerId) {
@@ -420,6 +420,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         try {
           prev.setGlobalZIndex(_baseMarkerZIndex);
         } catch (_) {/* 오버레이가 이미 제거된 경우 무시 */}
+        // 사진 마커만 원래 크기로 복원 (텍스트 마커는 카드/점 가변이라 제외)
+        if (!_textMarkerRefs.containsKey(prevId)) {
+          try {
+            prev.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
+          } catch (_) {/* same */}
+        }
       }
     }
     _highlightedMarkerId = markerId;
@@ -429,6 +435,14 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         try {
           marker.setGlobalZIndex(_selectedMarkerZIndex);
         } catch (_) {/* same */}
+        // 선택 강조: 사진 마커는 살짝 확대 (메인 지도와 동일 방식)
+        if (!_textMarkerRefs.containsKey(markerId)) {
+          try {
+            marker.setSize(const Size(
+                kNormalMarkerSize * kSelectedMarkerScale,
+                kNormalMarkerSize * kSelectedMarkerScale));
+          } catch (_) {/* same */}
+        }
       }
     }
   }
