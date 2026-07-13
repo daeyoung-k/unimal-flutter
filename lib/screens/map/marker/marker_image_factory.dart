@@ -4,7 +4,52 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/theme/app_colors.dart';
+
+Future<void> _overlayImageChain = Future.value();
+
+/// [NOverlayImage.fromByteArray] 전역 직렬화 래퍼 — 마커 아이콘 생성은
+/// 반드시 이 함수를 거칠 것 (직접 fromByteArray 호출 금지).
+///
+/// 플러그인(1.4.4)은 바이트를 콘텐츠 해시 파일명(fnm1_img/*.png)으로 임시
+/// 저장하는데, 같은 내용의 이미지가 동시에 들어오면 한쪽이 쓰는 중인
+/// 미완성 파일을 다른 쪽이 "이미 캐시됨"으로 보고 그대로 참조한다.
+/// iOS 네이티브가 이 파일을 강제 언래핑하다 크래시한다
+/// (NOverlayImage.swift:16, 플러그인 이슈 #251 — 1.4.4 미해결).
+/// 호출을 체인으로 직렬화해 실행 중 쓰기 경합을 차단한다.
+/// 앱 시작 시 캐시 정리(main.dart)는 이전 실행의 깨진 파일만 막아준다.
+Future<NOverlayImage> overlayImageFromBytes(Uint8List bytes) {
+  final completer = Completer<NOverlayImage>();
+  _overlayImageChain = _overlayImageChain.then((_) async {
+    try {
+      completer.complete(await NOverlayImage.fromByteArray(bytes));
+    } catch (e, st) {
+      completer.completeError(e, st);
+    }
+  });
+  return completer.future;
+}
+
+/// 게시글의 링(테두리) 색 결정 (피그마 "17 마커 변형 시트" §1).
+///
+/// 모양은 원형 하나 — 의미는 링 색으로만 구분한다:
+/// - 내 글 → `primary` 링
+/// - 새 글(작성 후 24시간, [kNewPostRingDuration]) → `accent` 링
+/// - 그 외 → 화이트 (기본값 — 색 링 남발 금지)
+///
+/// 우선순위: 내 글 > 새 글. 마커 비트맵은 라이트 팔레트 고정이므로
+/// `AppColors.light` 를 쓴다 (파일 상단 주석 참고).
+Color markerRingColor({required bool isOwner, required String createdAt}) {
+  if (isOwner) return AppColors.light.primary;
+  final created = DateTime.tryParse(createdAt);
+  if (created != null &&
+      DateTime.now().difference(created) < kNewPostRingDuration) {
+    return AppColors.light.accent;
+  }
+  return Colors.white;
+}
 
 /// 지도 마커 비트맵 팩토리 — 마커 이미지 합성을 한 곳에서 관리한다.
 ///
@@ -37,13 +82,19 @@ class MarkerImageFactory {
     return completer.future;
   }
 
-  /// 사진 글 마커 — 흰 링 + 원형 썸네일 (기존 커스텀 마커, 2026-07 복귀).
+  /// 사진 글 마커 — 링 + 원형 썸네일 (기존 커스텀 마커, 2026-07 복귀).
   ///
   /// 한때 티어드롭 핀 프레임으로 바꿨으나(bae1eec) 원형으로 되돌렸다.
   /// 핀 시절의 개선점은 유지: 원본 **중앙 정사각 크롭**으로 비정사각 사진이
   /// 원 안에서 찌그러지지 않는다.
   /// 200x200 규격 — [addClusterBadge](+N 뱃지) 합성을 그대로 탈 수 있다.
-  Future<Uint8List> createMarkerImage(ImageStream stream) async {
+  ///
+  /// [ringColor]: 링 색 (기본 화이트). 의미 있는 글만 색 링 —
+  /// [markerRingColor] 로 결정한다 (내 글=primary, 새 글 24h=accent).
+  Future<Uint8List> createMarkerImage(
+    ImageStream stream, {
+    Color ringColor = Colors.white,
+  }) async {
     final loadedImage = await _resolveImage(stream);
 
     final recorder = ui.PictureRecorder();
@@ -52,12 +103,15 @@ class MarkerImageFactory {
     const double size = 200.0;
 
     const center = Offset(size / 2, size / 2);
-    const double borderWidth = 8.0;
+    // 링 두께 — 표시 dp(kMarkerRingWidthDp) 를 200px 캔버스로 환산.
+    // 기본 크기(50dp) 기준 4dp. 크기 위계로 표시 크기가 42~66dp 로 변해도
+    // 비트맵은 하나라 링 두께는 크기에 비례해 살짝 달라진다 (의도된 동작).
+    const double borderWidth = kMarkerRingWidthDp * size / kNormalMarkerSize;
     const double outerRadius = size / 2;
     const double innerRadius = outerRadius - borderWidth;
 
-    // 흰색 테두리 원
-    canvas.drawCircle(center, outerRadius, Paint()..color = Colors.white);
+    // 링 (기본 화이트, 내 글/새 글은 색 링)
+    canvas.drawCircle(center, outerRadius, Paint()..color = ringColor);
 
     // 이미지를 내부 원에 클립하여 그리기
     final clipPath = Path()
@@ -146,6 +200,54 @@ class MarkerImageFactory {
     final byteData =
         await composedImage.toByteData(format: ui.ImageByteFormat.png);
     return byteData!.buffer.asUint8List();
+  }
+
+  /// 같은 자리 스택 마커 합성 (피그마 "17 마커 변형 시트" §3 · A안).
+  ///
+  /// 같은 좌표의 다중 글을 jitter 로 흩뿌리는 대신 마커 하나로 쌓는다:
+  /// 대표(최고 score) 마커 뒤로 살짝 겹친 "뒷장" 원 + 우상단 +N 뱃지.
+  /// base 는 [createMarkerImage]/[createTextDotImage] 결과(200x200)를 그대로 받아
+  /// 같은 200x200 규격으로 반환 — 클러스터 파이프라인과 규격 호환.
+  Future<Uint8List> composeStackMarker(Uint8List baseBytes, int count) async {
+    final codec = await ui.instantiateImageCodec(baseBytes);
+    final frame = await codec.getNextFrame();
+    final base = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+
+    // 뒷장 원 — 좌측에 살짝 보이는 "겹친 글" 표현. 사진 없이 중립 톤.
+    // (center.x - radius ≥ 0 이어야 캔버스에 잘려 평평해지지 않음)
+    const ghostCenter = Offset(60, 100);
+    const double ghostRadius = 58.0;
+    canvas.drawCircle(
+      ghostCenter,
+      ghostRadius,
+      Paint()..color = Colors.white,
+    );
+    canvas.drawCircle(
+      ghostCenter,
+      ghostRadius - 10,
+      Paint()..color = AppColors.light.surfaceMuted,
+    );
+
+    // 대표 마커 — 뒷장이 좌측에 보이도록 살짝 줄여서 중앙 배치.
+    const double mainRadius = 88.0;
+    canvas.drawImageRect(
+      base,
+      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+      Rect.fromCircle(center: const Offset(size / 2, size / 2), radius: mainRadius),
+      Paint(),
+    );
+
+    final composed =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final byteData = await composed.toByteData(format: ui.ImageByteFormat.png);
+    final stacked = byteData!.buffer.asUint8List();
+
+    // 우상단 +N 뱃지는 클러스터와 동일 스타일로 합성.
+    return addClusterBadge(stacked, count);
   }
 
   /// 검색 결과 위치 표시용 단색 푸른 핀 이미지를 만들어 PNG bytes 반환.

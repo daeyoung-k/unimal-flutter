@@ -154,10 +154,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
           final stream =
               await _markerImageFactory.getImageStream(p.fileInfoList.first.fileUrl);
           final bytes = await _markerImageFactory.createMarkerImage(stream);
-          icon = await NOverlayImage.fromByteArray(bytes);
+          icon = await overlayImageFromBytes(bytes);
         } else {
           final bytes = await _markerImageFactory.createTextDotImage();
-          icon = await NOverlayImage.fromByteArray(bytes);
+          icon = await overlayImageFromBytes(bytes);
         }
       } catch (_) {
         continue; // 이미지 로드 실패한 마커는 건너뛴다(메인 지도와 동일).

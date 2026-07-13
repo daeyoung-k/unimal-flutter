@@ -113,4 +113,14 @@ class PostGroupNavigator {
     _postIndex = 0;
     _imageIndex = 0;
   }
+
+  /// Jump to a specific post within a specific group.
+  /// 같은 자리 스택(A안) — 카드 스트립이 그룹 내 글 사이를 넘길 때 사용.
+  void jumpTo(int groupIndex, int postIndex) {
+    assert(groupIndex >= 0 && groupIndex < groups.length);
+    assert(postIndex >= 0 && postIndex < groups[groupIndex].length);
+    _groupIndex = groupIndex;
+    _postIndex = postIndex;
+    _imageIndex = 0;
+  }
 }

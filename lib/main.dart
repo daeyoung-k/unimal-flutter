@@ -32,16 +32,32 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // 실제 처리는 PushNotificationService에서 수행됩니다.
 }
 
-/// flutter_naver_map 이미지 캐시(fnm1_img) 삭제.
+/// flutter_naver_map 이미지 캐시(fnm1_img)의 깨진(0바이트) 파일만 삭제.
+///
+/// 전체 삭제(delete recursive)는 금지 — 핫리스타트 시 main()이 다시 돌 때
+/// 이전 세션의 네이티브 지도가 아직 참조 중인 유효한 캐시 파일까지 지워
+/// iOS 네이티브가 makeOverlayImageWithPath 에서 크래시한다
+/// (2026-07-13 크래시 리포트: ClusteringController → NOverlayImage.swift:16).
+/// 원래 목적(쓰다 만 0바이트 파일이 다음 실행에서 재사용되며 크래시)은
+/// 0바이트 파일만 골라 지워도 동일하게 달성된다.
 /// 실패해도 앱 동작에는 지장 없으므로 로깅만 하고 넘어간다.
 Future<void> _clearNaverMapImageCache() async {
   try {
     final tmp = await getTemporaryDirectory();
     final dir = Directory('${tmp.path}${Platform.pathSeparator}fnm1_img');
-    if (await dir.exists()) {
-      await dir.delete(recursive: true);
-      debugPrint('[naverMap] 마커 이미지 캐시 정리 완료');
+    if (!await dir.exists()) return;
+    int removed = 0;
+    // 1.4.3+ 는 fnm1_img/fnm1_img_XXXX/ 세션별 하위 폴더에 저장 — 재귀 탐색.
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is! File) continue;
+      try {
+        if (await entity.length() == 0) {
+          await entity.delete();
+          removed++;
+        }
+      } catch (_) {}
     }
+    debugPrint('[naverMap] 마커 이미지 캐시 정리 완료 (깨진 파일 $removed개 제거)');
   } catch (e) {
     debugPrint('[naverMap] 마커 이미지 캐시 정리 실패(무시): $e');
   }
