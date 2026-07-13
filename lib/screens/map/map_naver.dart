@@ -753,12 +753,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // 원형 펼침 중인 스택이 재조회로 재생성되는 경우 숨김 상태 유지.
       // id 가 아닌 좌표 그룹 키로 비교 — 재조회에서 그룹 대표(최고 score)가
       // 바뀌면 id 가드는 새 마커를 놓쳐 펼침 한가운데 스택이 다시 보인다.
+      //
+      // 주의: 여기서(add 전) setIsVisible(false)를 부르면 로컬 상태만 false로
+      // 남고 add payload 반영이 보장되지 않는다. 이후 재숨김 호출은 로컬
+      // dedupe 에 걸려 no-op → 마커가 영영 보이는 채로 남는 재발 케이스
+      // (2026-07-14 로그: 재생성 1건 add, 이후 숨김 무효). 숨김은
+      // addOverlayAll 이후 실제 네이티브 호출로 일괄 수행한다.
       if (_expandedStackId != null &&
           _stackGroupKey(topPost.latitude, topPost.longitude) ==
               _expandedStackGroupKey) {
-        marker.setIsVisible(false);
-        // 접을 때 복원할 대상도 새 대표로 갱신.
+        // 접을 때 복원할 대상만 새 대표로 갱신 — 숨김은 add 후.
         _expandedStackId = topPost.id;
+        debugPrint('[map] fan guard: expanded stack rebuilt id=${topPost.id} '
+            '(hide deferred until after add)');
       }
 
       final markerPostId = topPost.id;
@@ -798,6 +805,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           '(${DateTime.now().difference(addStart).inMilliseconds}ms)');
       if (!mounted) return;
       _mapMarkerIds.addAll(markerIdsToAdd);
+      // 펼침 중 재생성된 스택 마커 숨김 — add 완료 후 실제 네이티브 호출.
+      if (_expandedStackId != null &&
+          markerIdsToAdd.contains(_expandedStackId)) {
+        try {
+          _markerRefs[_expandedStackId]?.setIsVisible(false);
+          debugPrint('[map] fan guard: post-add hide $_expandedStackId');
+        } catch (_) {}
+      }
     } else {
       debugPrint('[map] addOverlayAll skipped (no new markers)');
     }
@@ -836,6 +851,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _expandedStackId = repId; // 접을 때 복원 대상 동기화
         try {
           _markerRefs[repId]?.setIsVisible(false);
+          debugPrint('[map] fan defense: re-hide rep=$repId');
         } catch (_) {}
       }
     }
@@ -1449,6 +1465,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
     _expandedStackId = stackId;
     _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
+    debugPrint('[map] expandStackFan start id=$stackId seq=$seq');
 
     // 1) 펼침 줌까지 당기면서 중심(실제 위치)을 카드 위(화면 22%)에 배치 —
     // 펼침과 동시에 대표 글 카드가 열리므로 일반 마커 선택과 같은 프레이밍.
@@ -1583,6 +1600,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     try {
       _markerRefs[_expandedStackId ?? stackId]?.setIsVisible(false);
     } catch (_) {}
+    debugPrint('[map] expandStackFan done id=$_expandedStackId '
+        '(fan=${_stackFanMarkerIds.length})');
 
     _stackFanBaseTarget = settled.target;
     _stackFanBaseZoom = settled.zoom;
@@ -1622,6 +1641,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   Future<void> _collapseStackFan() async {
     if (_expandedStackId == null) return;
     final stackId = _expandedStackId!;
+    debugPrint('[map] collapseStackFan id=$stackId');
     _expandedStackId = null;
     _expandedStackGroupKey = null;
     _stackFanBaseTarget = null;
