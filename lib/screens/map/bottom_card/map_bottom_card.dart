@@ -142,23 +142,50 @@ class _MapBottomCardState extends State<MapBottomCard> {
     super.didUpdateWidget(oldWidget);
     final groupsChanged = oldWidget.groups != widget.groups;
     if (groupsChanged) {
+      // 지도 재조회로 groups 가 통째로 바뀌는 경우 — 보던 글이 새 목록에도
+      // 있으면 그 위치를 유지한다. 인덱스 기준으로만 리셋하면 목록이
+      // 축소·재정렬됐을 때 옆의 다른 글로 튄다 (2026-07-13 카드-마커 불일치).
+      final String? keepPostId =
+          _nav.groupIndex < oldWidget.groups.length ? _nav.currentPost.id : null;
       _rebuildPages();
-      final safeGroupIndex =
-          widget.initialGroupIndex.clamp(0, widget.groups.length - 1);
+      int targetG = -1;
+      int targetP = 0;
+      if (keepPostId != null) {
+        outer:
+        for (int g = 0; g < widget.groups.length; g++) {
+          for (int p = 0; p < widget.groups[g].length; p++) {
+            if (widget.groups[g][p].id == keepPostId) {
+              targetG = g;
+              targetP = p;
+              break outer;
+            }
+          }
+        }
+      }
+      final bool samePostKept = targetG >= 0;
+      if (!samePostKept) {
+        targetG = widget.initialGroupIndex.clamp(0, widget.groups.length - 1);
+        targetP = 0;
+      }
       _nav = PostGroupNavigator(
         groups: widget.groups,
-        initialGroupIndex: safeGroupIndex,
+        initialGroupIndex: targetG,
+        initialPostIndex: _safePostIndex(targetG, targetP),
       );
-      _cardState = _CardState.default_;
-      _loadedDetail = null;
-      _isLoadingDetail = false;
-      _currentPageIndex = _pageIndexOf(safeGroupIndex);
+      // 같은 글을 계속 보는 중이면 확장 상태·로드된 상세도 유지 —
+      // 백그라운드 새로고침이 읽던 화면을 접지 않게 한다.
+      if (!samePostKept) {
+        _cardState = _CardState.default_;
+        _loadedDetail = null;
+        _isLoadingDetail = false;
+        widget.onExpandedChanged?.call(false);
+      }
+      _currentPageIndex = _pageIndexOf(targetG, _nav.postIndex);
       _pageController.dispose();
       _pageController = PageController(
         initialPage: _currentPageIndex,
         viewportFraction: _pageViewportFraction,
       );
-      widget.onExpandedChanged?.call(false);
       return;
     }
 

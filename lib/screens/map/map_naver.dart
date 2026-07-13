@@ -58,6 +58,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // ── 스택 원형 펼침 (B안) 상태 ──────────────────────────────────────────
   // 현재 펼쳐진 스택 마커 id (대표 게시글 id). null 이면 접힘.
   String? _expandedStackId;
+  // 펼침 그룹의 좌표 키 (kStackGroupPrecision 기준). 재조회로 그룹 대표가
+  // 바뀌어도 "같은 자리 스택"을 식별해 숨김을 유지하기 위한 보조 키 —
+  // id 비교만으로는 대표 교체 시 새 마커가 가드를 빠져나가 펼침 한가운데
+  // 원본 스택이 다시 보이는 버그가 있었다 (2026-07-13).
+  String? _expandedStackGroupKey;
   // 펼침 구성 오버레이 id — 접을 때 제거용.
   final List<String> _stackFanMarkerIds = [];
   final List<String> _stackFanLegIds = [];
@@ -114,12 +119,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   bool _mapInitialized = false;
   NLatLng? _lastQueriedTarget;
   double _lastQueriedZoom = _defaultEntryZoom;
+  // 마지막으로 API에 보낸 정수 줌 — 카드 열림 중 "집합 유지 재조회"가
+  // 같은 범위로 다시 조회할 때 사용. _lastQueriedZoom(카메라 실제 줌,
+  // 변화량·모드 판정용)과 분리 — 섞으면 stable 재조회 후 값이 현재 줌으로
+  // 드리프트해 다음 stable 재조회가 좁은 반경으로 나간다.
+  int _lastQueriedApiZoom = _defaultEntryZoom.round();
 
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
   bool _isLoadingMarkers = false;
   // refreshMap() 호출 시 로드가 진행 중이면 완료 후 강제 새로고침을 실행하기 위한 플래그
   bool _pendingForceRefresh = false;
+  // 로드 진행 중 도착한 재조회 요청 — 마지막 1건만 보관했다가 완료 후 실행.
+  // (기존에는 그냥 skip 되면서 debounce 콜백이 _lastQueriedTarget 을 이미
+  // 갱신해버려, 빠른 팬 직후 뷰포트가 영영 조회되지 않는 드랍이 있었다.)
+  ({double lat, double lng, int zoom, double? rawZoom})? _pendingReloadArgs;
 
   Worker? _pendingLocationWorker;
 
@@ -411,7 +425,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       return;
     }
     if (_isLoadingMarkers) {
-      debugPrint('[map] _loadMapMarkers skipped (already loading) '
+      // 그냥 버리지 않고 마지막 요청을 큐잉 — 현재 로드 완료 후 재실행.
+      // (debounce 콜백이 _lastQueriedTarget 을 이미 갱신한 뒤라, 여기서
+      // 버리면 해당 뷰포트는 다음 idle 에서도 "변화 없음"으로 영영 스킵된다)
+      _pendingReloadArgs =
+          (lat: latitude, lng: longitude, zoom: zoom, rawZoom: rawZoom);
+      debugPrint('[map] _loadMapMarkers queued (already loading) '
           '→ (${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
       return; // 중복 호출 방지
     }
@@ -425,14 +444,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _lastQueriedTarget = NLatLng(latitude, longitude);
     // 실제 카메라 줌(소수)을 저장 — 반올림 정수를 쓰면 경계(17.5) 비교가 불안정해진다.
     _lastQueriedZoom = rawZoom ?? zoom.toDouble();
+    _lastQueriedApiZoom = zoom;
     try {
       await _loadMapMarkersInternal(latitude, longitude, zoom, rawZoom: rawZoom);
     } finally {
       _isLoadingMarkers = false;
-      // refreshMap()이 로드 중에 호출됐다면 지금 실행
+      // refreshMap()이 로드 중에 호출됐다면 지금 실행 (전체 재렌더가 우선 —
+      // 최신 카메라 기준으로 다시 조회하므로 큐잉된 재조회는 폐기)
       if (_pendingForceRefresh && mounted) {
         _pendingForceRefresh = false;
+        _pendingReloadArgs = null;
         _doForceRefresh();
+      } else if (_pendingReloadArgs != null && mounted) {
+        final args = _pendingReloadArgs!;
+        _pendingReloadArgs = null;
+        _loadMapMarkers(args.lat, args.lng, args.zoom, rawZoom: args.rawZoom);
       }
     }
   }
@@ -470,9 +496,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 정밀도 주의: kStackGroupPrecision(4자리 ≈ 11m) — 진짜 같은 지점만 묶는다.
     final Map<String, List<MapPost>> grouped = {};
     for (final post in posts) {
-      final key =
-          '${post.latitude.toStringAsFixed(kStackGroupPrecision)},'
-          '${post.longitude.toStringAsFixed(kStackGroupPrecision)}';
+      final key = _stackGroupKey(post.latitude, post.longitude);
       grouped.putIfAbsent(key, () => []).add(post);
     }
     // 그룹 내 score 내림차순 — 첫 글이 대표(마커 아이콘·캡션·zIndex 기준)
@@ -727,7 +751,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       marker.setIsHideCollidedCaptions(true);
       if (isHot) marker.setIsForceShowCaption(true);
       // 원형 펼침 중인 스택이 재조회로 재생성되는 경우 숨김 상태 유지.
-      if (topPost.id == _expandedStackId) marker.setIsVisible(false);
+      // id 가 아닌 좌표 그룹 키로 비교 — 재조회에서 그룹 대표(최고 score)가
+      // 바뀌면 id 가드는 새 마커를 놓쳐 펼침 한가운데 스택이 다시 보인다.
+      if (_expandedStackId != null &&
+          _stackGroupKey(topPost.latitude, topPost.longitude) ==
+              _expandedStackGroupKey) {
+        marker.setIsVisible(false);
+        // 접을 때 복원할 대상도 새 대표로 갱신.
+        _expandedStackId = topPost.id;
+      }
 
       final markerPostId = topPost.id;
       final bool markerCanBecomeCard = canBecomeCard;
@@ -789,6 +821,23 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _applySelectionHighlight(_postGroups[_selectedGroupIndex!].first.id);
     } else {
       _applySelectionHighlight(null);
+    }
+
+    // 펼침 중 재조회 최종 방어 — 어떤 경로의 재조회든 끝나는 시점에
+    // 펼침 그룹의 원본 마커는 반드시 숨김이어야 한다. 생성 가드가 놓치는
+    // 타이밍(재사용 분기 등)까지 커버하는 이중 안전장치.
+    if (_expandedStackGroupKey != null) {
+      final fanIdx = _postGroups.indexWhere((g) =>
+          g.isNotEmpty &&
+          _stackGroupKey(g.first.latitude, g.first.longitude) ==
+              _expandedStackGroupKey);
+      if (fanIdx >= 0) {
+        final repId = _postGroups[fanIdx].first.id;
+        _expandedStackId = repId; // 접을 때 복원 대상 동기화
+        try {
+          _markerRefs[repId]?.setIsVisible(false);
+        } catch (_) {}
+      }
     }
   }
 
@@ -914,6 +963,41 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
     }
 
+    // 펼침 유지 중이거나 게시글 카드 탐색 중 — 위치·줌 변화 재조회는 보류.
+    // 카드 스와이프 탐색 중 재조회가 돌면 좁은 반경으로 _postGroups 가
+    // 통째로 축소·교체되어 카드가 다른 글로 튀고(카드-마커 불일치),
+    // 펼침 중엔 대표 교체 시 원본 스택 마커가 재출현한다 (2026-07-13).
+    // 닫힐 때 idle 재평가를 호출해 밀린 조회를 수행한다.
+    //
+    // 단, 텍스트 점↔카드 모드 전환은 화면 표현이라 즉시 반영해야 한다
+    // (16→19 탭 줌인 후 말풍선 전환이 카드 닫을 때까지 밀리는 문제).
+    // 이때는 "집합 유지 재조회" — API는 마지막 조회 좌표·정수 줌으로 다시
+    // 불러 게시글 집합은 그대로 두고, rawZoom(현재 카메라)만 넘겨 마커
+    // 표현(점↔말풍선)을 다시 그린다.
+    if (_expandedStackId != null || _selectedGroupIndex != null) {
+      final modeFlippedWhileOpen =
+          _peekTextCardMode(currentZoom) != _textCardMode;
+      if (modeFlippedWhileOpen && _lastQueriedTarget != null) {
+        final stableTarget = _lastQueriedTarget!;
+        final stableApiZoom = _lastQueriedApiZoom;
+        debugPrint('[map] cameraIdle (fan/card open) modeFlipped → '
+            'stable reload apiZoom=$stableApiZoom '
+            'rawZoom=${currentZoom.toStringAsFixed(2)}');
+        _cameraDebounce?.cancel();
+        _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
+          _loadMapMarkers(
+            stableTarget.latitude,
+            stableTarget.longitude,
+            stableApiZoom,
+            rawZoom: currentZoom,
+          );
+        });
+      } else {
+        debugPrint('[map] cameraIdle skipped (fan/card open)');
+      }
+      return;
+    }
+
     // 초기화 시점은 자동 호출 없이 기준값만 저장
     if (!_mapInitialized) {
       _mapInitialized = true;
@@ -959,6 +1043,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
   String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
 
+  /// 같은 자리 스택 그룹핑 좌표 키 (kStackGroupPrecision, ≈11m 타일).
+  /// 그룹핑과 펼침 숨김 가드가 반드시 같은 키를 쓰도록 한 곳에서 관리.
+  String _stackGroupKey(double lat, double lng) =>
+      '${lat.toStringAsFixed(kStackGroupPrecision)},'
+      '${lng.toStringAsFixed(kStackGroupPrecision)}';
+
   /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
   /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
   bool _resolveTextCardMode(double rawZoom) {
@@ -991,6 +1081,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
+    // 카드 열림 동안 보류된 자동 재조회 재평가 — 탐색하며 줌/위치/점↔카드
+    // 모드가 바뀌었으면 여기서 밀린 조회가 예약된다.
+    _onCameraIdle();
   }
 
   /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트.
@@ -1338,6 +1431,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 이전 호출은 await 지점 이후를 포기한다 (고아 오버레이 방지).
     final int seq = ++_stackFanSeq;
 
+    // 예약된 자동 재조회 취소 — 펼침 도중 재조회가 돌면 그룹 대표 교체 시
+    // 원본 스택 마커가 다시 보이는 레이스가 있다 (2026-07-13 재발 보고).
+    _cameraDebounce?.cancel();
+
     // await 이전에 캡처 (context 사용 규칙)
     final captionTokens = AppColors.of(context);
 
@@ -1345,6 +1442,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
     final top = group.first;
     final center = NLatLng(top.latitude, top.longitude);
+
+    // 펼침 상태를 카메라 이동 '이전'에 확정 — 진행 중이던 로드나 큐잉된
+    // 재조회가 펼침 도중에 끝나도, 마커 생성 가드와 재조회 종료 시점의
+    // 재숨김 방어가 이 값을 보고 동작한다. (기존엔 펼침 완료 시점 설정이라
+    // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
+    _expandedStackId = stackId;
+    _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
 
     // 1) 펼침 줌까지 당기면서 중심(실제 위치)을 카드 위(화면 22%)에 배치 —
     // 펼침과 동시에 대표 글 카드가 열리므로 일반 마커 선택과 같은 프레이밍.
@@ -1473,12 +1577,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (!mounted || _mapController == null || seq != _stackFanSeq) return;
     await _mapController!.addOverlayAll(overlays);
 
-    // 원본 스택 마커 숨김 (접을 때 복원)
+    // 원본 스택 마커 숨김 (접을 때 복원). 펼침 도중 재조회가 대표를
+    // 교체했을 수 있으므로 stackId 가 아닌 현재 _expandedStackId 기준
+    // (생성 가드가 새 대표 id 로 갱신해 둔다).
     try {
-      _markerRefs[stackId]?.setIsVisible(false);
+      _markerRefs[_expandedStackId ?? stackId]?.setIsVisible(false);
     } catch (_) {}
 
-    _expandedStackId = stackId;
     _stackFanBaseTarget = settled.target;
     _stackFanBaseZoom = settled.zoom;
 
@@ -1518,6 +1623,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (_expandedStackId == null) return;
     final stackId = _expandedStackId!;
     _expandedStackId = null;
+    _expandedStackGroupKey = null;
     _stackFanBaseTarget = null;
     _stackFanBaseZoom = null;
     _stackFanPositions.clear();
@@ -1842,6 +1948,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                           _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
+                        // 카드 열림 동안 보류된 자동 재조회 재평가.
+                        _onCameraIdle();
                       },
                       onGroupChanged: (newIdx) {
                         if (newIdx >= 0 &&
