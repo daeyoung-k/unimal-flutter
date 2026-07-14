@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show base64Decode;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -31,6 +32,53 @@ Future<NOverlayImage> overlayImageFromBytes(Uint8List bytes) {
     }
   });
   return completer.future;
+}
+
+/// [NOverlayImage.fromWidget] 직렬화 래퍼 — 위젯 마커 아이콘 생성은
+/// 반드시 이 함수를 거칠 것 (직접 fromWidget 호출 금지).
+///
+/// fromWidget 도 내부적으로 fromByteArray 와 같은 파일 캐시
+/// (`ImageUtil.saveImage`)를 쓰므로 동일한 쓰기/초기화 경합이 존재한다.
+/// [overlayImageFromBytes] 와 같은 체인에 태워 경합을 차단한다.
+Future<NOverlayImage> overlayImageFromWidget({
+  required Widget widget,
+  required Size size,
+  required BuildContext context,
+}) {
+  final completer = Completer<NOverlayImage>();
+  _overlayImageChain = _overlayImageChain.then((_) async {
+    try {
+      completer.complete(await NOverlayImage.fromWidget(
+          widget: widget, size: size, context: context));
+    } catch (e, st) {
+      completer.completeError(e, st);
+    }
+  });
+  return completer.future;
+}
+
+/// 플러그인 이미지 임시 폴더를 앱 시작 시 미리 1회 초기화(웜업).
+/// **다른 어떤 마커 아이콘 생성보다 먼저 await 할 것** (main.dart).
+///
+/// flutter_naver_map(1.4.4) `ImageUtil._getDir()` 은 락 없는 lazy 초기화라,
+/// 앱 시작(핫 리스타트 포함) 직후 이미지 저장이 동시에 들어오면
+/// `_initTempDir()` 이 두 번 실행된다. 늦게 시작한 쪽이 먼저 만들어진
+/// 세션 폴더(fnm1_img/fnm1_img_XXXX)를 "이전 세션"으로 오인해 삭제하고
+/// (unawaited), 그 폴더에 이미 저장된 마커 아이콘 경로를 iOS 네이티브가
+/// 로드하다 강제 언래핑 크래시한다 (NOverlayImage.swift:16,
+/// 2026-07-14 크래시 리포트 — 같은 폴더 이중 삭제의 PathNotFoundException 이
+/// 동반 증거). 여기서 초기화를 단일 실행으로 끝내면 이후 호출은 전부
+/// fast path(캐시된 Directory 반환)라 경합 자체가 사라진다.
+Future<void> warmUpOverlayImageCache() async {
+  // 1x1 PNG — 내용은 무관, temp dir 초기화 트리거 용도.
+  final Uint8List bytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+  try {
+    await overlayImageFromBytes(bytes);
+    debugPrint('[naverMap] 오버레이 이미지 캐시 웜업 완료');
+  } catch (e) {
+    debugPrint('[naverMap] 오버레이 이미지 캐시 웜업 실패(무시): $e');
+  }
 }
 
 /// 게시글의 링(테두리) 색 결정 (피그마 "17 마커 변형 시트" §1).

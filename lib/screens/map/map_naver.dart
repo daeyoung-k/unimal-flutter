@@ -1288,7 +1288,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
-    return NOverlayImage.fromWidget(
+    return overlayImageFromWidget(
       context: context,
       size: _textCardSize,
       widget: SizedBox(

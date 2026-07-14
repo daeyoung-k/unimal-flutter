@@ -356,7 +356,7 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     // count당 합성이 한 번만 일어나게 한다.
     final future = _clusterBubbleInflight.putIfAbsent(
       count,
-      () => NOverlayImage.fromWidget(
+      () => overlayImageFromWidget(
         context: context,
         size: const Size(kClusterBubbleSize, kClusterBubbleSize),
         widget: _ClusterBubble(count: count, color: colors.primary),
@@ -518,7 +518,7 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
-    return NOverlayImage.fromWidget(
+    return overlayImageFromWidget(
       context: context,
       size: kTextCardSize,
       widget: SizedBox(

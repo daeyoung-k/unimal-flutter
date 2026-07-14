@@ -8,6 +8,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
 import 'package:unimal/service/ads/ad_service.dart';
 import 'package:get/get.dart';
@@ -107,6 +108,11 @@ Future<void> main() async {
   // 네이티브가 강제 언래핑하다 크래시한다(플러그인 이슈 #251, 1.4.4 미해결).
   // 시작 시 캐시를 비워 깨진 파일이 재사용되지 않게 한다.
   await _clearNaverMapImageCache();
+
+  // 플러그인 이미지 임시 폴더 웜업 — 락 없는 lazy 초기화의 동시 실행이
+  // 서로의 세션 폴더를 지워 iOS 크래시를 내는 경합(2026-07-14) 차단.
+  // 반드시 어떤 마커 아이콘 생성보다 먼저 완료돼야 한다.
+  await warmUpOverlayImageCache();
 
   // 네이버 지도 초기화
   await NaverMapService().naverMapInit();

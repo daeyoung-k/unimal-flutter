@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/theme/app_colors.dart';
 
 /// 내 스토리 지도 미리보기(마이페이지 카드 · 우리지도 리스트)의 공용 도트 마커.
@@ -13,7 +14,8 @@ Future<NOverlayImage> buildStoryMarkerIcon(
   BuildContext context,
   AppColors colors,
 ) {
-  return NOverlayImage.fromWidget(
+  // 직렬화 래퍼 경유 — 직접 fromWidget 호출 금지 (marker_image_factory 참고).
+  return overlayImageFromWidget(
     context: context,
     size: kStoryMarkerSize,
     widget: _StoryMarkerDot(color: colors.primary),
