@@ -526,7 +526,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         height: kTextCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: TextMarkerCard(title: title, body: post.content, maxLines: 2),
+          child: TextBubbleMarker(
+            title: title,
+            body: post.content,
+            time: relativeTimeFromString(post.createdAt),
+            maxLines: 2,
+          ),
         ),
       ),
     );

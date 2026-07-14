@@ -57,7 +57,12 @@ const double kClusterBubbleSize = 46.0;
 const double kMarkerCaptionTextSize = 19.0;
 
 /// 캡션 제목 최대 글자 수 — 내용을 다 보여주지 않아 눌러보고 싶게 만든다.
-const int kMarkerCaptionMaxChars = 5;
+/// (피그마 확정안: 기본 8자 말줄임. 선택 마커는 전체 타이틀 노출 — 별도 처리)
+const int kMarkerCaptionMaxChars = 8;
+
+/// 선택(포커스) 마커의 전체 타이틀 캡션 랩 폭(dp).
+/// 피그마 18-2 ⑤: 선택 마커는 전체 타이틀 노출 — requestedWidth 로 2~3줄 랩.
+const double kSelectedMarkerCaptionWidth = 110.0;
 
 /// 단일 마커 선택 시 줌인 목표. 인접 마커들이 겹쳐 보이지 않게 당긴다.
 /// (같은 좌표 다중 글은 jitter 대신 스택 마커로 유지 — A안)
@@ -101,9 +106,12 @@ const Map<NInclusiveRange<int>, double> kClusterMergeDistances = {
   NInclusiveRange(15, 16): 40.0,
 };
 
-/// 텍스트(사진 없는) 글 마커의 줌인 카드 크기 (꼬리 끝 = 하단 중앙).
+/// 텍스트(사진 없는) 글 마커의 줌인 카드 비트맵 크기.
+/// 확정안: 카드(고정 폭 204, 본문 폭 180) + 4px 간격 + 점 앵커(꼬리 끝 = 하단 중앙).
+/// 폭 220 = 카드 204 + 그림자(blur 8) 여유. 높이 130 = 카드(제목+본문2줄 ≈ 77)
+/// + 간격 4 + 점 39 + 상단 그림자 여유. bottomCenter 정렬이라 남는 공간은 투명.
 /// fromWidget size와 NMarker size를 동일하게 — 스케일 왜곡 방지.
-const Size kTextCardSize = Size(204, 110);
+const Size kTextCardSize = Size(220, 130);
 
 /// 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 줌).
 const double kTextCardCameraZoom = 19.0;

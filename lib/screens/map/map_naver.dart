@@ -7,6 +7,7 @@ import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
+import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
@@ -54,6 +55,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 마커 ID → 핫플(캡션 우선권) 여부. 뷰포트 이동으로 백분위가 바뀌면
   // 재사용 마커에도 setIsForceShowCaption 을 갱신하기 위해 추적.
   final Map<String, bool> _markerIsHot = {};
+  // 마커 ID → 유도 타이틀(캡션 원본, 말줄임 전). 선택 마커 전체 캡션
+  // 노출/복원(피그마 18-2 ⑤)과 말풍선 억제 시 캡션 재구성에 사용.
+  final Map<String, String> _markerTitle = {};
 
   // ── 스택 원형 펼침 (B안) 상태 ──────────────────────────────────────────
   // 현재 펼쳐진 스택 마커 id (대표 게시글 id). null 이면 접힘.
@@ -94,6 +98,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 화면 전체 텍스트 마커 표현 모드(true=카드, false=점). 줌 히스테리시스로 갱신.
   // 경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게 하는 핵심 상태.
   bool _textCardMode = false;
+  // 바텀 카드 열림 동안 텍스트 말풍선(카드 아이콘)을 점으로 강제하는 상태
+  // (피그마 18-2 ④ — 카드가 콘텐츠를 대신하므로 지도는 위치만 표시).
+  bool _textBubblesSuppressed = false;
+  // 말풍선 억제용 공유 점 아이콘 — 1회 생성 후 재사용 (점 그림은 글과 무관).
+  NOverlayImage? _textDotIcon;
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -253,6 +262,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _markerBaseSize.clear();
     _markerStackCount.clear();
     _markerIsHot.clear();
+    _markerTitle.clear();
     _textMarkerCardMode.clear();
     _markerIconCache.clear();
     _markerBytesCache.clear();
@@ -336,6 +346,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _markerBaseSize.clear();
     _markerStackCount.clear();
     _markerIsHot.clear();
+    _markerTitle.clear();
     _textMarkerCardMode.clear();
     _markerIconCache.clear();
     _markerBytesCache.clear();
@@ -557,6 +568,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerBaseSize.remove(id);
         _markerStackCount.remove(id);
         _markerIsHot.remove(id);
+        _markerTitle.remove(id);
         _textMarkerCardMode.remove(id);
         // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
         if (_highlightedMarkerId == id) {
@@ -646,6 +658,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerBaseSize.remove(topPost.id);
         _markerStackCount.remove(topPost.id);
         _markerIsHot.remove(topPost.id);
+        _markerTitle.remove(topPost.id);
       }
 
       // 신규(또는 재생성) 마커 생성
@@ -750,6 +763,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _markerBaseSize[topPost.id] = tierSize;
       _markerStackCount[topPost.id] = stackCount;
       _markerIsHot[topPost.id] = isHot;
+      _markerTitle[topPost.id] = derivedTitle;
 
       // setter는 모두 addOverlay 전에 호출 — _isAdded=false 가드로 native 호출은
       // 건너뛰고 값만 로컬에 저장된다. addOverlayAll 직렬화 시 함께 전송됨.
@@ -845,6 +859,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     } else {
       _applySelectionHighlight(null);
     }
+    // 카드 열림 중 재조회로 말풍선 아이콘이 새로 만들어진 텍스트 마커를
+    // 다시 점으로 덮는다 (닫힘 전이면 복원). force — 상태 동일해도 재적용.
+    unawaited(_syncTextBubbleSuppression(force: _selectedGroupIndex != null));
 
     // 펼침 중 재조회 최종 방어 — 어떤 경로의 재조회든 끝나는 시점에
     // 펼침 그룹의 원본 마커는 반드시 숨김이어야 한다. 생성 가드가 놓치는
@@ -887,6 +904,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedGroupIndex = null;
     });
     _applySelectionHighlight(null);
+    unawaited(_syncTextBubbleSuppression());
     _searchController.text = result.title;
 
     final position = NLatLng(result.lat, result.lng);
@@ -946,6 +964,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _isLoadingPlace = true;
     });
     _applySelectionHighlight(null);
+    unawaited(_syncTextBubbleSuppression());
 
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
@@ -1105,16 +1124,46 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
+    // 카드 닫힘 → 말풍선 복원.
+    unawaited(_syncTextBubbleSuppression());
     // 카드 열림 동안 보류된 자동 재조회 재평가 — 탐색하며 줌/위치/점↔카드
     // 모드가 바뀌었으면 여기서 밀린 조회가 예약된다.
     _onCameraIdle();
   }
 
-  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트.
-  /// 아이콘은 그대로 유지 (사진 마커 유지).
-  /// [markerId]가 null이면 부스트만 해제.
+  /// 마커가 현재 "말풍선 카드"로 그려져 있는지 — 카드는 크기(가변)와
+  /// 캡션(카드에 제목 포함 → 캡션 비움)을 건드리지 않는다.
+  /// 억제 중(_textBubblesSuppressed)이면 카드 모드 텍스트 마커도 점으로
+  /// 그려져 있으므로 점과 동일하게 취급한다.
+  bool _isDisplayedAsCard(String id) =>
+      (_textMarkerCardMode[id] ?? false) && !_textBubblesSuppressed;
+
+  /// 기본(비선택) 캡션 — 8자 말줄임. 제목이 비면 캡션 없음.
+  NOverlayCaption _defaultCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title.isEmpty ? '' : _truncateMarkerTitle(title),
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+      );
+
+  /// 선택(포커스) 캡션 — 전체 타이틀을 requestWidth 로 2~3줄 랩
+  /// (피그마 18-2 ⑤).
+  NOverlayCaption _selectedCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title,
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        requestWidth: kSelectedMarkerCaptionWidth,
+      );
+
+  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트 + 점/사진 마커는
+  /// 1.18x 확대 + 전체 타이틀 캡션(줌 숨김 보호 forceShowCaption).
+  /// [markerId]가 null이면 부스트·확대·캡션을 기본값으로 복원.
   /// idempotent: 재조회로 마커 객체가 새로 만들어진 케이스에도 안전하게 재적용됨.
   void _applySelectionHighlight(String? markerId) {
+    final colors = AppColors.of(context);
     final prevId = _highlightedMarkerId;
     if (prevId != null && prevId != markerId) {
       final prevMarker = _markerRefs[prevId];
@@ -1125,13 +1174,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             prevMarker.setGlobalZIndex(baseZ);
           } catch (_) {/* overlay가 이미 네이티브에서 제거된 경우 무시 */}
         }
-        // 사진 마커만 원래 크기로 복원 (텍스트 마커는 카드/점 크기 가변이라 제외)
+        // 점/사진 마커만 크기·캡션 복원 (말풍선 카드는 크기 가변 + 캡션 없음)
         // 크기는 score 위계(42/50/58/66) 기준값으로 — 고정 50 아님.
-        if (!_textMarkerCardMode.containsKey(prevId)) {
+        if (!_isDisplayedAsCard(prevId)) {
           final baseSize = _markerBaseSize[prevId] ?? _normalMarkerSize;
           try {
             prevMarker.setSize(Size(baseSize, baseSize));
           } catch (_) {/* same */}
+          // 캡션 복원 — 8자 말줄임, 강제 노출은 핫플만.
+          final title = _markerTitle[prevId];
+          if (title != null) {
+            try {
+              prevMarker.setCaption(_defaultCaption(title, colors));
+              prevMarker
+                  .setIsForceShowCaption(_markerIsHot[prevId] ?? false);
+            } catch (_) {/* same */}
+          }
         }
       }
     }
@@ -1142,23 +1200,91 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         try {
           marker.setGlobalZIndex(_selectedMarkerZIndex);
         } catch (_) {/* same */}
-        // 선택 강조: 사진 마커는 살짝 확대 (아이콘 재합성 없이 setSize만 —
+        // 선택 강조: 점/사진 마커는 살짝 확대 (아이콘 재합성 없이 setSize만 —
         // iOS 마커 이미지 캐시 경합 리스크 없음. marker_constants 참고)
         // 확대 기준도 위계 크기 — 핫플은 66 x 1.18 까지 커진다.
-        if (!_textMarkerCardMode.containsKey(markerId)) {
+        if (!_isDisplayedAsCard(markerId)) {
           final baseSize = _markerBaseSize[markerId] ?? _normalMarkerSize;
           try {
             marker.setSize(Size(
                 baseSize * kSelectedMarkerScale,
                 baseSize * kSelectedMarkerScale));
           } catch (_) {/* same */}
+          // 선택 마커는 전체 타이틀 노출 + 줌/충돌 숨김 보호.
+          final title = _markerTitle[markerId];
+          if (title != null && title.isNotEmpty) {
+            try {
+              marker.setCaption(_selectedCaption(title, colors));
+              marker.setIsForceShowCaption(true);
+            } catch (_) {/* same */}
+          }
         }
       }
     }
   }
 
-  /// 텍스트 글 — 줌인 카드 아이콘. 꼬리 끝이 박스 하단 중앙(anchor 기본 0.5,1.0)에 오도록
-  /// bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// 바텀 카드 열림/닫힘에 맞춰 말풍선(텍스트 카드 아이콘) 마커를 점으로
+  /// 강제/복원한다 (피그마 18-2 ④ — 카드 열림: 모든 말풍선 숨김, 점만 표시).
+  /// 재조회 없이 setIcon/setSize/setCaption 만 갈아끼우는 경량 경로.
+  /// [force]: 상태가 같아도 재적용 — 카드 열림 중 재조회로 말풍선 아이콘이
+  /// 새로 만들어진 마커를 다시 점으로 덮을 때 사용.
+  Future<void> _syncTextBubbleSuppression({bool force = false}) async {
+    final bool suppress = _selectedGroupIndex != null;
+    if (!force && suppress == _textBubblesSuppressed) return;
+    _textBubblesSuppressed = suppress;
+
+    // 대상: 카드 모드로 그려진(그려질) 텍스트 마커 전부.
+    final cardIds = _textMarkerCardMode.entries
+        .where((e) => e.value)
+        .map((e) => e.key)
+        .toList();
+    if (cardIds.isEmpty) return;
+
+    if (suppress && _textDotIcon == null) {
+      try {
+        final bytes = await _markerImageFactory.createTextDotImage();
+        _textDotIcon = await overlayImageFromBytes(bytes);
+      } catch (e) {
+        debugPrint('[map] 말풍선 억제용 점 아이콘 생성 실패: $e');
+        return;
+      }
+      if (!mounted) return;
+    }
+
+    final colors = AppColors.of(context);
+    for (final id in cardIds) {
+      final marker = _markerRefs[id];
+      if (marker == null) continue;
+      final String title = _markerTitle[id] ?? '';
+      final bool selected = id == _highlightedMarkerId;
+      try {
+        if (suppress) {
+          final double base = _markerBaseSize[id] ?? _normalMarkerSize;
+          marker.setIcon(_textDotIcon!);
+          // 선택 마커는 점 상태에서도 1.18x + 전체 캡션 유지.
+          marker.setSize(selected
+              ? Size(base * kSelectedMarkerScale, base * kSelectedMarkerScale)
+              : Size(base, base));
+          marker.setCaption(selected
+              ? _selectedCaption(title, colors)
+              : _defaultCaption(title, colors));
+          marker.setIsForceShowCaption(
+              selected || (_markerIsHot[id] ?? false));
+        } else {
+          // 복원 — 재조회 없이 캐시된 말풍선 아이콘으로 되돌린다.
+          // 캐시가 없으면(그 사이 제거됨) 다음 재조회가 다시 만든다.
+          final icon = _markerIconCache[id];
+          if (icon != null) marker.setIcon(icon);
+          marker.setSize(kTextCardSize);
+          marker.setCaption(_defaultCaption('', colors)); // 카드가 제목 포함
+          marker.setIsForceShowCaption(_markerIsHot[id] ?? false);
+        }
+      } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+    }
+  }
+
+  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 아래 점 앵커 합성). 점 꼬리 끝이 박스
+  /// 하단 중앙(anchor 기본 0.5,1.0)에 오도록 bottomCenter 정렬. 제목 없으면 본문만 카드.
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
@@ -1170,7 +1296,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         height: _textCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: TextMarkerCard(title: title, body: post.content, maxLines: 2),
+          child: TextBubbleMarker(
+            title: title,
+            body: post.content,
+            time: relativeTimeFromString(post.createdAt),
+            maxLines: 2,
+          ),
         ),
       ),
     );
@@ -1425,6 +1556,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedGroupIndex = idx;
       _selectedPostIndex = postIndex;
     });
+    // 카드 열림 → 말풍선 억제 (피그마 18-2 ④). 카메라 이동과 독립적으로 적용.
+    unawaited(_syncTextBubbleSuppression());
     if (!moveCamera) return;
 
     final camera = await _mapController!.getCameraPosition();
@@ -2011,6 +2144,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                           _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
+                        // 카드 닫힘 → 말풍선 복원.
+                        unawaited(_syncTextBubbleSuppression());
                         // 카드 열림 동안 보류된 자동 재조회 재평가.
                         _onCameraIdle();
                       },

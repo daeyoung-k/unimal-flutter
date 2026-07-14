@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/theme/app_colors.dart';
 
 Future<void> _overlayImageChain = Future.value();
@@ -303,73 +304,43 @@ class MarkerImageFactory {
     return byteData!.buffer.asUint8List();
   }
 
-  /// 텍스트 전용(사진 없는) 글의 줌아웃 마커 이미지를 PNG bytes 로 생성.
+  /// [createTextDotImage] 기본 팔레트 결과 캐시 — 점 그림은 글과 무관하게
+  /// 항상 같으므로 프로세스당 1회만 래스터화한다.
+  Uint8List? _textDotBytesCache;
+
+  /// 텍스트 전용(사진 없는) 글의 줌아웃 점 마커 이미지를 PNG bytes 로 생성.
   /// 사진 마커([createMarkerImage])와 동일한 200x200 규격이라 [addClusterBadge]
   /// 합성(+N 뱃지)을 그대로 탈 수 있다.
-  /// 모양: 작은 "말풍선"(둥근 본체 + 아래 꼬리) — 카드(줌인)와 같은 패밀리.
+  /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 + 하단 다이아 꼬리 9dp
+  /// (피그마 "18 텍스트 마커 변형 시트" 확정안 — 카드/점 같은 패밀리).
   /// 꼬리 끝이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
-  /// 안에는 본문을 뜻하는 흰 줄 3개(왼쪽 정렬: 길게-길게-짧게).
+  /// 위젯([TextDotGlyph])과 [paintTextDot] 로 같은 그림을 공유한다.
   Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
+    if (bubbleColor == null && _textDotBytesCache != null) {
+      return _textDotBytesCache!;
+    }
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const double size = 200.0;
-    final Color bubbleBlue = bubbleColor ?? AppColors.light.primaryStrong;
+    // 기준 프레임(32x38dp)을 세로에 꽉 채운다 — 꼬리 끝 = 캔버스 하단(200).
+    // 1dp = 200/38 px. 표시 크기(위계 42~66dp 정사각) 기준 원 지름 ≈ 0.84x.
+    const double unit = size / kTextDotFrameH;
 
-    // 말풍선 외곽선 (본체 + 꼬리, 하나의 연속 path → 이음새 없음)
-    const double left = 22, top = 12, right = 178, bodyBottom = 150, r = 34;
-    const double cx = size / 2, tailHalf = 15, tipY = 198;
-    final bubble = Path()
-      ..moveTo(left + r, top)
-      ..lineTo(right - r, top)
-      ..arcToPoint(const Offset(right, top + r),
-          radius: const Radius.circular(r))
-      ..lineTo(right, bodyBottom - r)
-      ..arcToPoint(const Offset(right - r, bodyBottom),
-          radius: const Radius.circular(r))
-      ..lineTo(cx + tailHalf, bodyBottom)
-      ..lineTo(cx, tipY) // 꼬리 끝 = 지도 좌표
-      ..lineTo(cx - tailHalf, bodyBottom)
-      ..lineTo(left + r, bodyBottom)
-      ..arcToPoint(const Offset(left, bodyBottom - r),
-          radius: const Radius.circular(r))
-      ..lineTo(left, top + r)
-      ..arcToPoint(const Offset(left + r, top),
-          radius: const Radius.circular(r))
-      ..close();
-
-    // 부드러운 그림자 → 떠 있는 말풍선 느낌
-    canvas.drawShadow(bubble, const Color(0x33000000), 4, false);
-    // 채움(파랑) + 흰 테두리
-    canvas.drawPath(bubble, Paint()..color = bubbleBlue);
-    canvas.drawPath(
-      bubble,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 8
-        ..strokeJoin = StrokeJoin.round
-        ..color = Colors.white,
+    paintTextDot(
+      canvas,
+      origin: const Offset((size - kTextDotFrameW * unit) / 2, 0),
+      unit: unit,
+      withShadow: true,
+      glyph: bubbleColor ?? AppColors.light.primaryStrong,
     );
-
-    // 본문 줄(흰색, 왼쪽 정렬: 길게-길게-짧게)
-    const double lineH = 13, lineLeft = 54;
-    const List<double> lineW = [92, 92, 56];
-    final linePaint = Paint()..color = Colors.white;
-    double ly = 48;
-    for (int i = 0; i < 3; i++) {
-      canvas.drawRRect(
-        RRect.fromRectAndRadius(
-          Rect.fromLTWH(lineLeft, ly, lineW[i], lineH),
-          const Radius.circular(lineH / 2),
-        ),
-        linePaint,
-      );
-      ly += lineH + 13; // 줄 높이 + 간격
-    }
 
     final ui.Image image =
         await recorder.endRecording().toImage(size.toInt(), size.toInt());
     final ByteData? byteData =
         await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData!.buffer.asUint8List();
+    final bytes = byteData!.buffer.asUint8List();
+    if (bubbleColor == null) _textDotBytesCache = bytes;
+    return bytes;
   }
 }
