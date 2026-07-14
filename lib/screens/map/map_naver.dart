@@ -76,6 +76,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   final Map<String, NLatLng> _stackFanPositions = {};
   // 마지막으로 카메라를 보낸 펼침 글 id — 탭/스와이프 에코 중복 이동 방지.
   String? _stackFanFocusedPostId;
+  // 현재 펼치는 중인 스택 대표 id — 펼침 완료 전(좌표 미생성)에 들어온
+  // 카드 팔로우 호출을 식별하기 위한 보조 상태. 완료 시 해제.
+  String? _expandingStackId;
+  // 펼침 완료 전에 들어온 카드 팔로우의 대기 글 인덱스 — 좌표가 준비되면
+  // (펼침 종료 시점) 이 글의 펼침 마커로 카메라를 1회 이동한다.
+  // 카드 스와이프로 스택에 진입한 최초 프레임에서 카드 글과 포커스가
+  // 어긋나던 문제 해결용 (2026-07-14).
+  int? _pendingFanFocusPostIndex;
   // 펼침 마커 z-index — 일반 마커(200000+score)와 선택(999999999) 사이.
   static const int _stackFanZIndex = 900000000;
   static const String _stackFanCenterId = 'stack_fan_center';
@@ -1447,6 +1455,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 이전 호출은 await 지점 이후를 포기한다 (고아 오버레이 방지).
     final int seq = ++_stackFanSeq;
 
+    // 펼치는 중 표식 — 아래 첫 await 이전에 세팅해, onGroupChanged 직후
+    // 동기로 들어오는 onPostChanged(_followStackFanPost)가 좌표 미생성
+    // 상태에서도 이 그룹을 인식하고 포커스를 예약할 수 있게 한다.
+    _expandingStackId = stackId;
+    _pendingFanFocusPostIndex = null;
+
     // 예약된 자동 재조회 취소 — 펼침 도중 재조회가 돌면 그룹 대표 교체 시
     // 원본 스택 마커가 다시 보이는 레이스가 있다 (2026-07-13 재발 보고).
     _cameraDebounce?.cancel();
@@ -1617,22 +1631,50 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _stackFanFocusedPostId = stackId;
         _selectMarker(cardIdx, postIndex: 0, moveCamera: false);
       }
+    } else {
+      // 카드 스와이프로 스택에 진입한 경우 — 카드는 이미 특정 글을
+      // 보여주는 중이다. 펼침 전(좌표 미생성)에 들어와 예약된 팔로우가
+      // 있으면, 그 글의 펼침 마커로 카메라를 1회 옮겨 카드와 포커스를
+      // 일치시킨다. 예약이 없으면(엣지) 대표 글 인덱스 0을 사용.
+      final int focusIdx = _pendingFanFocusPostIndex ?? 0;
+      if (focusIdx >= 0 && focusIdx < group.length) {
+        final focusPost = group[focusIdx];
+        final pos = _stackFanPositions[focusPost.id];
+        if (pos != null && focusPost.id != _stackFanFocusedPostId) {
+          _stackFanFocusedPostId = focusPost.id;
+          await _moveCameraToMarker(pos, keepStackFan: true);
+        }
+      }
     }
+    _pendingFanFocusPostIndex = null;
+    // 펼침 완료 — 진행 중 표식 해제 (이 seq 가 최신일 때만).
+    if (seq == _stackFanSeq) _expandingStackId = null;
   }
 
   /// 카드 페이지 이동 팔로우 — 펼침 상태에서 같은 스택 안의 다른 글로
   /// 넘어가면 해당 펼침 마커가 카드 위(22%)에 오도록 카메라 이동.
   /// 펼침이 아니거나 다른 그룹이면 무시 (그룹 경계는 onGroupChanged 가 처리).
   void _followStackFanPost(int groupIndex, int postIndex) {
-    if (_expandedStackId == null) return;
     if (groupIndex < 0 || groupIndex >= _postGroups.length) return;
     final group = _postGroups[groupIndex];
-    if (group.isEmpty || group.first.id != _expandedStackId) return;
+    if (group.isEmpty) return;
+    // 이미 펼쳐졌거나(_expandedStackId) 펼치는 중인(_expandingStackId)
+    // 그룹만 대상. 카드 스와이프로 스택에 막 진입한 최초 프레임에서는
+    // onGroupChanged(펼침 비동기 시작) 직후 이 콜백이 동기로 들어오므로
+    // _expandedStackId 는 아직 null 이고 _expandingStackId 로 식별한다.
+    final activeStackId = _expandedStackId ?? _expandingStackId;
+    if (activeStackId == null || group.first.id != activeStackId) return;
     if (postIndex < 0 || postIndex >= group.length) return;
     final postId = group[postIndex].id;
     if (postId == _stackFanFocusedPostId) return; // 탭 에코 등 중복 방지
     final pos = _stackFanPositions[postId];
-    if (pos == null) return;
+    if (pos == null) {
+      // 펼침이 아직 좌표를 만들지 않음 — 완료 시점(_expandStackFan 종료)에
+      // 적용하도록 예약만 하고 반환.
+      _pendingFanFocusPostIndex = postIndex;
+      return;
+    }
+    _pendingFanFocusPostIndex = null;
     _stackFanFocusedPostId = postId;
     _moveCameraToMarker(pos, keepStackFan: true);
   }
@@ -1648,6 +1690,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _stackFanBaseZoom = null;
     _stackFanPositions.clear();
     _stackFanFocusedPostId = null;
+    _pendingFanFocusPostIndex = null;
 
     for (final id in _stackFanMarkerIds) {
       try {
