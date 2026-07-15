@@ -1295,6 +1295,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     for (final id in cardIds) {
       final marker = _markerRefs[id];
       if (marker == null) continue;
+      // 지도에서 이미 제거된 마커는 스킵 — native "overlay can't found"
+      // 로그 소음 감소 (등록 진행 중 race 는 여전히 가능, 무해).
+      if (!marker.isAdded) continue;
       final String title = _markerTitle[id] ?? '';
       final bool selected = id == _highlightedMarkerId;
       try {
