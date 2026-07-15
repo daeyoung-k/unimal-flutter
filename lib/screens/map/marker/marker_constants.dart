@@ -130,10 +130,15 @@ const double kTextCardExitZoom = 16.8;
 const int kStackGroupPrecision = 4;
 
 /// 밀집 지역 판정 (피그마 §4 C안: 밀집 지역에선 카드 대신 점 고정).
-/// 반경 [kTextCardDenseRadiusDeg](위경도, 약 50m) 안에 다른 마커 그룹이
-/// [kTextCardDenseNeighbors]개 이상이면 줌인해도 텍스트 카드로 펼치지 않는다.
-/// (204px 카드가 겹겹이 쌓여 지도를 가리는 문제 방지)
-const double kTextCardDenseRadiusDeg = 0.0005;
+/// **화면 dp 기준** — 반경 [kTextCardDenseRadiusDp] 안에 다른 마커 그룹이
+/// [kTextCardDenseNeighbors]개 이상이면 텍스트 카드로 펼치지 않는다.
+/// (204dp 카드가 겹겹이 쌓여 지도를 가리는 문제 방지)
+///
+/// 고정 위경도(0.0005deg ≈ 55m) 기준이던 것을 dp 로 변경 (2026-07-15):
+/// 지리 고정 반경은 줌 19+ 에서 화면 반대편 마커까지 "밀집"으로 잡아
+/// 줌인할수록 말풍선이 점으로 강제되는 역전이 있었다. 120dp 는 기존
+/// 값이 튜닝된 줌(≈17.8, 55m ≈ 120dp)에서 동일 동작을 보존한다.
+const double kTextCardDenseRadiusDp = 120;
 const int kTextCardDenseNeighbors = 2;
 
 /// 캡션용 제목 자르기 — [kMarkerCaptionMaxChars]자 초과 시 말줄임.

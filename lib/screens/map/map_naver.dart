@@ -284,7 +284,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       await _loadMapMarkers(
         target.latitude,
         target.longitude,
-        _lastQueriedZoom.round(),
+        _apiZoomFor(_lastQueriedZoom),
         rawZoom: _lastQueriedZoom,
       );
     } else {
@@ -293,7 +293,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       await _loadMapMarkers(
         camera.target.latitude,
         camera.target.longitude,
-        camera.zoom.round(),
+        _apiZoomFor(camera.zoom),
         rawZoom: camera.zoom,
       );
     }
@@ -368,7 +368,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _loadMapMarkers(
       camera.target.latitude,
       camera.target.longitude,
-      camera.zoom.round(),
+      _apiZoomFor(camera.zoom),
       rawZoom: camera.zoom,
     );
   }
@@ -539,13 +539,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
     // 밀집 지역 판정(C안) — 주변에 다른 마커 그룹이 몰려 있으면
     // 텍스트 마커를 줌인해도 카드로 펼치지 않고 점으로 고정.
+    // 반경은 **화면 dp 기준** → 현재 줌의 meterPerDp 로 위경도 환산.
+    // (고정 위경도 반경은 깊은 줌에서 화면 밖 마커까지 밀집으로 잡아
+    // 줌인할수록 말풍선이 점으로 강제되는 역전 — 2026-07-15)
+    final double denseMeterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: latitude,
+      zoom: rawZoom ?? zoom.toDouble(),
+    );
+    final double denseRadiusDeg =
+        kTextCardDenseRadiusDp * denseMeterPerDp / 111320.0;
     bool isDenseGroup(MapPost top) {
       int neighbors = 0;
       for (final other in markerGroups) {
         final o = other.first;
         if (identical(o, top)) continue;
-        if ((o.latitude - top.latitude).abs() < kTextCardDenseRadiusDeg &&
-            (o.longitude - top.longitude).abs() < kTextCardDenseRadiusDeg) {
+        if ((o.latitude - top.latitude).abs() < denseRadiusDeg &&
+            (o.longitude - top.longitude).abs() < denseRadiusDeg) {
           neighbors++;
           if (neighbors >= kTextCardDenseNeighbors) return true;
         }
@@ -1116,11 +1125,18 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _loadMapMarkers(
         currentTarget.latitude,
         currentTarget.longitude,
-        currentZoom.round(),
+        _apiZoomFor(currentZoom),
         rawZoom: currentZoom,
       );
     });
   }
+
+  /// 카메라 줌(소수) → API 줌 변환. **내림(floor)** — 반올림하면 19.79 가
+  /// z=20(반경 100m)으로 올라가 뷰포트보다 좁게 조회돼, 화면에 보이던
+  /// 마커가 줌인 중 삭제되고 밀집 판정까지 뒤집힌다 (2026-07-15 버그).
+  /// 내림은 항상 "한 단계 넓게" 조회하므로 뷰포트 커버가 보장된다.
+  /// 백엔드 ZoomLevel 테이블 범위(10~20)로 클램프.
+  int _apiZoomFor(double rawZoom) => rawZoom.floor().clamp(10, 20);
 
   // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
   String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
