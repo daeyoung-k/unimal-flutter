@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
@@ -22,6 +24,8 @@ class ApiClient {
   static Completer<TokenReissueResult>? _refreshCompleter;
   static AuthFailurePolicy _currentRefreshPolicy = AuthFailurePolicy.silent;
   static bool _authExpiredHandledForCurrentRefresh = false;
+
+  
 
   // ── 토큰 재발급 ─────────────────────────────────────────────────────
   /// 재발급 성공 → 새 accessToken 반환
@@ -75,14 +79,51 @@ class ApiClient {
         _currentRefreshPolicy == AuthFailurePolicy.interactive &&
         !_authExpiredHandledForCurrentRefresh) {
       _authExpiredHandledForCurrentRefresh = true;
+      await _notifyAuthExpired();
+    }
+    return null;
+  }
+
+  /// 세션 만료 처리 — 상태 정리 후 재로그인 유도.
+  /// 각 단계를 개별 격리: 이 함수는 _refresh 의 try 안에서도 불리는데,
+  /// 여기서 던진 예외가 그 catch 에 삼켜지면 안내도 이동도 없이 "조용히
+  /// 죽은 세션"으로 남는다 (2026-07-15 Android — 다이얼로그 미표시 증상).
+  /// Get.dialog 가 예외 없이 표시에 실패하는 환경까지 방어 — 호출 후
+  /// 실제로 떠 있는지 확인해 안 떠 있으면 로그인 화면으로 강제 이동한다.
+  static Future<void> _notifyAuthExpired() async {
+    // 이미 로그인 화면(또는 이동 중)이면 중복 안내 생략 — 연속 401 스팸 방지.
+    if (Get.currentRoute == '/login') {
+      debugPrint('[auth] 세션 만료 — 이미 로그인 화면, 안내 생략');
+      return;
+    }
+    debugPrint('[auth] 세션 만료 — 상태 정리 후 재로그인 유도');
+    try {
       await AccountService().stateClear();
+    } catch (e) {
+      debugPrint('[auth] stateClear 실패(무시하고 진행): $e');
+    }
+    try {
       _customAlert.pageMovingWithshowTextAlert(
         '인증 만료',
         '로그인이 만료되었습니다.\n다시 로그인해주세요.',
         '/login',
+        barrierDismissible: false, // 바깥 탭으로 닫히면 죽은 세션으로 화면에 남는다
       );
+      // 다음 프레임 이후에도 다이얼로그가 안 떠 있으면 표시 실패로 간주.
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (Get.isDialogOpen != true && Get.currentRoute != '/login') {
+        debugPrint('[auth] 만료 다이얼로그 미표시 감지 → 로그인 화면 직접 이동 '
+            '(currentRoute=${Get.currentRoute})');
+        Get.offAllNamed('/login');
+      }
+    } catch (e) {
+      debugPrint('[auth] 만료 안내 실패 → 로그인 화면 직접 이동: $e');
+      try {
+        Get.offAllNamed('/login');
+      } catch (e2) {
+        debugPrint('[auth] 로그인 화면 이동 실패: $e2');
+      }
     }
-    return null;
   }
 
   // ── GET ─────────────────────────────────────────────────────────────

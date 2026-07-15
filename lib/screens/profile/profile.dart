@@ -55,18 +55,28 @@ class _ProfileScreensState extends State<ProfileScreens> {
   void refreshProfile() => _loadUserInfo();
 
   Future<void> _loadUserInfo() async {
-    final results = await Future.wait([
-      _userInfoService.getMemberInfo(_authState.accessToken.value),
-      _boardApiService.getMyPostTotal(),
-      _boardApiService.getMyLikedTotal(),
-      _boardApiService.getMyPostList(sortType: 'LATEST'),
-    ]);
+    // Future.wait 는 하나라도 던지면 통째로 reject 되고, 그대로 두면
+    // _isLoading 이 영원히 true 로 남아 무한 스피너가 된다 (네트워크 예외,
+    // 토큰 재발급 실패 등). 실패해도 화면은 빈 상태로라도 뜨게 방어한다.
+    List<Object?>? results;
+    try {
+      results = await Future.wait([
+        _userInfoService.getMemberInfo(_authState.accessToken.value),
+        _boardApiService.getMyPostTotal(),
+        _boardApiService.getMyLikedTotal(),
+        _boardApiService.getMyPostList(sortType: 'LATEST'),
+      ]);
+    } catch (e, st) {
+      debugPrint('[profile] 내 정보 로드 실패: $e\n$st');
+    }
     if (mounted) {
       setState(() {
-        _userInfo = results[0] as UserInfoModel?;
-        _myPostCount = (results[1] as int?) ?? 0;
-        _myLikedCount = results[2] as int;
-        _myPosts = results[3] as List<BoardPost>;
+        if (results != null) {
+          _userInfo = results[0] as UserInfoModel?;
+          _myPostCount = (results[1] as int?) ?? 0;
+          _myLikedCount = (results[2] as int?) ?? 0;
+          _myPosts = (results[3] as List<BoardPost>?) ?? [];
+        }
         _isLoading = false;
       });
     }

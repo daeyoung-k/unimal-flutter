@@ -584,7 +584,15 @@ class _MyPageScreenState extends State<MyPageScreen> {
           TextButton(
             onPressed: () async {
               Get.back();
-              await _accountService.withdrawal();
+              final ok = await _accountService.withdrawal();
+              // 서버 탈퇴 실패 시 세션은 유지된 상태 — 안내만 하고 화면에 남는다.
+              if (!ok) {
+                Get.snackbar(
+                  '탈퇴 실패',
+                  '탈퇴 처리에 실패했습니다.\n잠시 후 다시 시도해주세요.',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
             },
             child: const Text('탈퇴',
                 style: TextStyle(

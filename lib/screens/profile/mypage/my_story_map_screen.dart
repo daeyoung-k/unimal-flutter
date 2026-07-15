@@ -75,18 +75,27 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   }
 
   Future<void> _load() async {
-    final results = await Future.wait([
-      _boardApi.getMyPostList(sortType: 'LATEST'),
-      _userInfoService.getMemberInfo(_authState.accessToken.value),
-      _boardApi.getMyPostTotal(),
-      _boardApi.getMyLikedTotal(),
-    ]);
+    // Future.wait 는 하나라도 던지면 통째로 reject — 그대로 두면 _isLoading 이
+    // 영원히 true 로 남아 무한 스피너가 된다. 실패해도 화면은 뜨게 방어.
+    List<Object?>? results;
+    try {
+      results = await Future.wait([
+        _boardApi.getMyPostList(sortType: 'LATEST'),
+        _userInfoService.getMemberInfo(_authState.accessToken.value),
+        _boardApi.getMyPostTotal(),
+        _boardApi.getMyLikedTotal(),
+      ]);
+    } catch (e, st) {
+      debugPrint('[myStoryMap] 데이터 로드 실패: $e\n$st');
+    }
     if (mounted) {
       setState(() {
-        _posts = results[0] as List<BoardPost>;
-        _userInfo = results[1] as UserInfoModel?;
-        _myTotal = (results[2] as int?) ?? (_posts.length);
-        _likedTotal = results[3] as int;
+        if (results != null) {
+          _posts = (results[0] as List<BoardPost>?) ?? [];
+          _userInfo = results[1] as UserInfoModel?;
+          _myTotal = (results[2] as int?) ?? (_posts.length);
+          _likedTotal = (results[3] as int?) ?? 0;
+        }
         _isLoading = false;
       });
       // 지도가 먼저 준비됐다면(데이터보다 빨리) 이제 마커를 그린다.

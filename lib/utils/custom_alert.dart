@@ -17,19 +17,29 @@ class CustomAlert {
     ));
   }
 
-  void pageMovingWithshowTextAlert(String title, String content, String page) {
-    Get.dialog(AlertDialog(
-      title: Text(title),
-      content: Text(content),
-      actions: [
-        TextButton(
-          child: Text("확인"),
-          onPressed: () {
-            Get.offAllNamed(page);
-          },
-        ),
-      ],
-    ));
+  /// [barrierDismissible] false 면 바깥 탭으로 닫을 수 없다 —
+  /// 세션 만료 안내처럼 "확인 → 이동"이 반드시 실행돼야 하는 경우에 사용.
+  void pageMovingWithshowTextAlert(
+    String title,
+    String content,
+    String page, {
+    bool barrierDismissible = true,
+  }) {
+    Get.dialog(
+      AlertDialog(
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          TextButton(
+            child: Text("확인"),
+            onPressed: () {
+              Get.offAllNamed(page);
+            },
+          ),
+        ],
+      ),
+      barrierDismissible: barrierDismissible,
+    );
   }
 
   // 경고창 확인 후 현재 페이지만 제거하고 지정된 페이지로 이동
