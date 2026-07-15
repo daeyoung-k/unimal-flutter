@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 /// 텍스트 전용 커스텀 마커 위젯 모음.
@@ -7,12 +5,12 @@ import 'package:flutter/material.dart';
 /// 피그마 "18 텍스트 마커 변형 시트" 확정안(점 앵커 + 꼬리 없는 말풍선) 기준.
 /// - 줌인: [TextBubbleMarker] — 흰 콘텐츠 카드(꼬리 없음) + 4px 아래 점 앵커
 /// - 카드: [TextMarkerCard] — 제목+시간 행 + 본문 2줄, 고정 폭 204(본문 180)
-/// - 점: [TextDotGlyph] — 32dp 화이트 원 + 블루 챗 글리프 + 하단 다이아 꼬리 9dp
+/// - 점: [TextDotGlyph] — 32dp 화이트 원 + 블루 챗 글리프 (튀어나온 꼬리 없음)
 ///
 /// 구 디자인(파란 말풍선 + 가짜 줄 3개)에서 **색 반전**했다: 화이트 면 +
 /// 블루 글리프. "블루는 배경이 아니라 강조 액센트로만" 톤 가이드와 일치.
-/// 점 마커가 좌표 앵커(다이아 꼬리 끝 = 지도 좌표)를 담당하고, 말풍선 카드는
-/// 그 위에 4px 간격으로 떠 있다 (카드 자체엔 꼬리 없음).
+/// 점 마커가 좌표 앵커(원 바닥 = 지도 좌표, 사진 마커와 동일)를 담당하고,
+/// 말풍선 카드는 그 위에 4px 간격으로 떠 있다 (카드 자체엔 꼬리 없음).
 ///
 /// 이 위젯들은 `NOverlayImage.fromWidget(widget:, size:, context:)` 으로
 /// 비트맵 변환해 네이버 지도 마커 아이콘으로 사용한다. Theme.extension 미정착
@@ -30,18 +28,19 @@ class TextMarkerTokens {
   static const Color timeText = Color(0xFF9CA3AF); // textMuted
 }
 
-/// 점 마커 기준 프레임 (피그마 스펙 시트 그대로, 단위 dp).
-/// 원 32 + 아래로 삐져나온 다이아 꼬리 6 = 전체 32x38.
+/// 점 마커 기준 프레임 (피그마 스펙 시트 기준, 단위 dp). 원 32x32.
+/// 피그마의 다이아 꼬리는 원 뒤에 완전히 숨는 장식이라 그리지 않는다
+/// (2026-07-14 피드백: 튀어나온 꼬리는 디자인에 없음). 좌표 앵커는
+/// 사진 마커와 동일하게 원 바닥(anchor 0.5, 1.0).
 const double kTextDotFrameW = 32.0;
-const double kTextDotFrameH = 38.0;
+const double kTextDotFrameH = 32.0;
 
 /// 텍스트 점 마커 그림 — 피그마 "text-marker-dot" 노드의 기하를 그대로 옮겼다.
 /// - 화이트 원 32dp + border 1dp (외곽 = 정확히 32dp)
 /// - 챗 글리프: primaryStrong 라운드 사각 15 x 11.5 (r4) + 좌하단 작은 꼬리
-/// - 다이아 꼬리: 9dp 라운드(1.5) 사각을 45도 회전, 원 뒤에 배치.
-///   꼬리 끝 = (16, 38) = 지도 좌표 (anchor 0.5, 1.0)
+/// - 원 바닥 = (16, 32) = 지도 좌표 (anchor 0.5, 1.0)
 ///
-/// [origin]은 32x38 기준 프레임의 좌상단이 놓일 캔버스 위치, [unit]은 1dp당 px.
+/// [origin]은 32x32 기준 프레임의 좌상단이 놓일 캔버스 위치, [unit]은 1dp당 px.
 /// 위젯([TextDotGlyph])과 바이트 팩토리([MarkerImageFactory.createTextDotImage])가
 /// 이 함수 하나로 같은 모양을 그린다.
 void paintTextDot(
@@ -74,19 +73,6 @@ void paintTextDot(
     canvas.drawShadow(shadowPath, const Color(0x22000000), unit, false);
   }
 
-  // 다이아 꼬리 — 원보다 먼저 그려 원 뒤로 숨는다 (보이는 건 아래 절반).
-  final diamondCenter = at(16, 38 - 4.5 * math.sqrt2); // 꼬리 끝 = (16, 38)
-  final diamondRect = RRect.fromRectAndRadius(
-    Rect.fromCenter(center: Offset.zero, width: 9 * unit, height: 9 * unit),
-    Radius.circular(1.5 * unit),
-  );
-  canvas.save();
-  canvas.translate(diamondCenter.dx, diamondCenter.dy);
-  canvas.rotate(math.pi / 4);
-  canvas.drawRRect(diamondRect, facePaint);
-  canvas.drawRRect(diamondRect, borderPaint);
-  canvas.restore();
-
   // 원 — 테두리는 안쪽으로 (외곽이 정확히 32dp).
   canvas.drawCircle(circleCenter, 16 * unit, facePaint);
   canvas.drawCircle(circleCenter, 15.5 * unit, borderPaint);
@@ -112,7 +98,7 @@ void paintTextDot(
 }
 
 /// 점 앵커 위젯 — [TextBubbleMarker] 에서 카드 아래에 붙는다.
-/// [diameter] = 원 지름(dp). 다이아 꼬리 끝이 위젯 하단 중앙(=지도 좌표).
+/// [diameter] = 원 지름(dp). 원 바닥이 위젯 하단 중앙(=지도 좌표).
 class TextDotGlyph extends StatelessWidget {
   const TextDotGlyph({super.key, this.diameter = 32});
 
@@ -122,7 +108,7 @@ class TextDotGlyph extends StatelessWidget {
   Widget build(BuildContext context) {
     final double unit = diameter / kTextDotFrameW;
     // 좌우 2px·상단 1px 여유 (테두리 안티앨리어싱). 하단은 여유 없이
-    // 꼬리 끝 = 위젯 바닥 — 앵커(0.5, 1.0) 정합.
+    // 원 바닥 = 위젯 바닥 — 앵커(0.5, 1.0) 정합.
     return CustomPaint(
       size: Size(diameter + 4, kTextDotFrameH * unit + 1),
       painter: _TextDotPainter(unit),
@@ -255,7 +241,7 @@ class TextMarkerCard extends StatelessWidget {
 }
 
 /// 줌인 텍스트 마커 = 카드(위) + 4px 간격 + 점 앵커(아래).
-/// 하단 중앙(점 꼬리 끝)이 지도 좌표(anchor 0.5, 1.0)를 가리킨다.
+/// 하단 중앙(점의 원 바닥)이 지도 좌표(anchor 0.5, 1.0)를 가리킨다.
 /// 카드와 점을 한 위젯으로 합성해 `fromWidget` 한 번으로 비트맵화한다.
 class TextBubbleMarker extends StatelessWidget {
   const TextBubbleMarker({

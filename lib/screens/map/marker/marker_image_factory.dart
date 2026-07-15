@@ -359,9 +359,9 @@ class MarkerImageFactory {
   /// 텍스트 전용(사진 없는) 글의 줌아웃 점 마커 이미지를 PNG bytes 로 생성.
   /// 사진 마커([createMarkerImage])와 동일한 200x200 규격이라 [addClusterBadge]
   /// 합성(+N 뱃지)을 그대로 탈 수 있다.
-  /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 + 하단 다이아 꼬리 9dp
-  /// (피그마 "18 텍스트 마커 변형 시트" 확정안 — 카드/점 같은 패밀리).
-  /// 꼬리 끝이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
+  /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 (튀어나온 꼬리 없음 —
+  /// 피그마 "18 텍스트 마커 변형 시트" 확정안, 카드/점 같은 패밀리).
+  /// 원 바닥이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
   /// 위젯([TextDotGlyph])과 [paintTextDot] 로 같은 그림을 공유한다.
   Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
     if (bubbleColor == null && _textDotBytesCache != null) {
@@ -371,13 +371,14 @@ class MarkerImageFactory {
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     const double size = 200.0;
-    // 기준 프레임(32x38dp)을 세로에 꽉 채운다 — 꼬리 끝 = 캔버스 하단(200).
-    // 1dp = 200/38 px. 표시 크기(위계 42~66dp 정사각) 기준 원 지름 ≈ 0.84x.
-    const double unit = size / kTextDotFrameH;
+    // 좌우 8px·상단 16px 여유(테두리 안티앨리어싱 + 그림자), 원 바닥 = 캔버스
+    // 하단(200). 표시 크기(위계 42~66dp 정사각) 기준 원 지름 = 0.92x.
+    const double unit = (size - 16) / kTextDotFrameH;
 
     paintTextDot(
       canvas,
-      origin: const Offset((size - kTextDotFrameW * unit) / 2, 0),
+      origin: const Offset(
+          (size - kTextDotFrameW * unit) / 2, size - kTextDotFrameH * unit),
       unit: unit,
       withShadow: true,
       glyph: bubbleColor ?? AppColors.light.primaryStrong,
