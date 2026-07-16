@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -7,10 +8,7 @@ import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/custom_alert.dart';
 
-enum AuthFailurePolicy {
-  interactive,
-  silent,
-}
+enum AuthFailurePolicy { interactive, silent }
 
 /// 모든 API 요청의 공통 진입점.
 /// 401 응답 시 자동으로 토큰을 재발급하고 동일 요청을 1회 재시도한다.
@@ -25,7 +23,62 @@ class ApiClient {
   static AuthFailurePolicy _currentRefreshPolicy = AuthFailurePolicy.silent;
   static bool _authExpiredHandledForCurrentRefresh = false;
 
-  
+  static bool shouldRefreshForAuthFailure(http.Response response) {
+    if (response.statusCode == 401) return true;
+
+    final bodyData = _decodeBody(response);
+    if (bodyData is! Map) {
+      return _looksLikeExpiredTokenFailure(_bodyText(response));
+    }
+
+    final code = bodyData['code'];
+    if (code == 401 || code == '401') return true;
+
+    final message = [
+      bodyData['message'],
+      bodyData['error'],
+      bodyData['exception'],
+    ].whereType<String>().join(' ');
+
+    return _looksLikeExpiredTokenFailure(message);
+  }
+
+  static String _bodyText(http.Response response) {
+    try {
+      return utf8.decode(response.bodyBytes);
+    } catch (_) {
+      return response.body;
+    }
+  }
+
+  static dynamic _decodeBody(http.Response response) {
+    try {
+      return jsonDecode(_bodyText(response));
+    } catch (_) {
+      try {
+        return jsonDecode(response.body);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  static bool _looksLikeExpiredTokenFailure(String message) {
+    if (message.isEmpty) return false;
+
+    final lower = message.toLowerCase();
+    final mentionsToken =
+        lower.contains('token') ||
+        lower.contains('jwt') ||
+        message.contains('토큰');
+    final expiredOrRejected =
+        lower.contains('expired') ||
+        lower.contains('expiredjwtexception') ||
+        lower.contains('tokennotfound') ||
+        message.contains('만료');
+
+    return mentionsToken && expiredOrRejected;
+  }
 
   // ── 토큰 재발급 ─────────────────────────────────────────────────────
   /// 재발급 성공 → 새 accessToken 반환
@@ -112,8 +165,10 @@ class ApiClient {
       // 다음 프레임 이후에도 다이얼로그가 안 떠 있으면 표시 실패로 간주.
       await Future.delayed(const Duration(milliseconds: 300));
       if (Get.isDialogOpen != true && Get.currentRoute != '/login') {
-        debugPrint('[auth] 만료 다이얼로그 미표시 감지 → 로그인 화면 직접 이동 '
-            '(currentRoute=${Get.currentRoute})');
+        debugPrint(
+          '[auth] 만료 다이얼로그 미표시 감지 → 로그인 화면 직접 이동 '
+          '(currentRoute=${Get.currentRoute})',
+        );
         Get.offAllNamed('/login');
       }
     } catch (e) {
@@ -133,7 +188,7 @@ class ApiClient {
     AuthFailurePolicy authFailurePolicy = AuthFailurePolicy.interactive,
   }) async {
     var res = await http.get(url, headers: headers);
-    if (res.statusCode == 401) {
+    if (shouldRefreshForAuthFailure(res)) {
       final newToken = await _refresh(authFailurePolicy: authFailurePolicy);
       if (newToken == null) return res;
       headers['Authorization'] = 'Bearer $newToken';
@@ -150,7 +205,7 @@ class ApiClient {
     AuthFailurePolicy authFailurePolicy = AuthFailurePolicy.interactive,
   }) async {
     var res = await http.post(url, headers: headers, body: body);
-    if (res.statusCode == 401) {
+    if (shouldRefreshForAuthFailure(res)) {
       final newToken = await _refresh(authFailurePolicy: authFailurePolicy);
       if (newToken == null) return res;
       headers['Authorization'] = 'Bearer $newToken';
@@ -167,7 +222,7 @@ class ApiClient {
     AuthFailurePolicy authFailurePolicy = AuthFailurePolicy.interactive,
   }) async {
     var res = await http.patch(url, headers: headers, body: body);
-    if (res.statusCode == 401) {
+    if (shouldRefreshForAuthFailure(res)) {
       final newToken = await _refresh(authFailurePolicy: authFailurePolicy);
       if (newToken == null) return res;
       headers['Authorization'] = 'Bearer $newToken';
@@ -183,7 +238,7 @@ class ApiClient {
     AuthFailurePolicy authFailurePolicy = AuthFailurePolicy.interactive,
   }) async {
     var res = await http.delete(url, headers: headers);
-    if (res.statusCode == 401) {
+    if (shouldRefreshForAuthFailure(res)) {
       final newToken = await _refresh(authFailurePolicy: authFailurePolicy);
       if (newToken == null) return res;
       headers['Authorization'] = 'Bearer $newToken';
@@ -204,7 +259,7 @@ class ApiClient {
     var streamed = await req.send();
     var res = await http.Response.fromStream(streamed);
 
-    if (res.statusCode == 401) {
+    if (shouldRefreshForAuthFailure(res)) {
       final newToken = await _refresh(authFailurePolicy: authFailurePolicy);
       if (newToken == null) return res;
       req = await builder(newToken);

@@ -8,7 +8,7 @@ void main() {
 
     expect(source, contains('enum AuthFailurePolicy'));
     expect(source, contains('AuthFailurePolicy.interactive'));
-    expect(source, contains('silent,'));
+    expect(source, contains('AuthFailurePolicy.silent'));
     expect(source, contains('authFailurePolicy == AuthFailurePolicy.interactive'));
     expect(source, contains('pageMovingWithshowTextAlert'));
   });
