@@ -74,6 +74,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 펼침 직후 카메라 기준값 — 여기서 벗어나면(지도 이동) 자동으로 접는다.
   NLatLng? _stackFanBaseTarget;
   double? _stackFanBaseZoom;
+  // 펼침 팬아웃 애니메이션 타이머 — 접기/재펼침 시 취소.
+  Timer? _fanAnimTimer;
+  // 펼침 중심 좌표 — 접기 수렴 애니메이션의 목표점.
+  NLatLng? _stackFanCenter;
   // 펼침 호출 시퀀스 — 연속 호출 경합 시 이전 호출 무효화.
   int _stackFanSeq = 0;
   // 글 id → 펼침 마커 위치. 카드 스와이프 시 카메라 팔로우용.
@@ -323,6 +327,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _pendingLocationWorker?.dispose();
     _debounce?.cancel();
     _cameraDebounce?.cancel();
+    _fanAnimTimer?.cancel();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -1704,6 +1709,105 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   // ── 스택 원형 펼침 (피그마 "15 B안 — 탭하면 부채꼴 펼침") ────────────────
 
+  /// 펼침 마커 아이콘 생성 — 병렬 실행용.
+  /// 대표 마커로 이미 그려진 바이트 캐시(`_markerBytesCache`)가 있으면 재사용
+  /// (동일한 링 썸네일/점 비트맵 — 재다운로드·재합성 방지). 실패 시 null
+  /// (마커 기본 아이콘으로 표시).
+  Future<NOverlayImage?> _buildFanIcon(MapPost post) async {
+    try {
+      final cached = _markerBytesCache[post.id];
+      if (cached != null) return await overlayImageFromBytes(cached);
+      final Uint8List bytes;
+      if (post.fileInfoList.isNotEmpty) {
+        final stream = await _markerImageFactory
+            .getImageStream(post.fileInfoList.first.fileUrl);
+        bytes = await _markerImageFactory.createMarkerImage(
+          stream,
+          ringColor: markerRingColor(
+            isOwner: post.isOwner,
+            createdAt: post.createdAt,
+          ),
+        );
+      } else {
+        bytes = await _markerImageFactory.createTextDotImage();
+      }
+      return await overlayImageFromBytes(bytes);
+    } catch (e) {
+      debugPrint('[map] 스택 펼침 아이콘 생성 실패 ${post.id}: $e');
+      return null;
+    }
+  }
+
+  /// 펼침 팬아웃 애니메이션 (Phase 3-a) — 중심에서 목표 좌표로 미끄러지며
+  /// 페이드인 (33ms × 8 스텝 ≈ 264ms, easeOutCubic).
+  /// 팬 마커의 position/alpha 는 펼침·접기 코드만 소유하므로 다른 경로와의
+  /// 설정 경합이 없다 (크기 트윈 롤백 교훈 — plans/2026-07-15 문서 참고).
+  /// 접기·재펼침 시 seq 가드/타이머 취소로 중단된다.
+  void _startFanOutAnimation({
+    required int seq,
+    required NLatLng center,
+    required List<(NMarker, NLatLng)> flights,
+    required Set<NAddableOverlay<NOverlay<void>>> legs,
+    required List<String> legIds,
+    required AppColors colors,
+  }) {
+    _fanAnimTimer?.cancel();
+    const int steps = 8;
+    int step = 0;
+    _fanAnimTimer = Timer.periodic(const Duration(milliseconds: 33), (t) {
+      if (!mounted || _mapController == null || seq != _stackFanSeq) {
+        t.cancel();
+        return;
+      }
+      step++;
+      final bool last = step >= steps;
+      final double p = step / steps;
+      final double eased = 1 - pow(1 - p, 3).toDouble(); // easeOutCubic
+      final double alpha = min(1.0, p * 1.6); // 위치보다 빨리 나타나게
+      for (final (marker, target) in flights) {
+        try {
+          marker.setPosition(last
+              ? target
+              : NLatLng(
+                  center.latitude +
+                      (target.latitude - center.latitude) * eased,
+                  center.longitude +
+                      (target.longitude - center.longitude) * eased,
+                ));
+          marker.setAlpha(last ? 1.0 : alpha);
+        } catch (_) {/* 제거된 마커 — seq 가드가 다음 tick에 종료 */}
+      }
+      if (last) {
+        t.cancel();
+        unawaited(_finalizeFanOut(seq, legs, legIds, colors));
+      }
+    });
+  }
+
+  /// 팬아웃 완료 처리 — 점선 다리 추가 + 기본 캡션 + 포커스 캡션 적용.
+  Future<void> _finalizeFanOut(
+    int seq,
+    Set<NAddableOverlay<NOverlay<void>>> legs,
+    List<String> legIds,
+    AppColors colors,
+  ) async {
+    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    try {
+      await _mapController!.addOverlayAll(legs);
+      _stackFanLegIds.addAll(legIds);
+    } catch (_) {}
+    if (!mounted || seq != _stackFanSeq) return;
+    _stackFanMarkerRefs.forEach((postId, marker) {
+      final title = _stackFanTitles[postId] ?? '';
+      try {
+        marker.setCaption(_defaultCaption(title, colors));
+      } catch (_) {}
+    });
+    // 카드가 현재 보여주는 글의 전체 타이틀 캡션 적용 (조기 오픈 시점엔
+    // 마커가 없어 보류했던 것).
+    _applyFanFocusCaption(_stackFanFocusedPostId);
+  }
+
   /// 스택 마커 탭 → kStackFanZoom 까지 당긴 뒤 그룹 글들을 실제 좌표 중심
   /// 원형으로 펼친다. 점선 다리 = 실제 좌표 표시. 원본 스택 마커는 숨김.
   /// 지도 이동/지도 탭 시 [_collapseStackFan] 으로 접힘.
@@ -1734,7 +1838,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // await 이전에 캡처 (context 사용 규칙)
     final captionTokens = AppColors.of(context);
 
-    await _collapseStackFan();
+    // 재펼침 직전 접기는 즉시 — 같은 id 재사용과 수렴 애니메이션의
+    // 삭제 경합 방지 (_collapseStackFan 주석 참고).
+    await _collapseStackFan(animate: false);
 
     final top = group.first;
     final center = NLatLng(top.latitude, top.longitude);
@@ -1745,21 +1851,39 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
     _expandedStackId = stackId;
     _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
+    _stackFanCenter = center;
     debugPrint('[map] expandStackFan start id=$stackId seq=$seq');
 
-    // 1) 펼침 줌까지 당기면서 중심(실제 위치)을 카드 위(화면 22%)에 배치 —
-    // 펼침과 동시에 대표 글 카드가 열리므로 일반 마커 선택과 같은 프레이밍.
+    // 1) 펼침 줌까지 당기면서 중심(실제 위치)을 카드 위(화면 22%)에 배치.
+    // 카메라 비행·아이콘 생성·카드 슬라이드업을 **병렬** 진행 — 기존엔
+    // 비행 완료 후 아이콘을 직렬 생성(썸네일 개별 fetch)해
+    // "한참 멈췄다 팍 펼쳐지는" 체감의 원인이었다.
     final camera = await _mapController!.getCameraPosition();
     final double fanZoom =
         camera.zoom < kStackFanZoom ? kStackFanZoom : camera.zoom;
-    await _moveCameraToMarker(center, zoom: fanZoom);
-    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    final Future<void> cameraFuture =
+        _moveCameraToMarker(center, zoom: fanZoom);
+    final Future<List<NOverlayImage?>> iconsFuture =
+        Future.wait([for (final p in group) _buildFanIcon(p)]);
 
-    // 2) 화면 dp 반지름 → 위경도 오프셋 변환
-    final settled = await _mapController!.getCameraPosition();
+    // 카드 조기 오픈 — 비행과 동시에 슬라이드업(260ms)이 진행돼 탭 반응이
+    // 즉각적으로 느껴진다. 포커스 캡션은 팬아웃 완료 시점에 적용
+    // (마커가 아직 없으므로). onPostChanged 에코 카메라 이동 방지를 위해
+    // focused 를 먼저 기록하는 것은 기존과 동일.
+    if (openCard) {
+      final int cardIdx = _postGroups
+          .indexWhere((g) => g.isNotEmpty && g.first.id == stackId);
+      if (cardIdx >= 0) {
+        _stackFanFocusedPostId = stackId;
+        _selectMarker(cardIdx, postIndex: 0, moveCamera: false);
+      }
+    }
+
+    // 2) 화면 dp 반지름 → 위경도 오프셋 변환 — meterPerDp 는 동기 순수
+    // 계산이라 카메라 settle 대기 불필요 (fanZoom 이 곧 settle 후 줌).
     final meterPerDp = _mapController!.getMeterPerDpAtLatitude(
       latitude: center.latitude,
-      zoom: settled.zoom,
+      zoom: fanZoom,
     );
     // 글 수가 많으면 원주가 모자라지 않게 반지름 자동 확대
     final double radiusDp = max(
@@ -1771,9 +1895,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final double dLng =
         radiusM / (111320.0 * cos(center.latitude * pi / 180));
 
-    // 3) 오버레이 구성: 중심점 + 점선 다리 + 펼침 마커
-    // (마커·폴리라인·원 혼합 — addOverlayAll 시그니처 타입에 맞춘다)
+    // 비행·아이콘 둘 다 완료 대기 — 체감 대기 = max(비행, 아이콘 병렬).
+    await cameraFuture;
+    final List<NOverlayImage?> icons = await iconsFuture;
+    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    final settled = await _mapController!.getCameraPosition();
+
+    // 3) 오버레이 구성: 중심점 + 펼침 마커.
+    // 마커는 **중심 좌표 + alpha 0** 으로 추가 — 팬아웃 애니메이션이
+    // 목표 좌표로 미끄러뜨리며 페이드인한다 (Phase 3-a).
+    // 점선 다리·캡션은 애니메이션 완료 후 적용 (비행 중엔 어색함).
     final overlays = <NAddableOverlay<NOverlay<void>>>{};
+    final legOverlays = <NAddableOverlay<NOverlay<void>>>{};
+    final List<String> legIds = [];
+    final List<(NMarker, NLatLng)> fanFlights = [];
 
     // 중심점 = 실제 위치. GPS 현재위치 스타일 이중 원으로 강조 —
     // 연한 할로(넓게) + 진한 점(화이트 링). 할로가 점 아래에 깔리도록 z 분리.
@@ -1805,52 +1940,28 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       );
       _stackFanPositions[post.id] = pos;
 
-      // 점선 다리 — 실제 좌표(중심) 표시
+      // 점선 다리 — 실제 좌표(중심) 표시. 팬아웃 완료 후 추가.
       final legId = 'stack_fan_leg_${post.id}';
-      overlays.add(NPolylineOverlay(
+      legOverlays.add(NPolylineOverlay(
         id: legId,
         coords: [center, pos],
         color: captionTokens.borderStrong,
         width: 1.5,
         pattern: kStackFanLegPattern,
       ));
-      _stackFanLegIds.add(legId);
+      legIds.add(legId);
 
-      // 펼침 마커 — 글 각각의 아이콘 (사진=링 썸네일, 텍스트=말풍선 점)
-      NOverlayImage? icon;
-      try {
-        final Uint8List bytes;
-        if (post.fileInfoList.isNotEmpty) {
-          final stream = await _markerImageFactory
-              .getImageStream(post.fileInfoList.first.fileUrl);
-          bytes = await _markerImageFactory.createMarkerImage(
-            stream,
-            ringColor: markerRingColor(
-              isOwner: post.isOwner,
-              createdAt: post.createdAt,
-            ),
-          );
-        } else {
-          bytes = await _markerImageFactory.createTextDotImage();
-        }
-        icon = await overlayImageFromBytes(bytes);
-      } catch (e) {
-        debugPrint('[map] 스택 펼침 아이콘 생성 실패 ${post.id}: $e');
-      }
+      // 펼침 마커 아이콘 — 병렬 생성 완료분 (사진=링 썸네일, 텍스트=점)
+      final NOverlayImage? icon = icons[i];
 
       final fanId = 'stack_fan_${post.id}';
       final title = displayTitle(post.title, post.content);
       final fanMarker = NMarker(
         id: fanId,
-        position: pos,
+        position: center, // 팬아웃 시작점 — 애니메이션이 pos 로 이동
+        alpha: 0, // 페이드인 시작값
         icon: icon,
         size: const Size(kNormalMarkerSize, kNormalMarkerSize),
-        caption: NOverlayCaption(
-          text: _truncateMarkerTitle(title),
-          textSize: _markerCaptionTextSize,
-          color: captionTokens.textPrimary,
-          haloColor: captionTokens.background,
-        ),
       );
       fanMarker.setGlobalZIndex(_stackFanZIndex + i);
       final int postIdx = i;
@@ -1869,6 +1980,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _moveCameraToMarker(pos, keepStackFan: true);
       });
       overlays.add(fanMarker);
+      fanFlights.add((fanMarker, pos));
       _stackFanMarkerIds.add(fanId);
       _stackFanMarkerRefs[post.id] = fanMarker;
       _stackFanTitles[post.id] = title;
@@ -1889,19 +2001,18 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _stackFanBaseTarget = settled.target;
     _stackFanBaseZoom = settled.zoom;
 
-    // 펼침과 동시에 대표(위계 최고) 글의 바텀 카드 오픈 (2026-07-13 피드백).
-    // 그룹 인덱스는 재조회로 바뀔 수 있어 이 시점에 재탐색.
-    if (openCard) {
-      final int cardIdx = _postGroups
-          .indexWhere((g) => g.isNotEmpty && g.first.id == stackId);
-      if (cardIdx >= 0) {
-        // 카드가 대표 글로 이동하며 내는 onPostChanged 에코에 카메라가
-        // 다시 움직이지 않도록 — 펼침 직후 프레이밍(중심 22%)을 유지.
-        _stackFanFocusedPostId = stackId;
-        _applyFanFocusCaption(stackId);
-        _selectMarker(cardIdx, postIndex: 0, moveCamera: false);
-      }
-    } else {
+    // 팬아웃 애니메이션 시작 — 중심에서 목표 좌표로 미끄러지며 페이드인.
+    // 완료 시 점선 다리·캡션·포커스 캡션 적용 (카드는 이미 조기 오픈됨).
+    _startFanOutAnimation(
+      seq: seq,
+      center: center,
+      flights: fanFlights,
+      legs: legOverlays,
+      legIds: legIds,
+      colors: captionTokens,
+    );
+
+    if (!openCard) {
       // 카드 스와이프로 스택에 진입한 경우 — 카드는 이미 특정 글을
       // 보여주는 중이다. 펼침 전(좌표 미생성)에 들어와 예약된 팔로우가
       // 있으면, 그 글의 펼침 마커로 카메라를 1회 옮겨 카드와 포커스를
@@ -1982,12 +2093,30 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   /// 펼침 해제 — 오버레이 제거 + 원본 스택 마커 복원.
-  Future<void> _collapseStackFan() async {
+  /// [animate]: 팬 마커가 중심으로 수렴하며 페이드아웃 (지도 탭·카드 닫기·
+  /// 지도 이동 자동 접힘). **재펼침 직전 호출은 반드시 false** — 같은 스택
+  /// 재펼침 시 팬 마커 id 가 재사용되는데, 늦게 끝나는 수렴 애니메이션의
+  /// 삭제가 새 펼침의 네이티브 오버레이를 지워버리는 경합이 있다.
+  ///
+  /// 상태는 항상 **즉시** 정리한다 — 수렴은 상태와 분리된 "고아 오버레이"
+  /// 위에서 진행되므로 재펼침·재조회가 애니메이션을 기다리지 않는다.
+  Future<void> _collapseStackFan({bool animate = true}) async {
+    _fanAnimTimer?.cancel(); // 팬아웃 진행 중 접기 — 애니메이션 중단
     if (_expandedStackId == null) return;
     final stackId = _expandedStackId!;
-    debugPrint('[map] collapseStackFan id=$stackId');
+    debugPrint('[map] collapseStackFan id=$stackId (animate=$animate)');
+
+    // 시각 요소 로컬 캡처 — 아래에서 상태를 비운 뒤에도 접기 연출에 사용.
+    final controller = _mapController;
+    final NLatLng? center = _stackFanCenter;
+    final List<NMarker> dyingMarkers = _stackFanMarkerRefs.values.toList();
+    final List<String> dyingMarkerIds = List.of(_stackFanMarkerIds);
+    final List<String> dyingLegIds = List.of(_stackFanLegIds);
+    final bool hadCenter = _stackFanCenterAdded;
+
     _expandedStackId = null;
     _expandedStackGroupKey = null;
+    _stackFanCenter = null;
     _stackFanBaseTarget = null;
     _stackFanBaseZoom = null;
     _stackFanPositions.clear();
@@ -1996,36 +2125,97 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _stackFanMarkerRefs.clear();
     _stackFanTitles.clear();
     _fanCaptionFocusedPostId = null;
-
-    for (final id in _stackFanMarkerIds) {
-      try {
-        _mapController?.deleteOverlay(
-            NOverlayInfo(type: NOverlayType.marker, id: id));
-      } catch (_) {}
-    }
     _stackFanMarkerIds.clear();
-    for (final id in _stackFanLegIds) {
+    _stackFanLegIds.clear();
+    _stackFanCenterAdded = false;
+
+    // 다리·중심원은 즉시 제거 — 수렴 중엔 어색하고, 원본 스택 마커가
+    // 같은 자리에 복원돼 앵커 역할을 대신한다.
+    for (final id in dyingLegIds) {
       try {
-        _mapController?.deleteOverlay(
+        controller?.deleteOverlay(
             NOverlayInfo(type: NOverlayType.polylineOverlay, id: id));
       } catch (_) {}
     }
-    _stackFanLegIds.clear();
-    if (_stackFanCenterAdded) {
+    if (hadCenter) {
       try {
-        _mapController?.deleteOverlay(NOverlayInfo(
+        controller?.deleteOverlay(NOverlayInfo(
             type: NOverlayType.circleOverlay, id: _stackFanCenterId));
       } catch (_) {}
       try {
-        _mapController?.deleteOverlay(NOverlayInfo(
+        controller?.deleteOverlay(NOverlayInfo(
             type: NOverlayType.circleOverlay, id: _stackFanCenterHaloId));
       } catch (_) {}
-      _stackFanCenterAdded = false;
     }
 
+    // 원본 스택 마커 즉시 복원 — 조각들이 그 위로 합쳐지는 연출.
     try {
       _markerRefs[stackId]?.setIsVisible(true);
     } catch (_) {}
+
+    void deleteDyingMarkers() {
+      for (final id in dyingMarkerIds) {
+        // 같은 스택 재펼침이 이 id 를 재사용 중이면 건드리지 않는다
+        // (새 addOverlayAll 이 네이티브 객체를 이미 교체했음).
+        if (_stackFanMarkerIds.contains(id)) continue;
+        try {
+          controller?.deleteOverlay(
+              NOverlayInfo(type: NOverlayType.marker, id: id));
+        } catch (_) {}
+      }
+    }
+
+    if (!animate ||
+        controller == null ||
+        center == null ||
+        dyingMarkers.isEmpty) {
+      deleteDyingMarkers();
+      return;
+    }
+
+    // 수렴 애니메이션 (33ms × 6 ≈ 200ms, easeInCubic) — 탭 리스너·캡션은
+    // 시작 시 제거 (죽어가는 마커가 반응하지 않게).
+    final List<NLatLng> starts = [];
+    for (final m in dyingMarkers) {
+      starts.add(m.position);
+      try {
+        m.removeOnTapListener();
+        // 주의: setCaption(null) 금지 — Dart 시그니처는 nullable 이지만
+        // iOS 네이티브(MarkerHandler.swift:66)가 강제 언래핑해 크래시
+        // (2026-07-16 재현). 빈 캡션으로 지운다 (내지도 검증 패턴).
+        m.setCaption(const NOverlayCaption(text: ''));
+        m.setIsForceShowCaption(false);
+      } catch (_) {}
+    }
+    const int steps = 6;
+    int step = 0;
+    Timer.periodic(const Duration(milliseconds: 33), (t) {
+      if (!mounted) {
+        t.cancel();
+        return; // 화면 해체 중 — 오버레이는 지도와 함께 소멸
+      }
+      step++;
+      final bool last = step >= steps;
+      final double p = step / steps;
+      final double eased = p * p * p; // easeInCubic — 가속하며 수렴
+      for (int i = 0; i < dyingMarkers.length; i++) {
+        final m = dyingMarkers[i];
+        final s = starts[i];
+        try {
+          m.setPosition(last
+              ? center
+              : NLatLng(
+                  s.latitude + (center.latitude - s.latitude) * eased,
+                  s.longitude + (center.longitude - s.longitude) * eased,
+                ));
+          m.setAlpha(1.0 - p);
+        } catch (_) {/* 이미 제거됨 — 무시 */}
+      }
+      if (last) {
+        t.cancel();
+        deleteDyingMarkers();
+      }
+    });
   }
 
   void _onCardDragUpdate(DragUpdateDetails details) {
