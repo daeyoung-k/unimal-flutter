@@ -5,25 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Flutter (local)",
+            "name": "Flutter (local debug)",
             "type": "dart",
             "request": "launch",
             "program": "lib/main.dart",
             "args": ["--dart-define=ENV=local"]
         },
         {
-            "name": "Flutter (prod)",
+            "name": "Flutter (local profile)",
             "type": "dart",
             "request": "launch",
             "program": "lib/main.dart",
-            "args": ["--dart-define=ENV=prod"]
+            "flutterMode": "profile",
+            "args": ["--dart-define=ENV=local"]
         },
         {
-            "name": "Flutter (prod - release)",
+            "name": "Flutter (prod debug)",
             "type": "dart",
             "request": "launch",
             "program": "lib/main.dart",
-            "flutterMode": "release",
             "args": ["--dart-define=ENV=prod"]
         },
         {
@@ -32,6 +32,14 @@
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "profile",
+            "args": ["--dart-define=ENV=prod"]
+        },
+        {
+            "name": "Flutter (prod - release)",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
             "args": ["--dart-define=ENV=prod"]
         },
     ]
