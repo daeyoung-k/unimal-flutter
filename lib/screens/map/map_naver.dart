@@ -76,6 +76,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   double? _stackFanBaseZoom;
   // 펼침 팬아웃 애니메이션 타이머 — 접기/재펼침 시 취소.
   Timer? _fanAnimTimer;
+  // 텍스트 마커 점↔말풍선 전환 페이드인 — id별 진행 중 타이머.
+  // 일반 마커의 alpha 는 이 경로만 만진다 (크기 트윈 롤백 교훈: 다른
+  // 경로와 공유되는 속성엔 비동기 트윈 금지 — alpha 는 단독 소유라 안전).
+  final Map<String, Timer> _alphaTweens = {};
   // 펼침 중심 좌표 — 접기 수렴 애니메이션의 목표점.
   NLatLng? _stackFanCenter;
   // 펼침 호출 시퀀스 — 연속 호출 경합 시 이전 호출 무효화.
@@ -328,6 +332,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _debounce?.cancel();
     _cameraDebounce?.cancel();
     _fanAnimTimer?.cancel();
+    for (final t in _alphaTweens.values) {
+      t.cancel();
+    }
+    _alphaTweens.clear();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -1369,6 +1377,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     ));
   }
 
+  /// 마커 페이드인 (33ms 스텝, easeOut) — 점↔말풍선 전환의 프레임 단위
+  /// 교체 "뚝" 을 부드럽게. 스왑 자체는 동기라 상태 계약 불변, alpha 만
+  /// 비동기 트윈. 같은 id 재전환 시 이전 트윈 취소 후 재시작.
+  void _fadeInMarker(
+    String id,
+    NMarker marker, {
+    Duration duration = const Duration(milliseconds: 165),
+  }) {
+    _alphaTweens.remove(id)?.cancel();
+    final int steps = max(3, duration.inMilliseconds ~/ 33);
+    int step = 0;
+    _alphaTweens[id] = Timer.periodic(const Duration(milliseconds: 33), (t) {
+      step++;
+      final double p = step / steps;
+      final double eased = 1 - pow(1 - p, 2).toDouble(); // easeOutQuad
+      bool done = step >= steps;
+      try {
+        marker.setAlpha(done ? 1.0 : eased);
+      } catch (_) {
+        done = true; // 네이티브에서 제거됨 — 트윈 중단
+      }
+      if (done) {
+        t.cancel();
+        _alphaTweens.remove(id);
+      }
+    });
+  }
+
   /// 텍스트 마커의 점↔카드 표현을 **마커 재생성 없이** 전환한다.
   /// delete+add 재생성은 Dart 오버레이 핸들러 등록에 공백을 만들어 그 사이
   /// 탭이 무시된다(플러그인 overlay_controller_impl 널 체크로 삼켜짐).
@@ -1394,6 +1430,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         icon = await overlayImageFromBytes(bytes);
       }
       if (!mounted) return false;
+      // 전환 페이드인 — alpha 0 으로 내리고 스왑 후 트윈으로 복귀.
+      // 스왑(아이콘/크기/캡션/상태)은 기존과 동일하게 동기 처리라
+      // 억제·선택·재조회와의 타이밍 계약은 그대로다.
+      // ⚠️ 크로스페이드(고스트 마커) 시도는 롤백 (2026-07-16): 재조회 중
+      // 고스트 addOverlay 가 네이티브 클러스터러의 dispatch_sync 와 겹쳐
+      // 앱 프리즈 재현. 별도 오버레이 추가 없이 페이드인만 유지.
+      marker.setAlpha(0);
       marker.setIcon(icon);
       marker.setSize(toCard ? _textCardSize : Size(tierSize, tierSize));
       // 카드는 제목/본문 포함 → 캡션 비움. 점은 8자 캡션.
@@ -1401,6 +1444,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           ? _defaultCaption('', colors)
           : _defaultCaption(_markerTitle[post.id] ?? '', colors));
       marker.setIsForceShowCaption(isHot);
+      _fadeInMarker(post.id, marker);
 
       _textMarkerCardMode[post.id] = toCard;
       _markerIconCache[post.id] = icon;
