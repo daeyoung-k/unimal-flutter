@@ -2070,8 +2070,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               // 기본 진입 줌(16.5)에서 화면상 겹치는 마커(40dp)만 묶어
               // 스택끼리 포개지는 문제 해소. 클러스터 탭 → 대표 선택 + 17.5 줌인.
               enableZoomRange: const NInclusiveRange(0, 16),
-              // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
-              animationDuration: Duration.zero,
+              // 병합/분리 애니메이션 — 공용 상수 (줌아웃 순간이동 제거).
+              // 카운트업 잔상은 _composeClusterIconAsync 의 300ms 안정화 +
+              // stale 체크가 방어 (과거 Duration.zero 로 끄던 이유).
+              animationDuration: kClusterAnimationDuration,
               // 병합 거리 — 공용 상수 (내지도와 동일).
               mergeStrategy: const NClusterMergeStrategy(
                 willMergedScreenDistance: kClusterMergeDistances,

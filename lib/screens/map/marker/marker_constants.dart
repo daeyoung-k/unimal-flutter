@@ -129,6 +129,14 @@ const double kTextCardExitZoom = 16.8;
 /// "클러스터가 안 펼쳐진다"로 체감됨 — 2026-07-13 피드백)
 const int kStackGroupPrecision = 4;
 
+/// 클러스터 병합/분리 애니메이션 (메인 지도·내지도 공용).
+/// Duration.zero(끄기)로 두던 것을 300ms 로 복원 (2026-07-16) — 줌아웃 시
+/// 마커가 순간이동으로 합쳐져 "뚝뚝 끊기는" 체감의 원인이었다.
+/// 과거 끈 이유였던 카운트업 잔상은 이제 별도 방어가 담당한다:
+/// 메인 지도 = _composeClusterIconAsync 의 300ms 안정화 + stale 체크,
+/// 내지도 = 버블 target count 가드. 300ms 는 그 안정화 대기와 정렬된 값.
+const Duration kClusterAnimationDuration = Duration(milliseconds: 300);
+
 /// 밀집 지역 판정 (피그마 §4 C안: 밀집 지역에선 카드 대신 점 고정).
 /// **화면 dp 기준** — 반경 [kTextCardDenseRadiusDp] 안에 다른 마커 그룹이
 /// [kTextCardDenseNeighbors]개 이상이면 텍스트 카드로 펼치지 않는다.

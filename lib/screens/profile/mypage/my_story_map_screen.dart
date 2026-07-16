@@ -42,6 +42,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   final Map<int, NOverlayImage> _clusterBubbleCache = {};
   // count별 합성 중인 Future — 동일 이미지 동시 합성(쓰기 경합) 방지.
   final Map<int, Future<NOverlayImage>> _clusterBubbleInflight = {};
+  // 클러스터 마커별 최종 요청 count — 병합 애니메이션 중 중간 단계 합성이
+  // 늦게 도착해 최종 버블을 덮어쓰는 역전 방지 (Expando: 마커 GC 시 자동 정리).
+  final Expando<int> _bubbleTargetCount = Expando<int>();
 
   // 텍스트(사진 없는) 마커의 점↔카드 전환 상태 — 메인 지도와 동일한 히스테리시스.
   bool _textCardMode = false;
@@ -316,6 +319,7 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
 
     // 다중 — 카운트 버블.
     clusterMarker.setCaption(const NOverlayCaption(text: ''));
+    _bubbleTargetCount[clusterMarker] = info.size; // 이 마커의 최종 count 기록
     final cached = _clusterBubbleCache[info.size];
     if (cached != null) {
       clusterMarker.setIcon(cached);
@@ -374,8 +378,13 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     final icon = await future;
     if (!mounted) return;
     _clusterBubbleCache[count] = icon;
-    clusterMarker.setIcon(icon);
-    clusterMarker.setSize(const Size(kClusterBubbleSize, kClusterBubbleSize));
+    // 합성 대기 중 이 마커의 count가 바뀌었으면(병합 애니메이션 중간 단계)
+    // 적용하지 않는다 — 최종 count 빌드가 캐시로 즉시 적용한다.
+    if (_bubbleTargetCount[clusterMarker] != count) return;
+    try {
+      clusterMarker.setIcon(icon);
+      clusterMarker.setSize(const Size(kClusterBubbleSize, kClusterBubbleSize));
+    } catch (_) {/* 애니메이션 중 네이티브에서 제거된 경우 무시 */}
   }
 
   /// 마커가 화면 세로 22% 지점, 가로 중앙에 보이도록 카메라 이동 (fly 600ms).
@@ -615,7 +624,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             clusterOptions: NaverMapClusteringOptions(
               // 줌 15까지 묶고 16+ 부터 개별 마커로 펼침.
               enableZoomRange: const NInclusiveRange(0, 15),
-              animationDuration: Duration.zero,
+              // 병합/분리 애니메이션 — 공용 상수 (메인 지도와 동일).
+              // 애니메이션 중 중간 단계 빌드의 버블 역전은 target count
+              // 가드(_bubbleTargetCount)가 방어.
+              animationDuration: kClusterAnimationDuration,
               // 병합 거리 — 공용 상수 (메인 지도와 동일).
               mergeStrategy: const NClusterMergeStrategy(
                 willMergedScreenDistance: kClusterMergeDistances,
