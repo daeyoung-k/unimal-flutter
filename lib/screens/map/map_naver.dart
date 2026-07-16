@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -11,6 +12,7 @@ import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
+import 'package:unimal/screens/map/map_reload_policy.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/models/map_post.dart';
@@ -25,6 +27,8 @@ class MapNaverScreens extends StatefulWidget {
   @override
   State<MapNaverScreens> createState() => _MapNaverScreensState();
 }
+
+enum _MapMarkerLoadOutcome { applied, transportFailure, deferred }
 
 class _MapNaverScreensState extends State<MapNaverScreens>
     with WidgetsBindingObserver {
@@ -116,9 +120,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   bool _textBubblesSuppressed = false;
   // 말풍선 억제용 공유 점 아이콘 — 1회 생성 후 재사용 (점 그림은 글과 무관).
   NOverlayImage? _textDotIcon;
-  // 카드 열림 동안 말풍선 후보가 "점으로 빌드"된 적 있음 — 닫힐 때 아이콘
-  // 캐시 복원이 불가능하므로 집합 유지 재조회로 말풍선을 복구해야 한다.
-  bool _bubbleReloadNeededOnClose = false;
+  // 카드 열림 동안 점으로 빌드된 텍스트 마커. 닫힐 때 메모리의 게시글·마커
+  // 참조로 카드 아이콘만 in-place 복원한다.
+  final Set<String> _textBubbleRestoreIds = {};
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -156,19 +160,36 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 같은 범위로 다시 조회할 때 사용. _lastQueriedZoom(카메라 실제 줌,
   // 변화량·모드 판정용)과 분리 — 섞으면 stable 재조회 후 값이 현재 줌으로
   // 드리프트해 다음 stable 재조회가 좁은 반경으로 나간다.
-  int _lastQueriedApiZoom = _defaultEntryZoom.round();
+  int _lastQueriedApiZoom = _defaultEntryZoom.floor();
 
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
+  Timer? _freshnessTimer;
+  DateTime? _lastSuccessfulMapRefreshAt;
+  int _successfulMapRefreshGeneration = 0;
+  int _pendingAutoRefreshGeneration = 0;
+  bool _freshnessRefreshPending = false;
+  DateTime? _pendingAutoRefreshNotBefore;
+  MapReloadReason _pendingFreshnessReason = MapReloadReason.stale;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   bool _isLoadingMarkers = false;
   // refreshMap() 호출 시 로드가 진행 중이면 완료 후 강제 새로고침을 실행하기 위한 플래그
   bool _pendingForceRefresh = false;
   // 로드 진행 중 도착한 재조회 요청 — 마지막 1건만 보관했다가 완료 후 실행.
   // (기존에는 그냥 skip 되면서 debounce 콜백이 _lastQueriedTarget 을 이미
   // 갱신해버려, 빠른 팬 직후 뷰포트가 영영 조회되지 않는 드랍이 있었다.)
-  ({double lat, double lng, int zoom, double? rawZoom})? _pendingReloadArgs;
+  ({
+    double lat,
+    double lng,
+    int zoom,
+    double? rawZoom,
+    bool forceRebuild,
+    MapReloadReason reason,
+    int pendingGenerationAtRequest,
+  })? _pendingReloadArgs;
 
   Worker? _pendingLocationWorker;
+  Worker? _mapTabWorker;
 
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
@@ -196,15 +217,153 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   static const double _defaultEntryZoom = 16.5;
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
+  bool get _isMapTabActive =>
+      Get.find<NavController>().selectedIndex.value == 0;
+  bool get _isMapInteractionOpen =>
+      _isAnyCardOpen ||
+      _selectedPlace != null ||
+      _expandedStackId != null ||
+      _expandingStackId != null;
+  bool get _canAutoRefresh => mounted && MapReloadPolicy.canAutoRefresh(
+        isAppResumed: _appLifecycleState == AppLifecycleState.resumed,
+        isMapTabActive: _isMapTabActive,
+        isInteractionOpen: _isMapInteractionOpen,
+        isLoading: _isLoadingMarkers,
+      );
+  bool get _canApplyAutomaticResponse =>
+      mounted &&
+      MapReloadPolicy.canAutoRefresh(
+        isAppResumed: _appLifecycleState == AppLifecycleState.resumed,
+        isMapTabActive: _isMapTabActive,
+        isInteractionOpen: _isMapInteractionOpen,
+        isLoading: false,
+      );
+
+  bool _isAutomaticReloadReason(MapReloadReason reason) =>
+      reason == MapReloadReason.apiZoomChanged ||
+      reason == MapReloadReason.viewportMoved ||
+      reason == MapReloadReason.stale ||
+      reason == MapReloadReason.appResumed;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _appLifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    final nav = Get.find<NavController>();
     _pendingLocationWorker = ever(
-      Get.find<NavController>().pendingMapLat,
+      nav.pendingMapLat,
       (_) => _applyPendingLocation(),
     );
+    _mapTabWorker = ever<int>(nav.selectedIndex, (index) {
+      if (index == 0) unawaited(_consumePendingFreshness());
+    });
+  }
+
+  void _scheduleFreshness({Duration? delay}) {
+    _freshnessTimer?.cancel();
+    _freshnessTimer = Timer(
+      delay ?? MapReloadPolicy.freshnessInterval,
+      _onFreshnessDue,
+    );
+  }
+
+  bool _isSpatialReloadReason(MapReloadReason reason) =>
+      reason == MapReloadReason.apiZoomChanged ||
+      reason == MapReloadReason.viewportMoved;
+
+  bool get _hasLiveAutoRefreshCooldown {
+    final notBefore = _pendingAutoRefreshNotBefore;
+    return _freshnessRefreshPending &&
+        notBefore != null &&
+        notBefore.isAfter(DateTime.now());
+  }
+
+  void _deferFreshness(
+    MapReloadReason reason, {
+    DateTime? notBefore,
+  }) {
+    final existingNotBefore =
+        _freshnessRefreshPending ? _pendingAutoRefreshNotBefore : null;
+    _pendingAutoRefreshGeneration++;
+    _freshnessRefreshPending = true;
+    _pendingFreshnessReason = reason;
+    if (notBefore != null) {
+      _pendingAutoRefreshNotBefore = notBefore;
+    } else {
+      _pendingAutoRefreshNotBefore = existingNotBefore;
+    }
+    if (kDebugMode) {
+      debugPrint('[map] freshness deferred reason=${reason.name}');
+    }
+  }
+
+  void _onFreshnessDue() {
+    if (_freshnessRefreshPending) {
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+    if (!_canAutoRefresh) {
+      _deferFreshness(MapReloadReason.stale);
+      return;
+    }
+    unawaited(_reloadCurrentCamera(MapReloadReason.stale));
+  }
+
+  Future<void> _consumePendingFreshness() async {
+    if (!mounted || !_freshnessRefreshPending) return;
+
+    final notBefore = _pendingAutoRefreshNotBefore;
+    if (notBefore != null) {
+      final remaining = notBefore.difference(DateTime.now());
+      if (remaining > Duration.zero) {
+        _scheduleFreshness(delay: remaining);
+        return;
+      }
+    }
+
+    if (!_canAutoRefresh) return;
+    final reason = _pendingFreshnessReason;
+    _freshnessRefreshPending = false;
+    _pendingAutoRefreshNotBefore = null;
+    await _reloadCurrentCamera(reason);
+  }
+
+  Future<void> _reloadCurrentCamera(MapReloadReason reason) async {
+    final controller = _mapController;
+    if (controller == null) {
+      _deferFreshness(reason);
+      return;
+    }
+    final refreshGeneration = _successfulMapRefreshGeneration;
+    try {
+      final camera = await controller.getCameraPosition();
+      if (!mounted) return;
+      if (refreshGeneration != _successfulMapRefreshGeneration) return;
+      // 카메라 조회를 기다리는 동안 생명주기나 상호작용 상태가 바뀔 수 있다.
+      if (!_canAutoRefresh) {
+        _deferFreshness(reason);
+        return;
+      }
+      await _loadMapMarkers(
+        camera.target.latitude,
+        camera.target.longitude,
+        _apiZoomFor(camera.zoom),
+        rawZoom: camera.zoom,
+        reason: reason,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _deferFreshness(
+        reason,
+        notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+      );
+      _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      if (kDebugMode) {
+        debugPrint('[map] camera read failed reason=${reason.name} error=$e');
+      }
+    }
   }
 
   // 검색바 우측 '내 지도' 진입 버튼.
@@ -263,29 +422,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    if (state != AppLifecycleState.resumed) return;
+    final due = MapReloadPolicy.isFreshnessDue(
+      lastSuccessfulAt: _lastSuccessfulMapRefreshAt,
+      now: DateTime.now(),
+    );
+    if (due) {
+      _deferFreshness(MapReloadReason.appResumed);
+    }
+    unawaited(_consumePendingFreshness());
+  }
+
   Future<void> _reloadMarkersForBrightnessChange() async {
     if (_mapController == null) return;
-    for (final id in _mapMarkerIds.toList()) {
-      try {
-        _mapController!.deleteOverlay(
-          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
-        );
-      } catch (_) {}
-    }
-    _mapMarkerIds.clear();
-    _markerRefs.clear();
-    _markerBaseZIndex.clear();
-    _markerBaseSize.clear();
-    _markerStackCount.clear();
-    _markerIsHot.clear();
-    _markerTitle.clear();
-    _textMarkerCardMode.clear();
-    _markerIconCache.clear();
-    _markerBytesCache.clear();
-    _clusterIconCache.clear();
-    _clusterCurrentSize.clear();
-    _highlightedMarkerId = null;
-
     // 마지막 조회 위치 기준으로 재로드. 없으면 현재 카메라 기준.
     final target = _lastQueriedTarget;
     if (target != null) {
@@ -294,17 +446,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         target.longitude,
         _apiZoomFor(_lastQueriedZoom),
         rawZoom: _lastQueriedZoom,
+        forceRebuild: true,
+        reason: MapReloadReason.manual,
       );
-    } else {
-      final camera = await _mapController!.getCameraPosition();
-      if (!mounted) return;
-      await _loadMapMarkers(
-        camera.target.latitude,
-        camera.target.longitude,
-        _apiZoomFor(camera.zoom),
-        rawZoom: camera.zoom,
-      );
+      return;
     }
+    final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
+    await _loadMapMarkers(
+      camera.target.latitude,
+      camera.target.longitude,
+      _apiZoomFor(camera.zoom),
+      rawZoom: camera.zoom,
+      forceRebuild: true,
+      reason: MapReloadReason.manual,
+    );
   }
 
   void _applyPendingLocation() {
@@ -319,7 +475,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(lat, lng), zoom: _clusterExpandZoom),
       );
-      _loadMapMarkers(lat, lng, _clusterExpandZoom.round());
+      _loadMapMarkers(
+        lat,
+        lng,
+        _apiZoomFor(_clusterExpandZoom),
+        rawZoom: _clusterExpandZoom,
+      );
     }
     nav.pendingMapLat.value = null;
     nav.pendingMapLng.value = null;
@@ -329,8 +490,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pendingLocationWorker?.dispose();
+    _mapTabWorker?.dispose();
     _debounce?.cancel();
     _cameraDebounce?.cancel();
+    _freshnessTimer?.cancel();
     _fanAnimTimer?.cancel();
     for (final t in _alphaTweens.values) {
       t.cancel();
@@ -353,36 +516,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Future<void> _doForceRefresh() async {
     if (_mapController == null) return;
-    // 기존 마커 전부 제거 — 수정된 게시글 반영을 위해 재사용 없이 전체 재렌더
-    for (final id in _mapMarkerIds.toList()) {
-      try {
-        _mapController!.deleteOverlay(
-          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
-        );
-      } catch (_) {}
-    }
-    _mapMarkerIds.clear();
-    _markerRefs.clear();
-    _markerBaseZIndex.clear();
-    _markerBaseSize.clear();
-    _markerStackCount.clear();
-    _markerIsHot.clear();
-    _markerTitle.clear();
-    _textMarkerCardMode.clear();
-    _markerIconCache.clear();
-    _markerBytesCache.clear();
-    _clusterIconCache.clear();
-    _clusterCurrentSize.clear();
-    _highlightedMarkerId = null;
-
     final camera = await _mapController!.getCameraPosition();
     if (!mounted) return;
-    _lastQueriedTarget = null;
-    _loadMapMarkers(
+    await _loadMapMarkers(
       camera.target.latitude,
       camera.target.longitude,
       _apiZoomFor(camera.zoom),
       rawZoom: camera.zoom,
+      forceRebuild: true,
+      reason: MapReloadReason.manual,
     );
   }
 
@@ -391,7 +533,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
         return;
       }
 
@@ -405,7 +552,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
         return;
       }
 
@@ -443,50 +595,112 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           ),
         );
         _loadMapMarkers(
-            position.latitude, position.longitude, _defaultEntryZoom.round());
+          position.latitude,
+          position.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       } else {
         debugPrint('[map] fallback → seoulCityHall');
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude,
-            _defaultEntryZoom.round());
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       }
     } catch (e) {
       debugPrint('[map] _moveToCurrentLocationOrDefault outer catch: $e → fallback');
       if (mounted) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude,
-            _defaultEntryZoom.round());
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       }
     }
   }
 
-  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom,
-      {double? rawZoom}) async {
-    if (_mapController == null) {
-      debugPrint('[map] _loadMapMarkers skipped (controller null)');
-      return;
-    }
+  Future<bool> _loadMapMarkers(
+    double latitude,
+    double longitude,
+    int zoom, {
+    double? rawZoom,
+    bool forceRebuild = false,
+    MapReloadReason reason = MapReloadReason.manual,
+    int? pendingGenerationAtRequest,
+  }) async {
+    if (_mapController == null) return false;
     if (_isLoadingMarkers) {
       // 그냥 버리지 않고 마지막 요청을 큐잉 — 현재 로드 완료 후 재실행.
       // (debounce 콜백이 _lastQueriedTarget 을 이미 갱신한 뒤라, 여기서
       // 버리면 해당 뷰포트는 다음 idle 에서도 "변화 없음"으로 영영 스킵된다)
-      _pendingReloadArgs =
-          (lat: latitude, lng: longitude, zoom: zoom, rawZoom: rawZoom);
+      _pendingReloadArgs = (
+        lat: latitude,
+        lng: longitude,
+        zoom: zoom,
+        rawZoom: rawZoom,
+        forceRebuild: forceRebuild,
+        reason: reason,
+        pendingGenerationAtRequest:
+            pendingGenerationAtRequest ?? _pendingAutoRefreshGeneration,
+      );
       debugPrint('[map] _loadMapMarkers queued (already loading) '
           '→ (${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
-      return; // 중복 호출 방지
+      return false;
     }
     debugPrint('[map] _loadMapMarkers start '
         '(${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
+    final pendingGenerationAtStart =
+        pendingGenerationAtRequest ?? _pendingAutoRefreshGeneration;
     _isLoadingMarkers = true;
-    // 의도적 조회 — 이 호출 직후 카메라가 같은 좌표로 이동하며 onCameraIdle이
-    // 다시 trigger될 때, 변화량 비교에서 걸려 자동 재조회가 발동하지 않도록
-    // 사전에 갱신. Android에서 의도/자동 _loadMapMarkers가 연속 호출될 때
-    // native overlay race("overlay can't found")가 발생하는 원인이었다.
-    _lastQueriedTarget = NLatLng(latitude, longitude);
-    // 실제 카메라 줌(소수)을 저장 — 반올림 정수를 쓰면 경계(17.5) 비교가 불안정해진다.
-    _lastQueriedZoom = rawZoom ?? zoom.toDouble();
-    _lastQueriedApiZoom = zoom;
+    var outcome = _MapMarkerLoadOutcome.transportFailure;
     try {
-      await _loadMapMarkersInternal(latitude, longitude, zoom, rawZoom: rawZoom);
+      outcome = await _loadMapMarkersInternal(
+        latitude,
+        longitude,
+        zoom,
+        rawZoom: rawZoom,
+        forceRebuild: forceRebuild,
+        reason: reason,
+      );
+      if (outcome == _MapMarkerLoadOutcome.applied && mounted) {
+        _lastQueriedTarget = NLatLng(latitude, longitude);
+        _lastQueriedZoom = rawZoom ?? zoom.toDouble();
+        _lastQueriedApiZoom = zoom;
+        _lastSuccessfulMapRefreshAt = DateTime.now();
+        _successfulMapRefreshGeneration++;
+        final hasNewerPending =
+            pendingGenerationAtStart != _pendingAutoRefreshGeneration;
+        final preserveSpatialPending = _freshnessRefreshPending &&
+            hasNewerPending &&
+            _isSpatialReloadReason(_pendingFreshnessReason);
+        // 성공은 네트워크 회복을 증명하므로 이전 retry 지연은 더 이상 필요 없다.
+        _pendingAutoRefreshNotBefore = null;
+        if (!preserveSpatialPending) {
+          _freshnessRefreshPending = false;
+        }
+        _scheduleFreshness();
+      } else if (outcome == _MapMarkerLoadOutcome.deferred && mounted) {
+        _deferFreshness(reason);
+      } else if (outcome == _MapMarkerLoadOutcome.transportFailure &&
+          mounted) {
+        _deferFreshness(
+          reason,
+          notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+        );
+        _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      }
+    } catch (e) {
+      debugPrint('[map] reload failed reason=${reason.name} error=$e');
+      if (mounted) {
+        _deferFreshness(
+          reason,
+          notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+        );
+        _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      }
     } finally {
       _isLoadingMarkers = false;
       // refreshMap()이 로드 중에 호출됐다면 지금 실행 (전체 재렌더가 우선 —
@@ -494,18 +708,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (_pendingForceRefresh && mounted) {
         _pendingForceRefresh = false;
         _pendingReloadArgs = null;
-        _doForceRefresh();
+        unawaited(_doForceRefresh());
       } else if (_pendingReloadArgs != null && mounted) {
         final args = _pendingReloadArgs!;
         _pendingReloadArgs = null;
-        _loadMapMarkers(args.lat, args.lng, args.zoom, rawZoom: args.rawZoom);
+        unawaited(_loadMapMarkers(
+          args.lat,
+          args.lng,
+          args.zoom,
+          rawZoom: args.rawZoom,
+          forceRebuild: args.forceRebuild,
+          reason: args.reason,
+          pendingGenerationAtRequest: args.pendingGenerationAtRequest,
+        ));
+      } else if (mounted) {
+        unawaited(_consumePendingFreshness());
       }
     }
+    return outcome == _MapMarkerLoadOutcome.applied;
   }
 
-  Future<void> _loadMapMarkersInternal(
-      double latitude, double longitude, int zoom,
-      {double? rawZoom}) async {
+  Future<_MapMarkerLoadOutcome> _loadMapMarkersInternal(
+    double latitude,
+    double longitude,
+    int zoom, {
+    double? rawZoom,
+    bool forceRebuild = false,
+    required MapReloadReason reason,
+  }) async {
     // await 이후 context 사용을 피하기 위해 함수 시작 시점에 캡처.
     // 다크모드 토글 시 기존 마커는 그대로, 다음 재조회부터 새 색 반영.
     final captionTokens = AppColors.of(context);
@@ -526,9 +756,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       longitude: longitude,
       zoom: zoom,
     );
+    if (posts == null) return _MapMarkerLoadOutcome.transportFailure;
+    if (!mounted) return _MapMarkerLoadOutcome.deferred;
+    if (_isAutomaticReloadReason(reason) && !_canApplyAutomaticResponse) {
+      if (kDebugMode) {
+        debugPrint('[map] response deferred reason=${reason.name}');
+      }
+      return _MapMarkerLoadOutcome.deferred;
+    }
+    if (forceRebuild) {
+      await _clearStoryMarkerOverlaysAndCaches();
+    }
     debugPrint('[map] API done (${DateTime.now().difference(apiStart).inMilliseconds}ms) '
         'returned ${posts.length} posts');
-    if (!mounted) return;
 
     // 같은 자리끼리 그룹핑 — 스택 마커(A안)의 단위.
     // jitter 로 흩뿌리던 방식을 폐기하고 그룹당 마커 하나(대표 + 뒷장 + +N 뱃지)로
@@ -600,6 +840,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerIsHot.remove(id);
         _markerTitle.remove(id);
         _textMarkerCardMode.remove(id);
+        _textBubbleRestoreIds.remove(id);
         // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
         if (_highlightedMarkerId == id) {
           _highlightedMarkerId = null;
@@ -645,9 +886,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final bool textCardMode =
           canBecomeCard && globalTextCardMode && !suppressBubble;
       if (canBecomeCard && globalTextCardMode && suppressBubble) {
-        // 카드 닫힐 때 이 마커들을 말풍선으로 복구하려면 재조회가 필요하다
-        // (아이콘 캐시 복원이 불가능한 "점으로 재생성" 케이스).
-        _bubbleReloadNeededOnClose = true;
+        _textBubbleRestoreIds.add(topPost.id);
       }
 
       // score 크기 위계 (42/50/58/66) — 그룹 대표 score 의 화면 내 백분위.
@@ -720,6 +959,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerStackCount.remove(topPost.id);
         _markerIsHot.remove(topPost.id);
         _markerTitle.remove(topPost.id);
+        _textBubbleRestoreIds.remove(topPost.id);
       }
 
       // 신규(또는 재생성) 마커 생성
@@ -880,13 +1120,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
     // 신규 마커들을 한 번에 native로 추가 (1회 reclustering).
     if (markersToAdd.isNotEmpty) {
-      if (!mounted) return;
+      if (!mounted) return _MapMarkerLoadOutcome.deferred;
       final addStart = DateTime.now();
       debugPrint('[map] addOverlayAll start (${markersToAdd.length} markers)');
       await _mapController!.addOverlayAll(markersToAdd);
       debugPrint('[map] addOverlayAll done '
           '(${DateTime.now().difference(addStart).inMilliseconds}ms)');
-      if (!mounted) return;
+      if (!mounted) return _MapMarkerLoadOutcome.deferred;
       _mapMarkerIds.addAll(markerIdsToAdd);
       // 펼침 중 재생성된 스택 마커 숨김 — add 완료 후 실제 네이티브 호출.
       if (_expandedStackId != null &&
@@ -900,7 +1140,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       debugPrint('[map] addOverlayAll skipped (no new markers)');
     }
 
-    if (!mounted) return;
+    if (!mounted) return _MapMarkerLoadOutcome.deferred;
     debugPrint('[map] setState visibleGroups=${visibleGroups.length}');
     setState(() {
       _postGroups = visibleGroups;
@@ -922,7 +1162,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
     // 재조회 중 카드가 닫혔으면(선택 소실 포함) 말풍선 복구 경로 재평가.
     // (카드 열림 중 재조회는 위 suppressBubble 빌드 분기가 점으로 처리)
-    unawaited(_restoreTextBubblesAfterClose());
+    await _restoreTextBubblesAfterClose();
 
     // 펼침 중 재조회 최종 방어 — 어떤 경로의 재조회든 끝나는 시점에
     // 펼침 그룹의 원본 마커는 반드시 숨김이어야 한다. 생성 가드가 놓치는
@@ -941,6 +1181,28 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         } catch (_) {}
       }
     }
+    return _MapMarkerLoadOutcome.applied;
+  }
+
+  Future<void> _clearStoryMarkerOverlaysAndCaches() async {
+    final controller = _mapController;
+    if (controller != null) {
+      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
+    }
+    _mapMarkerIds.clear();
+    _markerRefs.clear();
+    _markerBaseZIndex.clear();
+    _markerBaseSize.clear();
+    _markerStackCount.clear();
+    _markerIsHot.clear();
+    _markerTitle.clear();
+    _textMarkerCardMode.clear();
+    _textBubbleRestoreIds.clear();
+    _markerIconCache.clear();
+    _markerBytesCache.clear();
+    _clusterIconCache.clear();
+    _clusterCurrentSize.clear();
+    _highlightedMarkerId = null;
   }
 
   Future<void> _onSearch(String query) async {
@@ -1013,6 +1275,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
       _searchMarkerAdded = false;
     }
+    unawaited(_resumeAutomaticReloadsAfterInteractionClose());
   }
 
   Future<void> _onSymbolTapped(NSymbolInfo symbolInfo) async {
@@ -1044,7 +1307,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Future<void> _onCameraIdle() async {
     if (_mapController == null) return;
+    final viewportSize = MediaQuery.sizeOf(context);
     final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
     final currentTarget = camera.target;
     final currentZoom = camera.zoom;
     debugPrint('[map] zoom=${currentZoom.toStringAsFixed(2)} '
@@ -1067,80 +1332,79 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
     }
 
-    // 펼침 유지 중이거나 게시글 카드 탐색 중 — 위치·줌 변화 재조회는 보류.
-    // 카드 스와이프 탐색 중 재조회가 돌면 좁은 반경으로 _postGroups 가
-    // 통째로 축소·교체되어 카드가 다른 글로 튀고(카드-마커 불일치),
-    // 펼침 중엔 대표 교체 시 원본 스택 마커가 재출현한다 (2026-07-13).
-    // 닫힐 때 idle 재평가를 호출해 밀린 조회를 수행한다.
-    //
-    // 단, 텍스트 점↔카드 모드 전환은 화면 표현이라 즉시 반영해야 한다
-    // (16→19 탭 줌인 후 말풍선 전환이 카드 닫을 때까지 밀리는 문제).
-    // 이때는 "집합 유지 재조회" — API는 마지막 조회 좌표·정수 줌으로 다시
-    // 불러 게시글 집합은 그대로 두고, rawZoom(현재 카메라)만 넘겨 마커
-    // 표현(점↔말풍선)을 다시 그린다.
-    if (_expandedStackId != null || _selectedGroupIndex != null) {
-      final modeFlippedWhileOpen =
-          _peekTextCardMode(currentZoom) != _textCardMode;
-      if (modeFlippedWhileOpen && _lastQueriedTarget != null) {
-        final stableTarget = _lastQueriedTarget!;
-        final stableApiZoom = _lastQueriedApiZoom;
-        debugPrint('[map] cameraIdle (fan/card open) modeFlipped → '
-            'stable reload apiZoom=$stableApiZoom '
-            'rawZoom=${currentZoom.toStringAsFixed(2)}');
-        _cameraDebounce?.cancel();
-        _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
-          _loadMapMarkers(
-            stableTarget.latitude,
-            stableTarget.longitude,
-            stableApiZoom,
-            rawZoom: currentZoom,
+    final currentApiZoom = _apiZoomFor(currentZoom);
+    final meterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: currentTarget.latitude,
+      zoom: currentZoom,
+    );
+    final movementThreshold = MapReloadPolicy.movementThresholdMeters(
+      viewportSize: viewportSize,
+      meterPerDp: meterPerDp,
+    );
+    final movedMeters = _lastQueriedTarget == null
+        ? 0.0
+        : Geolocator.distanceBetween(
+            _lastQueriedTarget!.latitude,
+            _lastQueriedTarget!.longitude,
+            currentTarget.latitude,
+            currentTarget.longitude,
           );
-        });
-      } else {
-        debugPrint('[map] cameraIdle skipped (fan/card open)');
+    final reason = MapReloadPolicy.spatialReason(
+      initialized: _mapInitialized,
+      currentApiZoom: currentApiZoom,
+      lastApiZoom: _lastQueriedApiZoom,
+      movedMeters: movedMeters,
+      movementThresholdMeters: movementThreshold,
+    );
+
+    if (reason == MapReloadReason.initial) {
+      _mapInitialized = true;
+      return;
+    }
+    if (reason == MapReloadReason.none) {
+      if (kDebugMode) {
+        debugPrint('[map] reload skipped reason=withinViewport '
+            'moved=${movedMeters.toStringAsFixed(0)}m '
+            'threshold=${movementThreshold.toStringAsFixed(0)}m');
       }
       return;
     }
-
-    // 초기화 시점은 자동 호출 없이 기준값만 저장
-    if (!_mapInitialized) {
-      _mapInitialized = true;
-      _lastQueriedTarget = currentTarget;
-      _lastQueriedZoom = currentZoom;
-      debugPrint('[map] cameraIdle baseline set (first call)');
+    if (_hasLiveAutoRefreshCooldown) {
+      _cameraDebounce?.cancel();
+      _deferFreshness(reason);
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+    if (!_canAutoRefresh) {
+      _cameraDebounce?.cancel();
+      _deferFreshness(reason);
       return;
     }
 
-    // 변화량 임계값 — 줌 1단계 이상 OR 좌표 ~50m 이상
-    final zoomChanged = (currentZoom - _lastQueriedZoom).abs() >= 1;
-    bool positionChanged = false;
-    if (_lastQueriedTarget != null) {
-      final dLat = (currentTarget.latitude - _lastQueriedTarget!.latitude).abs();
-      final dLng = (currentTarget.longitude - _lastQueriedTarget!.longitude).abs();
-      positionChanged = dLat > 0.0005 || dLng > 0.0005;
-    }
-    // 텍스트 마커 점↔카드 모드가 실제로 바뀔 때만 재조회(히스테리시스 기반).
-    // 경계에서 카메라가 미세하게 흔들려도 모드가 안 바뀌면 재조회하지 않아 깜빡임 제거.
-    final modeFlipped = _peekTextCardMode(currentZoom) != _textCardMode;
-    if (!zoomChanged && !positionChanged && !modeFlipped) {
-      debugPrint('[map] cameraIdle below threshold → skip auto-reload');
-      return;
-    }
-
-    // Debounce 500ms — 카메라 멈춘 시점에 1회 조회
-    debugPrint('[map] cameraIdle changed (zoom=$zoomChanged pos=$positionChanged) '
-        '→ schedule auto-reload in 500ms');
     _cameraDebounce?.cancel();
-    _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
-      debugPrint('[map] cameraIdle debounce fired → auto _loadMapMarkers');
-      _lastQueriedTarget = currentTarget;
-      _lastQueriedZoom = currentZoom;
-      _loadMapMarkers(
+    if (kDebugMode) {
+      debugPrint('[map] reload scheduled reason=${reason.name} '
+          'apiZoom=$currentApiZoom debounce=300ms');
+    }
+    final refreshGeneration = _successfulMapRefreshGeneration;
+    _cameraDebounce = Timer(MapReloadPolicy.cameraDebounce, () {
+      if (refreshGeneration != _successfulMapRefreshGeneration) return;
+      if (_hasLiveAutoRefreshCooldown) {
+        _deferFreshness(reason);
+        unawaited(_consumePendingFreshness());
+        return;
+      }
+      if (!_canAutoRefresh) {
+        _deferFreshness(reason);
+        return;
+      }
+      unawaited(_loadMapMarkers(
         currentTarget.latitude,
         currentTarget.longitude,
-        _apiZoomFor(currentZoom),
+        currentApiZoom,
         rawZoom: currentZoom,
-      );
+        reason: reason,
+      ));
     });
   }
 
@@ -1171,10 +1435,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     return _textCardMode;
   }
 
-  /// 상태를 바꾸지 않고 현재 줌에서의 모드만 예측 (onCameraIdle 재조회 판단용).
-  bool _peekTextCardMode(double rawZoom) =>
-      _textCardMode ? rawZoom >= _textCardExitZoom : rawZoom >= _textCardEnterZoom;
-
   void _closeAllCards() {
     if (_searchMarkerAdded && _mapController != null) {
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
@@ -1192,11 +1452,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
-    // 카드 닫힘 → 말풍선 복원 (필요 시 집합 유지 재조회 포함).
-    unawaited(_restoreTextBubblesAfterClose());
-    // 카드 열림 동안 보류된 자동 재조회 재평가 — 탐색하며 줌/위치/점↔카드
-    // 모드가 바뀌었으면 여기서 밀린 조회가 예약된다.
-    _onCameraIdle();
+    unawaited(_resumeAutomaticReloadsAfterInteractionClose(
+      restoreTextBubbles: true,
+    ));
+  }
+
+  Future<void> _resumeAutomaticReloadsAfterInteractionClose({
+    bool restoreTextBubbles = false,
+  }) async {
+    if (restoreTextBubbles) {
+      await _restoreTextBubblesAfterClose();
+      if (!mounted) return;
+    }
+    await _onCameraIdle();
+    if (!mounted) return;
+    await _consumePendingFreshness();
   }
 
   /// 마커가 현재 "말풍선 카드"로 그려져 있는지 — 카드는 크기(가변)와
@@ -1355,26 +1625,39 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
-  /// 카드 닫힘 시 말풍선 상태 복구.
-  /// 1) 열림 중 in-place 로 점 처리된 마커 → 캐시된 말풍선 아이콘 복원.
-  /// 2) 열림 중 재조회로 "점으로 재생성"된 마커 → 아이콘 캐시가 없으므로
-  ///    집합 유지 재조회(마지막 조회 좌표 + 현재 rawZoom)로 말풍선을 되살린다.
+  /// 카드 닫힘 시 말풍선 상태를 로컬 마커만 갱신해 복구한다.
   Future<void> _restoreTextBubblesAfterClose() async {
     if (_selectedGroupIndex != null) return; // 아직 열림 — 복구 대상 아님
     await _syncTextBubbleSuppression();
-    if (!_bubbleReloadNeededOnClose) return;
-    _bubbleReloadNeededOnClose = false;
-    final target = _lastQueriedTarget;
-    if (target == null || _mapController == null || !mounted) return;
-    final cam = await _mapController!.getCameraPosition();
-    debugPrint('[map] bubble restore reload after card close '
-        '(rawZoom=${cam.zoom.toStringAsFixed(2)})');
-    unawaited(_loadMapMarkers(
-      target.latitude,
-      target.longitude,
-      _lastQueriedApiZoom,
-      rawZoom: cam.zoom,
-    ));
+    if (_textBubbleRestoreIds.isEmpty || !mounted) return;
+    final restoreIds = Set<String>.from(_textBubbleRestoreIds);
+    _textBubbleRestoreIds.clear();
+    await _restoreTextBubbleMarkersInPlace(restoreIds);
+  }
+
+  Future<void> _restoreTextBubbleMarkersInPlace(Set<String> restoreIds) async {
+    final postsById = {
+      for (final group in _postGroups)
+        if (group.isNotEmpty) group.first.id: group.first,
+    };
+    final colors = AppColors.of(context);
+    for (final id in restoreIds) {
+      final post = postsById[id];
+      final marker = _markerRefs[id];
+      if (post == null ||
+          post.fileInfoList.isNotEmpty ||
+          marker == null ||
+          !marker.isAdded) {
+        continue;
+      }
+      await _flipTextMarkerModeInPlace(
+        post,
+        toCard: true,
+        tierSize: _markerBaseSize[id] ?? _normalMarkerSize,
+        isHot: _markerIsHot[id] ?? false,
+        colors: colors,
+      );
+    }
   }
 
   /// 마커 페이드인 (33ms 스텝, easeOut) — 점↔말풍선 전환의 프레임 단위
@@ -1429,7 +1712,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         bytes = await _markerImageFactory.createTextDotImage();
         icon = await overlayImageFromBytes(bytes);
       }
-      if (!mounted) return false;
+      if (!mounted ||
+          !identical(_markerRefs[post.id], marker) ||
+          !_mapMarkerIds.contains(post.id) ||
+          !marker.isAdded) {
+        return false;
+      }
       // 전환 페이드인 — alpha 0 으로 내리고 스왑 후 트윈으로 복귀.
       // 스왑(아이콘/크기/캡션/상태)은 기존과 동일하게 동기 처리라
       // 억제·선택·재조회와의 타이밍 계약은 그대로다.
@@ -1874,6 +2162,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 상태에서도 이 그룹을 인식하고 포커스를 예약할 수 있게 한다.
     _expandingStackId = stackId;
     _pendingFanFocusPostIndex = null;
+    try {
 
     // 예약된 자동 재조회 취소 — 펼침 도중 재조회가 돌면 그룹 대표 교체 시
     // 원본 스택 마커가 다시 보이는 레이스가 있다 (2026-07-13 재발 보고).
@@ -2073,8 +2362,16 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
     }
     _pendingFanFocusPostIndex = null;
-    // 펼침 완료 — 진행 중 표식 해제 (이 seq 가 최신일 때만).
-    if (seq == _stackFanSeq) _expandingStackId = null;
+    } finally {
+      // 성공/조기 반환/예외 모두 최신 seq의 진행 중 표식을 해제한다.
+      _finishStackExpansion(seq);
+    }
+  }
+
+  void _finishStackExpansion(int seq) {
+    if (seq != _stackFanSeq) return;
+    _expandingStackId = null;
+    unawaited(_consumePendingFreshness());
   }
 
   /// 카드 페이지 이동 팔로우 — 펼침 상태에서 같은 스택 안의 다른 글로
@@ -2146,7 +2443,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// 위에서 진행되므로 재펼침·재조회가 애니메이션을 기다리지 않는다.
   Future<void> _collapseStackFan({bool animate = true}) async {
     _fanAnimTimer?.cancel(); // 팬아웃 진행 중 접기 — 애니메이션 중단
-    if (_expandedStackId == null) return;
+    if (_expandedStackId == null) {
+      unawaited(_consumePendingFreshness());
+      return;
+    }
     final stackId = _expandedStackId!;
     debugPrint('[map] collapseStackFan id=$stackId (animate=$animate)');
 
@@ -2214,6 +2514,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         center == null ||
         dyingMarkers.isEmpty) {
       deleteDyingMarkers();
+      unawaited(_consumePendingFreshness());
       return;
     }
 
@@ -2258,6 +2559,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (last) {
         t.cancel();
         deleteDyingMarkers();
+        unawaited(_consumePendingFreshness());
       }
     });
   }
@@ -2552,10 +2854,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                           _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
-                        // 카드 닫힘 → 말풍선 복원 (필요 시 재조회 포함).
-                        unawaited(_restoreTextBubblesAfterClose());
-                        // 카드 열림 동안 보류된 자동 재조회 재평가.
-                        _onCameraIdle();
+                        unawaited(
+                          _resumeAutomaticReloadsAfterInteractionClose(
+                            restoreTextBubbles: true,
+                          ),
+                        );
                       },
                       onGroupChanged: (newIdx) {
                         if (newIdx >= 0 &&
