@@ -32,6 +32,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+ios/build/
 
 # Symbolication related
 app.*.symbols
@@ -56,4 +57,3 @@ unimal-project-firebase-key.json
 firebase.json
 .claude/
 .superpowers/
-CLAUDE.md

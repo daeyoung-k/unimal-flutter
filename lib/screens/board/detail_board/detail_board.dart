@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:logger/logger.dart';
+import 'package:unimal/screens/add/share_card_sheet.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/screens/board/detail_board/comment/comment_input.dart';
@@ -282,11 +283,23 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
       ],
     ).then((value) {
       if (value == 'edit') {
-        Get.toNamed('/edit-board', arguments: _boardPost);
+        _openEditSheet();
       } else if (value == 'delete') {
         _confirmDelete();
       }
     });
+  }
+
+  /// 별도 수정 화면 대신, 공유하기 시트를 "수정 모드"로 띄운다.
+  Future<void> _openEditSheet() async {
+    if (_boardPost == null) return;
+    final changed = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ShareCardSheet(editPost: _boardPost),
+    );
+    if (changed == true && mounted) _loadBoardDetail();
   }
 
   Future<void> _confirmDelete() async {

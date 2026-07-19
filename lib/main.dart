@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
-import 'package:unimal/screens/map/marker/text_marker_demo.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/naver_map_service.dart';
+import 'package:unimal/service/ads/ad_service.dart';
 import 'package:get/get.dart';
 import 'package:unimal/firebase_options.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
@@ -15,7 +19,6 @@ import 'package:unimal/screens/navigation/app_routes.dart';
 import 'package:unimal/service/auth/permission_service.dart';
 import 'package:unimal/service/auth/update_check_service.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
-import 'package:unimal/service/login/login_type.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/service/push/push_notification_service.dart';
 import 'package:unimal/state/state_init.dart';
@@ -28,6 +31,37 @@ import 'package:unimal/state/state_init.dart';
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Firebase가 초기화되어 있어야 하므로 여기서는 로깅만 수행
   // 실제 처리는 PushNotificationService에서 수행됩니다.
+}
+
+/// flutter_naver_map 이미지 캐시(fnm1_img)의 깨진(0바이트) 파일만 삭제.
+///
+/// 전체 삭제(delete recursive)는 금지 — 핫리스타트 시 main()이 다시 돌 때
+/// 이전 세션의 네이티브 지도가 아직 참조 중인 유효한 캐시 파일까지 지워
+/// iOS 네이티브가 makeOverlayImageWithPath 에서 크래시한다
+/// (2026-07-13 크래시 리포트: ClusteringController → NOverlayImage.swift:16).
+/// 원래 목적(쓰다 만 0바이트 파일이 다음 실행에서 재사용되며 크래시)은
+/// 0바이트 파일만 골라 지워도 동일하게 달성된다.
+/// 실패해도 앱 동작에는 지장 없으므로 로깅만 하고 넘어간다.
+Future<void> _clearNaverMapImageCache() async {
+  try {
+    final tmp = await getTemporaryDirectory();
+    final dir = Directory('${tmp.path}${Platform.pathSeparator}fnm1_img');
+    if (!await dir.exists()) return;
+    int removed = 0;
+    // 1.4.3+ 는 fnm1_img/fnm1_img_XXXX/ 세션별 하위 폴더에 저장 — 재귀 탐색.
+    await for (final entity in dir.list(recursive: true)) {
+      if (entity is! File) continue;
+      try {
+        if (await entity.length() == 0) {
+          await entity.delete();
+          removed++;
+        }
+      } catch (_) {}
+    }
+    debugPrint('[naverMap] 마커 이미지 캐시 정리 완료 (깨진 파일 $removed개 제거)');
+  } catch (e) {
+    debugPrint('[naverMap] 마커 이미지 캐시 정리 실패(무시): $e');
+  }
 }
 
 Future<void> main() async {
@@ -69,12 +103,26 @@ Future<void> main() async {
   // 네이버 로그인 SDK 초기화
   NaverLoginService().naverInit();
 
+  // flutter_naver_map 마커 이미지 캐시 정리 — 플러그인이 마커 이미지를
+  // 임시 PNG 파일로 캐싱하는데, 쓰기 경합으로 0바이트 파일이 남으면 iOS
+  // 네이티브가 강제 언래핑하다 크래시한다(플러그인 이슈 #251, 1.4.4 미해결).
+  // 시작 시 캐시를 비워 깨진 파일이 재사용되지 않게 한다.
+  await _clearNaverMapImageCache();
+
+  // 플러그인 이미지 임시 폴더 웜업 — 락 없는 lazy 초기화의 동시 실행이
+  // 서로의 세션 폴더를 지워 iOS 크래시를 내는 경합(2026-07-14) 차단.
+  // 반드시 어떤 마커 아이콘 생성보다 먼저 완료돼야 한다.
+  await warmUpOverlayImageCache();
+
   // 네이버 지도 초기화
   await NaverMapService().naverMapInit();
 
+  // AdMob(광고) SDK 초기화 — GetX에 등록하며 1회 초기화.
+  // 이후 화면에서는 AdService.to / const AdBanner() 로만 광고에 접근.
+  await Get.putAsync<AdService>(() => AdService().init());
+
   // 상태관리 초기화 (토큰 로드 완료까지 대기)
   final authState = await StateInit().stateInit();
-  final provider = authState.provider;
 
   // 알림 권한 요청 (위치 권한은 각 화면에서 geolocator를 통해 처리)
   await PermissionService().requestNotificationPermission();
@@ -90,7 +138,7 @@ Future<void> main() async {
   });
 
   // loadTokens() 완료 후 저장된 토큰이 있는지 확인
-  runApp(MyApp(loginChecked: provider.value != LoginType.none));
+  runApp(MyApp(loginChecked: authState.isLoggedIn));
 
   FlutterNativeSplash.remove();
 }

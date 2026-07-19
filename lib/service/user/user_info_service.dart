@@ -271,7 +271,12 @@ class UserInfoService {
     final headers = await _authHeaders();
     final body = jsonEncode(deviceInfo);
     try {
-      await ApiClient.post(url, headers, body: body);
+      await ApiClient.post(
+        url,
+        headers,
+        body: body,
+        authFailurePolicy: AuthFailurePolicy.silent,
+      );
     } catch (e) {
       _logger.e('디바이스 정보 업데이트 실패: $e');
     }

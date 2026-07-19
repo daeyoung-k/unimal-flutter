@@ -10,7 +10,7 @@ class SecureStorage {
   Future<String?> read(String key) async {
     return await _storage.read(key: key);
   }
-  
+
   Future<Map<String, String>?> readAll() async {
     return await _storage.readAll();
   }
@@ -47,15 +47,28 @@ class SecureStorage {
     await _storage.delete(key: 'refreshToken');
   }
 
-  Future<void> saveProvider(String provider) async {
-    await write('provider', provider);
+  Future<void> saveLoginMethod(String loginMethod) async {
+    await write('loginMethod', loginMethod);
+    await _storage.delete(key: 'provider');
   }
 
-  Future<String?> getProvider() async {
-    return await read('provider');
+  Future<String?> getLoginMethod() async {
+    final loginMethod = await read('loginMethod');
+    if (loginMethod != null && loginMethod.isNotEmpty) {
+      return loginMethod;
+    }
+
+    final legacyProvider = await read('provider');
+    if (legacyProvider != null && legacyProvider.isNotEmpty) {
+      await saveLoginMethod(legacyProvider);
+      return legacyProvider;
+    }
+
+    return null;
   }
 
-  Future<void> deleteProvider() async {
+  Future<void> deleteLoginMethod() async {
+    await _storage.delete(key: 'loginMethod');
     await _storage.delete(key: 'provider');
   }
 

@@ -12,6 +12,20 @@ import 'package:unimal/utils/api_uri.dart';
 import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/utils/mime_type_utils.dart';
 
+List<MapPost>? decodeMapPostsResponse(http.Response response) {
+  if (response.statusCode != 200) return null;
+  try {
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    final data = body['data'];
+    if (data is! List) return null;
+    return data
+        .map((e) => MapPost.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    return null;
+  }
+}
+
 class BoardApiService {
   final _logger = Logger();
   final _secureStorage = SecureStorage();
@@ -298,27 +312,64 @@ class BoardApiService {
   }
 
   // ── 지도 마커 조회 ──────────────────────────────────────────────────
-  Future<List<MapPost>> getMapLocationPosts({
+  Future<List<MapPost>?> getMapLocationPosts({
     required double latitude,
     required double longitude,
     int zoom = 14,
   }) async {
-    final url = ApiUri.resolve('board/map/post', {
-      'latitude': latitude.toString(),
-      'longitude': longitude.toString(),
-      'zoom': zoom.toString(),
+    try {
+      final url = ApiUri.resolve('board/map/post', {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'zoom': zoom.toString(),
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+      final posts = decodeMapPostsResponse(response);
+      if (posts == null) {
+        _logger.e('지도 마커 조회 실패: ${response.statusCode}');
+      }
+      return posts;
+    } catch (e, st) {
+      _logger.e('지도 마커 조회 예외', error: e, stackTrace: st);
+      return null;
+    }
+  }
+
+  // ── 내가 좋아요한 글 수 ─────────────────────────────────────────────
+  Future<int> getMyLikedTotal() async {
+    final url = ApiUri.resolve('board/post/like/stories/total');
+    final headers = await _authHeaders();
+    final response = await ApiClient.get(url, headers);
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      final data = body['data'];
+      return data is int ? data : 0;
+    }
+
+    _logger.e('좋아요한 글 수 조회 실패: ${response.statusCode}');
+    return 0;
+  }
+
+  // ── 내가 좋아요한 글 목록 (무한 스크롤) ────────────────────────────
+  Future<List<BoardPost>> getMyLikedPostList({int page = 0, int size = 20}) async {
+    final url = ApiUri.resolve('board/post/like/stories/list', {
+      'page': page.toString(),
+      'size': size.toString(),
     });
     final headers = await _authHeaders();
     final response = await ApiClient.get(url, headers);
 
     if (response.statusCode == 200) {
       final body = jsonDecode(utf8.decode(response.bodyBytes));
-      return (body['data'] as List)
-          .map((e) => MapPost.fromJson(e as Map<String, dynamic>))
-          .toList();
+      final data = body['data'];
+      if (data is List) {
+        return data.map((e) => BoardPost.fromJson(e as Map<String, dynamic>)).toList();
+      }
     }
 
-    _logger.e('지도 마커 조회 실패: ${response.statusCode}');
+    _logger.e('좋아요한 글 목록 조회 실패: ${response.statusCode}');
     return [];
   }
 

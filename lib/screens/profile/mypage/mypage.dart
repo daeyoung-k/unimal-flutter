@@ -7,6 +7,7 @@ import 'package:unimal/service/login/account_service.dart';
 import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
+import 'package:unimal/theme/app_colors.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -16,9 +17,6 @@ class MyPageScreen extends StatefulWidget {
 }
 
 class _MyPageScreenState extends State<MyPageScreen> {
-  static const Color _primary = Color(0xFF5B9FEF);
-  static const Color _primaryDark = Color(0xFF3578E5);
-
   final _authState = Get.find<AuthState>();
   final _userInfoService = UserInfoService();
   final _accountService = AccountService();
@@ -27,7 +25,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
   bool _isLoading = true;
   bool _isSaving = false;
 
-  // 편집용 컨트롤러
   late TextEditingController _nameController;
   late TextEditingController _nicknameController;
   String _birthday = '';
@@ -74,7 +71,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
       return;
     }
 
-    // 닉네임이 변경된 경우 중복 확인
     if (nickname != _userInfo?.nickname) {
       setState(() => _isSaving = true);
       final check = await _userInfoService.checkNickname(nickname);
@@ -120,7 +116,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
       try {
         final parts = _birthday.split('-');
         if (parts.length == 3) {
-          initial = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+          initial = DateTime(
+              int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
         }
       } catch (_) {}
     }
@@ -133,11 +130,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        final colors = AppColors.of(ctx);
         return SizedBox(
           height: 320,
           child: Column(
             children: [
-              // 핸들 + 확인 버튼
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 child: Row(
@@ -164,10 +161,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
                         });
                         Navigator.pop(ctx);
                       },
-                      child: const Text('확인',
+                      child: Text('확인',
                           style: TextStyle(
                               fontSize: 15,
-                              color: Color(0xFF4D91FF),
+                              color: colors.primaryStrong,
                               fontWeight: FontWeight.w600,
                               fontFamily: 'Pretendard')),
                     ),
@@ -175,7 +172,6 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 ),
               ),
               const Divider(height: 1),
-              // 스크롤 휠
               Expanded(
                 child: CupertinoDatePicker(
                   mode: CupertinoDatePickerMode.date,
@@ -199,6 +195,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        final colors = AppColors.of(ctx);
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
             return SafeArea(
@@ -227,10 +224,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     const SizedBox(height: 8),
                     RadioListTile<String>(
                       title: const Text('남성',
-                          style: TextStyle(fontSize: 15, fontFamily: 'Pretendard')),
+                          style: TextStyle(
+                              fontSize: 15, fontFamily: 'Pretendard')),
                       value: 'MALE',
                       groupValue: _gender,
-                      activeColor: _primary,
+                      activeColor: colors.primary,
                       onChanged: (val) {
                         setSheetState(() {});
                         setState(() => _gender = val!);
@@ -239,10 +237,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
                     ),
                     RadioListTile<String>(
                       title: const Text('여성',
-                          style: TextStyle(fontSize: 15, fontFamily: 'Pretendard')),
+                          style: TextStyle(
+                              fontSize: 15, fontFamily: 'Pretendard')),
                       value: 'FEMALE',
                       groupValue: _gender,
-                      activeColor: _primary,
+                      activeColor: colors.primary,
                       onChanged: (val) {
                         setSheetState(() {});
                         setState(() => _gender = val!);
@@ -284,75 +283,77 @@ class _MyPageScreenState extends State<MyPageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: colors.surface,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: colors.surface,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          icon: Icon(Icons.arrow_back_ios,
+              color: colors.textPrimary, size: 20),
           onPressed: () => Get.back(),
         ),
-        title: const Text(
+        title: Text(
           '내 개인정보',
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w600,
-            color: Colors.black,
+            color: colors.textPrimary,
             fontFamily: 'Pretendard',
           ),
         ),
         centerTitle: true,
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFF4D91FF)))
+          ? Center(
+              child: CircularProgressIndicator(
+                  color: colors.primaryStrong, strokeWidth: 2))
           : Column(
               children: [
-                Expanded(child: _buildContent()),
-                _buildBottomButtons(),
+                Expanded(child: _buildContent(colors)),
+                _buildBottomButtons(context, colors),
               ],
             ),
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(AppColors colors) {
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       children: [
-        // 이름 (텍스트 편집)
         _buildEditableTextField(
           label: '이름',
           controller: _nameController,
           hint: '이름을 입력하세요',
         ),
-        _buildDivider(),
-        // 닉네임 (텍스트 편집)
+        _buildDivider(colors),
         _buildEditableTextField(
           label: '닉네임',
           controller: _nicknameController,
           hint: '닉네임을 입력하세요',
         ),
-        _buildDivider(),
-        // 이메일 (수정 불가)
+        _buildDivider(colors),
         _buildReadOnlyItem(label: '이메일', value: _userInfo?.email ?? '-', disabled: true),
-        _buildDivider(),
-        // 휴대폰 번호 (변경 가능)
+        _buildDivider(colors),
         _buildTappableItem(
           label: '휴대폰 번호',
-          value: _userInfo?.tel.isNotEmpty == true ? _maskTel(_userInfo!.tel) : '번호를 등록하세요',
-          valueColor: _userInfo?.tel.isNotEmpty == true ? Colors.black87 : Colors.black38,
+          value: _userInfo?.tel.isNotEmpty == true
+              ? _maskTel(_userInfo!.tel)
+              : '번호를 등록하세요',
+          valueColor: _userInfo?.tel.isNotEmpty == true
+              ? Colors.black87
+              : Colors.black38,
           onTap: _showTelChangeSheet,
         ),
-        _buildDivider(),
-        // 생년월일 (날짜 선택)
+        _buildDivider(colors),
         _buildTappableItem(
           label: '생년월일',
           value: _birthday.isNotEmpty ? _birthday : '날짜를 선택하세요',
           valueColor: _birthday.isNotEmpty ? Colors.black87 : Colors.black38,
           onTap: _pickBirthday,
         ),
-        _buildDivider(),
-        // 성별 (라디오 선택)
+        _buildDivider(colors),
         _buildTappableItem(
           label: '성별',
           value: _genderLabel(_gender),
@@ -375,32 +376,27 @@ class _MyPageScreenState extends State<MyPageScreen> {
         children: [
           SizedBox(
             width: 90,
-            child: Text(
-              label,
-              style: const TextStyle(
-                fontSize: 15,
-                color: Colors.black54,
-                fontFamily: 'Pretendard',
-              ),
-            ),
+            child: Text(label,
+                style: const TextStyle(
+                    fontSize: 15,
+                    color: Colors.black54,
+                    fontFamily: 'Pretendard')),
           ),
           Expanded(
             child: TextField(
               controller: controller,
               textAlign: TextAlign.end,
               style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
-                fontFamily: 'Pretendard',
-              ),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                  fontFamily: 'Pretendard'),
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(
-                  fontSize: 15,
-                  color: Colors.black38,
-                  fontFamily: 'Pretendard',
-                ),
+                    fontSize: 15,
+                    color: Colors.black38,
+                    fontFamily: 'Pretendard'),
                 border: InputBorder.none,
                 isDense: true,
                 contentPadding: EdgeInsets.zero,
@@ -412,7 +408,8 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
-  Widget _buildReadOnlyItem({required String label, required String value, bool disabled = false}) {
+  Widget _buildReadOnlyItem(
+      {required String label, required String value, bool disabled = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Row(
@@ -420,7 +417,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
         children: [
           Text(label,
               style: const TextStyle(
-                  fontSize: 15, color: Colors.black54, fontFamily: 'Pretendard')),
+                  fontSize: 15,
+                  color: Colors.black54,
+                  fontFamily: 'Pretendard')),
           Row(
             children: [
               Text(value,
@@ -456,7 +455,9 @@ class _MyPageScreenState extends State<MyPageScreen> {
           children: [
             Text(label,
                 style: const TextStyle(
-                    fontSize: 15, color: Colors.black54, fontFamily: 'Pretendard')),
+                    fontSize: 15,
+                    color: Colors.black54,
+                    fontFamily: 'Pretendard')),
             Row(
               children: [
                 Text(value,
@@ -475,11 +476,11 @@ class _MyPageScreenState extends State<MyPageScreen> {
     );
   }
 
-  Widget _buildDivider() {
-    return Divider(height: 1, color: Colors.grey[200]);
+  Widget _buildDivider(AppColors colors) {
+    return Divider(height: 1, color: colors.divider);
   }
 
-  Widget _buildBottomButtons() {
+  Widget _buildBottomButtons(BuildContext context, AppColors colors) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -494,18 +495,18 @@ class _MyPageScreenState extends State<MyPageScreen> {
                 decoration: BoxDecoration(
                   gradient: _isSaving
                       ? null
-                      : const LinearGradient(
+                      : LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
-                          colors: [_primaryDark, _primary],
+                          colors: [colors.primaryStrong, colors.primary],
                         ),
-                  color: _isSaving ? Color(0xFFE0E0E0) : null,
+                  color: _isSaving ? colors.border : null,
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: _isSaving
                       ? []
                       : [
                           BoxShadow(
-                            color: _primaryDark.withValues(alpha: 0.3),
+                            color: colors.primaryStrong.withValues(alpha: 0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -532,7 +533,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
               ),
             ),
             const SizedBox(height: 60),
-            Divider(height: 1, color: Colors.grey[200]),
+            Divider(height: 1, color: colors.divider),
             const SizedBox(height: 8),
             TextButton(
               onPressed: _showWithdrawalDialog,
@@ -556,12 +557,13 @@ class _MyPageScreenState extends State<MyPageScreen> {
   void _showWithdrawalDialog() {
     Get.dialog(
       AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          '회원 탈퇴',
-          style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Pretendard'),
-        ),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('회원 탈퇴',
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Pretendard')),
         content: const Text(
           '탈퇴하면 모든 데이터가 삭제되며\n복구할 수 없습니다.\n정말 탈퇴하시겠습니까?',
           style: TextStyle(
@@ -575,12 +577,22 @@ class _MyPageScreenState extends State<MyPageScreen> {
             onPressed: () => Get.back(),
             child: const Text('취소',
                 style: TextStyle(
-                    fontSize: 15, color: Colors.grey, fontFamily: 'Pretendard')),
+                    fontSize: 15,
+                    color: Colors.grey,
+                    fontFamily: 'Pretendard')),
           ),
           TextButton(
             onPressed: () async {
               Get.back();
-              await _accountService.withdrawal();
+              final ok = await _accountService.withdrawal();
+              // 서버 탈퇴 실패 시 세션은 유지된 상태 — 안내만 하고 화면에 남는다.
+              if (!ok) {
+                Get.snackbar(
+                  '탈퇴 실패',
+                  '탈퇴 처리에 실패했습니다.\n잠시 후 다시 시도해주세요.',
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
             },
             child: const Text('탈퇴',
                 style: TextStyle(
@@ -595,9 +607,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   }
 
   String _maskTel(String tel) {
-    // 숫자만 추출
     final digits = tel.replaceAll(RegExp(r'\D'), '');
-    // 01X-****-XXXX 형태로 마스킹
     if (digits.length == 11) {
       return '${digits.substring(0, 3)}-****-${digits.substring(7)}';
     } else if (digits.length == 10) {
@@ -648,7 +658,7 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
   bool _isSendingCode = false;
   bool _isVerifying = false;
 
-  static const int _totalSeconds = 300; // 5분
+  static const int _totalSeconds = 300;
   int _remaining = _totalSeconds;
   Timer? _timer;
 
@@ -746,7 +756,7 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
         result['accessToken']!,
         result['refreshToken']!,
         result['email']!,
-        widget.authState.provider.value,
+        widget.authState.loginMethod.value,
       );
       if (mounted) Navigator.pop(context);
       widget.onSuccess();
@@ -761,6 +771,7 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -772,7 +783,6 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 핸들
           Center(
             child: Container(
               width: 40,
@@ -786,10 +796,12 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
           const SizedBox(height: 20),
           const Text(
             '휴대폰 번호 변경',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, fontFamily: 'Pretendard'),
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Pretendard'),
           ),
           const SizedBox(height: 20),
-          // 번호 입력 + 발송 버튼
           Row(
             children: [
               Expanded(
@@ -797,11 +809,16 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                   controller: _telController,
                   keyboardType: TextInputType.phone,
                   enabled: !_codeSent,
-                  style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard'),
+                  style: const TextStyle(
+                      fontSize: 15, fontFamily: 'Pretendard'),
                   decoration: InputDecoration(
                     hintText: '새 휴대폰 번호 입력',
-                    hintStyle: const TextStyle(fontSize: 15, color: Colors.black38, fontFamily: 'Pretendard'),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    hintStyle: const TextStyle(
+                        fontSize: 15,
+                        color: Colors.black38,
+                        fontFamily: 'Pretendard'),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(color: Colors.grey[300]!),
@@ -826,7 +843,9 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                   height: 48,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
                   decoration: BoxDecoration(
-                    color: (_isSendingCode || _codeSent) ? Colors.grey[200] : const Color(0xFF4D91FF),
+                    color: (_isSendingCode || _codeSent)
+                        ? Colors.grey[200]
+                        : colors.primaryStrong,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
@@ -834,14 +853,17 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                         ? const SizedBox(
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           )
                         : Text(
                             _codeSent ? '발송됨' : '인증번호 발송',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: _codeSent ? Colors.black38 : Colors.white,
+                              color: _codeSent
+                                  ? Colors.black38
+                                  : Colors.white,
                               fontFamily: 'Pretendard',
                             ),
                           ),
@@ -850,7 +872,6 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
               ),
             ],
           ),
-          // 인증번호 입력 (발송 후)
           if (_codeSent) ...[
             const SizedBox(height: 12),
             Row(
@@ -859,11 +880,16 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                   child: TextField(
                     controller: _codeController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(fontSize: 15, fontFamily: 'Pretendard'),
+                    style: const TextStyle(
+                        fontSize: 15, fontFamily: 'Pretendard'),
                     decoration: InputDecoration(
                       hintText: '인증번호 입력',
-                      hintStyle: const TextStyle(fontSize: 15, color: Colors.black38, fontFamily: 'Pretendard'),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      hintStyle: const TextStyle(
+                          fontSize: 15,
+                          color: Colors.black38,
+                          fontFamily: 'Pretendard'),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: Colors.grey[300]!),
@@ -872,12 +898,13 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                         borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(color: Colors.grey[300]!),
                       ),
-                      // 타이머 인라인 표시
                       suffixText: _timerText,
                       suffixStyle: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: _remaining <= 60 ? Colors.red : const Color(0xFF4D91FF),
+                        color: _remaining <= 60
+                            ? colors.danger
+                            : colors.primaryStrong,
                         fontFamily: 'Pretendard',
                       ),
                     ),
@@ -890,7 +917,9 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                     height: 48,
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     decoration: BoxDecoration(
-                      color: _isVerifying ? Colors.grey[200] : const Color(0xFF3578E5),
+                      color: _isVerifying
+                          ? Colors.grey[200]
+                          : colors.primary,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Center(
@@ -898,7 +927,8 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white),
                             )
                           : const Text(
                               '확인',
@@ -915,19 +945,18 @@ class _TelChangeSheetState extends State<_TelChangeSheet> {
               ],
             ),
             const SizedBox(height: 10),
-            // 재전송 버튼
             Align(
               alignment: Alignment.centerRight,
               child: GestureDetector(
                 onTap: _isSendingCode ? null : () => _sendCode(isResend: true),
                 child: Text(
                   _isSendingCode ? '발송 중...' : '인증번호 재전송',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF4D91FF),
+                    color: colors.primaryStrong,
                     fontFamily: 'Pretendard',
                     decoration: TextDecoration.underline,
-                    decorationColor: Color(0xFF4D91FF),
+                    decorationColor: colors.primaryStrong,
                   ),
                 ),
               ),

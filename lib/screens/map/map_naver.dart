@@ -2,14 +2,20 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
+import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
+import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
+import 'package:unimal/screens/map/map_reload_policy.dart';
 import 'package:unimal/service/board/board_api_service.dart';
-import 'package:unimal/service/image/image_service.dart';
+import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
@@ -23,10 +29,12 @@ class MapNaverScreens extends StatefulWidget {
   State<MapNaverScreens> createState() => _MapNaverScreensState();
 }
 
+enum _MapMarkerLoadOutcome { applied, transportFailure, deferred }
+
 class _MapNaverScreensState extends State<MapNaverScreens>
     with WidgetsBindingObserver {
   NaverMapController? _mapController;
-  final ImageService _imageService = ImageService();
+  final MarkerImageFactory _markerImageFactory = MarkerImageFactory();
   final NaverSearchService _searchService = NaverSearchService();
   final BoardApiService _boardApiService = BoardApiService();
   final List<String> _mapMarkerIds = [];
@@ -43,12 +51,70 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   final Map<String, NClusterableMarker> _markerRefs = {};
   // 마커 ID → 기본 z-index (score 기반). 선택 해제 시 이 값으로 복원.
   final Map<String, int> _markerBaseZIndex = {};
-  // 텍스트 마커 ID → 마지막으로 그린 모드(true=카드/줌인, false=원/줌아웃).
-  // 줌이 임계(16)를 넘나들면 모드가 바뀌므로 재생성 판단에 사용.
-  final Map<String, bool> _textMarkerCardMode = {};
+  // 마커 ID → 기본 표시 크기(dp). score 위계(42/50/58/66)로 결정되며
+  // 선택 확대(x1.18)와 선택 해제 복원의 기준값.
+  final Map<String, double> _markerBaseSize = {};
+  // 마커 ID → 같은 자리 스택 글 수. 1이면 단일, 2+면 스택(+N 뱃지).
+  // 재조회 시 글 수가 바뀌면 아이콘 재합성 판단에 사용.
+  final Map<String, int> _markerStackCount = {};
+  // 마커 ID → 핫플(캡션 우선권) 여부. 뷰포트 이동으로 백분위가 바뀌면
+  // 재사용 마커에도 setIsForceShowCaption 을 갱신하기 위해 추적.
+  final Map<String, bool> _markerIsHot = {};
+  // 마커 ID → 유도 타이틀(캡션 원본, 말줄임 전). 선택 마커 전체 캡션
+  // 노출/복원(피그마 18-2 ⑤)과 말풍선 억제 시 캡션 재구성에 사용.
+  final Map<String, String> _markerTitle = {};
+
+  // ── 스택 원형 펼침 (B안) 상태 ──────────────────────────────────────────
+  // 현재 펼쳐진 스택 마커 id (대표 게시글 id). null 이면 접힘.
+  String? _expandedStackId;
+  // 펼침 그룹의 좌표 키 (kStackGroupPrecision 기준). 재조회로 그룹 대표가
+  // 바뀌어도 "같은 자리 스택"을 식별해 숨김을 유지하기 위한 보조 키 —
+  // id 비교만으로는 대표 교체 시 새 마커가 가드를 빠져나가 펼침 한가운데
+  // 원본 스택이 다시 보이는 버그가 있었다 (2026-07-13).
+  String? _expandedStackGroupKey;
+  // 펼침 구성 오버레이 id — 접을 때 제거용.
+  final List<String> _stackFanMarkerIds = [];
+  final List<String> _stackFanLegIds = [];
+  bool _stackFanCenterAdded = false;
+  // 펼침 직후 카메라 기준값 — 여기서 벗어나면(지도 이동) 자동으로 접는다.
+  NLatLng? _stackFanBaseTarget;
+  double? _stackFanBaseZoom;
+  // 펼침 팬아웃 애니메이션 타이머 — 접기/재펼침 시 취소.
+  Timer? _fanAnimTimer;
+  // 펼침 중심 좌표 — 접기 수렴 애니메이션의 목표점.
+  NLatLng? _stackFanCenter;
+  // 펼침 호출 시퀀스 — 연속 호출 경합 시 이전 호출 무효화.
+  int _stackFanSeq = 0;
+  // 글 id → 펼침 마커 위치. 카드 스와이프 시 카메라 팔로우용.
+  final Map<String, NLatLng> _stackFanPositions = {};
+  // 글 id → 펼침 마커 객체·타이틀 — 포커스 캡션(전체 타이틀) 적용/복원용.
+  final Map<String, NMarker> _stackFanMarkerRefs = {};
+  final Map<String, String> _stackFanTitles = {};
+  // 현재 전체 타이틀 캡션이 적용된 펼침 글 id (피그마 18-2 ⑤).
+  String? _fanCaptionFocusedPostId;
+  // 마지막으로 카메라를 보낸 펼침 글 id — 탭/스와이프 에코 중복 이동 방지.
+  String? _stackFanFocusedPostId;
+  // 현재 펼치는 중인 스택 대표 id — 펼침 완료 전(좌표 미생성)에 들어온
+  // 카드 팔로우 호출을 식별하기 위한 보조 상태. 완료 시 해제.
+  String? _expandingStackId;
+  // 펼침 완료 전에 들어온 카드 팔로우의 대기 글 인덱스 — 좌표가 준비되면
+  // (펼침 종료 시점) 이 글의 펼침 마커로 카메라를 1회 이동한다.
+  // 카드 스와이프로 스택에 진입한 최초 프레임에서 카드 글과 포커스가
+  // 어긋나던 문제 해결용 (2026-07-14).
+  int? _pendingFanFocusPostIndex;
+  // 펼침 마커 z-index — 일반 마커(200000+score)와 선택(999999999) 사이.
+  static const int _stackFanZIndex = 900000000;
+  static const String _stackFanCenterId = 'stack_fan_center';
+  static const String _stackFanCenterHaloId = 'stack_fan_center_halo';
   // 화면 전체 텍스트 마커 표현 모드(true=카드, false=점). 줌 히스테리시스로 갱신.
   // 경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게 하는 핵심 상태.
   bool _textCardMode = false;
+  // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ──
+  // 점(클러스터러블)의 payload 는 영원히 점이고, 말풍선은 별도 id 의 일반
+  // NMarker 다. 수명주기·페이드·충돌 숨김은 내지도와 공용인
+  // BubbleMarkerLayer 가 담당한다.
+  final BubbleMarkerLayer _bubbleLayer =
+      BubbleMarkerLayer(debugLabel: 'map bubble');
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -69,6 +135,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 커스텀 마커 탭 관련 상태
   List<List<MapPost>> _postGroups = [];
   int? _selectedGroupIndex;
+  // 그룹 내 특정 글 페이지 강제 (스택 펼침 마커 탭). null = 강제 없음.
+  int? _selectedPostIndex;
   bool _isCardExpanded = false;
   List<MapPost> get _selectedPosts =>
       _selectedGroupIndex == null ? const [] : _postGroups[_selectedGroupIndex!];
@@ -79,72 +147,257 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 주변 스토리 조회 버튼 관련 상태
   bool _mapInitialized = false;
   NLatLng? _lastQueriedTarget;
-  double _lastQueriedZoom = 15;
+  double _lastQueriedZoom = _defaultEntryZoom;
+  // 마지막으로 API에 보낸 정수 줌 — 카드 열림 중 "집합 유지 재조회"가
+  // 같은 범위로 다시 조회할 때 사용. _lastQueriedZoom(카메라 실제 줌,
+  // 변화량·모드 판정용)과 분리 — 섞으면 stable 재조회 후 값이 현재 줌으로
+  // 드리프트해 다음 stable 재조회가 좁은 반경으로 나간다.
+  int _lastQueriedApiZoom = _defaultEntryZoom.floor();
 
   // 카메라 이동 자동 조회 — debounce + lock
   Timer? _cameraDebounce;
+  Timer? _freshnessTimer;
+  DateTime? _lastSuccessfulMapRefreshAt;
+  int _successfulMapRefreshGeneration = 0;
+  int _pendingAutoRefreshGeneration = 0;
+  bool _freshnessRefreshPending = false;
+  DateTime? _pendingAutoRefreshNotBefore;
+  MapReloadReason _pendingFreshnessReason = MapReloadReason.stale;
+  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
   bool _isLoadingMarkers = false;
   // refreshMap() 호출 시 로드가 진행 중이면 완료 후 강제 새로고침을 실행하기 위한 플래그
   bool _pendingForceRefresh = false;
+  // 로드 진행 중 도착한 재조회 요청 — 마지막 1건만 보관했다가 완료 후 실행.
+  // (기존에는 그냥 skip 되면서 debounce 콜백이 _lastQueriedTarget 을 이미
+  // 갱신해버려, 빠른 팬 직후 뷰포트가 영영 조회되지 않는 드랍이 있었다.)
+  ({
+    double lat,
+    double lng,
+    int zoom,
+    double? rawZoom,
+    bool forceRebuild,
+    MapReloadReason reason,
+    int pendingGenerationAtRequest,
+  })? _pendingReloadArgs;
 
   Worker? _pendingLocationWorker;
-
-  // 검색바 실측 — 카드 최대 높이를 검색바 바로 아래까지로 정확히 제한하기 위해
-  // post-frame에서 RenderBox 위치를 측정한다. 0이면 아직 미측정.
-  final GlobalKey _searchBarKey = GlobalKey();
-  double _searchBarBottom = 0;
+  Worker? _mapTabWorker;
 
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   bool _searchMarkerAdded = false;
 
-  // 마커 크기 — 한 곳에서 조절
-  static const _normalMarkerSize = 32.0; // 일반(단일) 마커
-  static const _clusterMarkerSize = 42.0; // 클러스터(2개 이상 합쳐진) 마커
-  // 텍스트 카드 마커 크기 (fromWidget size 와 NMarker size 를 동일하게 — 스케일 왜곡 방지)
-  // 줌아웃 점은 사진 마커처럼 _normalMarkerSize 사용(바이트 이미지 200x200 → 스케일).
-  static const Size _textCardSize = Size(204, 110); // 줌인 카드 (꼬리 끝=하단 중앙)
-  // 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 17.5).
-  static const double _textCardCameraZoom = 17.5;
-  // 텍스트 마커 표현(점↔카드) 전환 히스테리시스.
-  // enter 이상으로 줌인하면 카드로, 그 후 exit 미만으로 줌아웃해야 점으로 복귀.
-  // 단일 임계값(17.5)을 쓰면 파킹 줌과 경계가 겹쳐 카메라 미세 흔들림에 깜빡였다.
-  // enter(17.3)는 파킹 줌(17.5)보다 살짝 낮춰 fly 언더슈트(17.49)에도 카드 진입 보장.
-  static const double _textCardEnterZoom = 17.3;
-  static const double _textCardExitZoom = 16.8;
-
-  // 백엔드 ZoomLevel enum과 동기화. postLimit = 해당 줌에서 서버가 반환하는 최대 게시글 수.
-  static const _zoomPostLimit = {
-    10: 30, 11: 30, 12: 30,
-    13: 40, 14: 40,
-    15: 50, 16: 50, 17: 50,
-    18: 100, 19: 100, 20: 100,
-  };
+  // 마커 크기·캡션 — marker_constants.dart 공용 값 (내지도와 반드시 동일).
+  static const _normalMarkerSize = kNormalMarkerSize; // 일반(단일) 마커
+  static const _clusterMarkerSize = kClusterMarkerSize; // 클러스터 마커
+  static const double _markerCaptionTextSize = kMarkerCaptionTextSize;
+  // 텍스트 카드 크기/줌 — marker_constants.dart 공용 값 (내지도와 동일).
+  static const Size _textCardSize = kTextCardSize;
+  static const double _textCardCameraZoom = kTextCardCameraZoom;
+  static const double _textCardEnterZoom = kTextCardEnterZoom;
+  static const double _textCardExitZoom = kTextCardExitZoom;
+  // 이미지 클러스터 탭 시 줌인 목표 — 공용 상수 (내지도와 동일).
+  // 단일 마커 선택(_selectMarker), 다른 화면발 위치 이동(_applyPendingLocation)도
+  // 같은 깊이로 통일.
+  static const double _clusterExpandZoom = kClusterExpandZoom;
+  // 장소(검색 결과·POI 심볼) 포커스 줌 — 스토리 마커가 아닌 장소 확인용이라
+  // 마커 선택보다 얕게 유지.
+  static const double _placeFocusZoom = 16.0;
+  // 기본 진입 줌. 14로 낮춰봤으나 넓은 범위가 들어오며 먼 마커끼리
+  // 클러스터로 묶여 보이는 문제가 있어 15로 유지 — 병합 거리 축소(40dp)와
+  // 조합해 "가까운 것만 묶임"이 되도록 한다.
+  static const double _defaultEntryZoom = 16.5;
 
   bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
+  bool get _isMapTabActive =>
+      Get.find<NavController>().selectedIndex.value == 0;
+  bool get _isMapInteractionOpen =>
+      _isAnyCardOpen ||
+      _selectedPlace != null ||
+      _expandedStackId != null ||
+      _expandingStackId != null;
+  bool get _canAutoRefresh => mounted && MapReloadPolicy.canAutoRefresh(
+        isAppResumed: _appLifecycleState == AppLifecycleState.resumed,
+        isMapTabActive: _isMapTabActive,
+        isInteractionOpen: _isMapInteractionOpen,
+        isLoading: _isLoadingMarkers,
+      );
+  bool get _canApplyAutomaticResponse =>
+      mounted &&
+      MapReloadPolicy.canAutoRefresh(
+        isAppResumed: _appLifecycleState == AppLifecycleState.resumed,
+        isMapTabActive: _isMapTabActive,
+        isInteractionOpen: _isMapInteractionOpen,
+        isLoading: false,
+      );
+
+  bool _isAutomaticReloadReason(MapReloadReason reason) =>
+      reason == MapReloadReason.apiZoomChanged ||
+      reason == MapReloadReason.viewportMoved ||
+      reason == MapReloadReason.stale ||
+      reason == MapReloadReason.appResumed;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _appLifecycleState =
+        WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed;
+    final nav = Get.find<NavController>();
     _pendingLocationWorker = ever(
-      Get.find<NavController>().pendingMapLat,
+      nav.pendingMapLat,
       (_) => _applyPendingLocation(),
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureSearchBar());
+    _mapTabWorker = ever<int>(nav.selectedIndex, (index) {
+      if (index == 0) unawaited(_consumePendingFreshness());
+    });
   }
 
-  void _measureSearchBar() {
-    if (!mounted) return;
-    final ctx = _searchBarKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return;
-    final offset = box.localToGlobal(Offset.zero);
-    final bottom = offset.dy + box.size.height;
-    if (bottom != _searchBarBottom) {
-      setState(() => _searchBarBottom = bottom);
+  void _scheduleFreshness({Duration? delay}) {
+    _freshnessTimer?.cancel();
+    _freshnessTimer = Timer(
+      delay ?? MapReloadPolicy.freshnessInterval,
+      _onFreshnessDue,
+    );
+  }
+
+  bool _isSpatialReloadReason(MapReloadReason reason) =>
+      reason == MapReloadReason.apiZoomChanged ||
+      reason == MapReloadReason.viewportMoved;
+
+  bool get _hasLiveAutoRefreshCooldown {
+    final notBefore = _pendingAutoRefreshNotBefore;
+    return _freshnessRefreshPending &&
+        notBefore != null &&
+        notBefore.isAfter(DateTime.now());
+  }
+
+  void _deferFreshness(
+    MapReloadReason reason, {
+    DateTime? notBefore,
+  }) {
+    final existingNotBefore =
+        _freshnessRefreshPending ? _pendingAutoRefreshNotBefore : null;
+    _pendingAutoRefreshGeneration++;
+    _freshnessRefreshPending = true;
+    _pendingFreshnessReason = reason;
+    if (notBefore != null) {
+      _pendingAutoRefreshNotBefore = notBefore;
+    } else {
+      _pendingAutoRefreshNotBefore = existingNotBefore;
     }
+    if (kDebugMode) {
+      debugPrint('[map] freshness deferred reason=${reason.name}');
+    }
+  }
+
+  void _onFreshnessDue() {
+    if (_freshnessRefreshPending) {
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+    if (!_canAutoRefresh) {
+      _deferFreshness(MapReloadReason.stale);
+      return;
+    }
+    unawaited(_reloadCurrentCamera(MapReloadReason.stale));
+  }
+
+  Future<void> _consumePendingFreshness() async {
+    if (!mounted || !_freshnessRefreshPending) return;
+
+    final notBefore = _pendingAutoRefreshNotBefore;
+    if (notBefore != null) {
+      final remaining = notBefore.difference(DateTime.now());
+      if (remaining > Duration.zero) {
+        _scheduleFreshness(delay: remaining);
+        return;
+      }
+    }
+
+    if (!_canAutoRefresh) return;
+    final reason = _pendingFreshnessReason;
+    _freshnessRefreshPending = false;
+    _pendingAutoRefreshNotBefore = null;
+    await _reloadCurrentCamera(reason);
+  }
+
+  Future<void> _reloadCurrentCamera(MapReloadReason reason) async {
+    final controller = _mapController;
+    if (controller == null) {
+      _deferFreshness(reason);
+      return;
+    }
+    final refreshGeneration = _successfulMapRefreshGeneration;
+    try {
+      final camera = await controller.getCameraPosition();
+      if (!mounted) return;
+      if (refreshGeneration != _successfulMapRefreshGeneration) return;
+      // 카메라 조회를 기다리는 동안 생명주기나 상호작용 상태가 바뀔 수 있다.
+      if (!_canAutoRefresh) {
+        _deferFreshness(reason);
+        return;
+      }
+      await _loadMapMarkers(
+        camera.target.latitude,
+        camera.target.longitude,
+        _apiZoomFor(camera.zoom),
+        rawZoom: camera.zoom,
+        reason: reason,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _deferFreshness(
+        reason,
+        notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+      );
+      _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      if (kDebugMode) {
+        debugPrint('[map] camera read failed reason=${reason.name} error=$e');
+      }
+    }
+  }
+
+  // 검색바 우측 '내 지도' 진입 버튼.
+  // 지도 핀 아이콘 + '내 지도' 텍스트 알약 — 무엇을 누르는지 글자로 명확히 보여준다.
+  // 탭 시 나만의 지도(owner)로 이동.
+  Widget _buildMyMapButton() {
+    final colors = AppColors.of(context);
+    return GestureDetector(
+      onTap: () => Get.toNamed('/my-story-map'),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.place, size: 16, color: colors.primaryStrong),
+            const SizedBox(width: 4),
+            Text(
+              '내 지도',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'Pretendard',
+                color: colors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -161,44 +414,45 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appLifecycleState = state;
+    if (state != AppLifecycleState.resumed) return;
+    final due = MapReloadPolicy.isFreshnessDue(
+      lastSuccessfulAt: _lastSuccessfulMapRefreshAt,
+      now: DateTime.now(),
+    );
+    if (due) {
+      _deferFreshness(MapReloadReason.appResumed);
+    }
+    unawaited(_consumePendingFreshness());
+  }
+
   Future<void> _reloadMarkersForBrightnessChange() async {
     if (_mapController == null) return;
-    for (final id in _mapMarkerIds.toList()) {
-      try {
-        _mapController!.deleteOverlay(
-          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
-        );
-      } catch (_) {}
-    }
-    _mapMarkerIds.clear();
-    _markerRefs.clear();
-    _markerBaseZIndex.clear();
-    _textMarkerCardMode.clear();
-    _markerIconCache.clear();
-    _markerBytesCache.clear();
-    _clusterIconCache.clear();
-    _clusterCurrentSize.clear();
-    _highlightedMarkerId = null;
-
     // 마지막 조회 위치 기준으로 재로드. 없으면 현재 카메라 기준.
     final target = _lastQueriedTarget;
     if (target != null) {
       await _loadMapMarkers(
         target.latitude,
         target.longitude,
-        _lastQueriedZoom.round(),
+        _apiZoomFor(_lastQueriedZoom),
         rawZoom: _lastQueriedZoom,
+        forceRebuild: true,
+        reason: MapReloadReason.manual,
       );
-    } else {
-      final camera = await _mapController!.getCameraPosition();
-      if (!mounted) return;
-      await _loadMapMarkers(
-        camera.target.latitude,
-        camera.target.longitude,
-        camera.zoom.round(),
-        rawZoom: camera.zoom,
-      );
+      return;
     }
+    final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
+    await _loadMapMarkers(
+      camera.target.latitude,
+      camera.target.longitude,
+      _apiZoomFor(camera.zoom),
+      rawZoom: camera.zoom,
+      forceRebuild: true,
+      reason: MapReloadReason.manual,
+    );
   }
 
   void _applyPendingLocation() {
@@ -207,12 +461,18 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final lng = nav.pendingMapLng.value;
     if (lat == null || lng == null) return;
     debugPrint('[map] _applyPendingLocation → (${lat.toStringAsFixed(5)}, '
-        '${lng.toStringAsFixed(5)}) zoom=16');
+        '${lng.toStringAsFixed(5)}) zoom=$_clusterExpandZoom');
     if (_mapController != null) {
       _mapController!.updateCamera(
-        NCameraUpdate.scrollAndZoomTo(target: NLatLng(lat, lng), zoom: 16),
+        NCameraUpdate.scrollAndZoomTo(
+            target: NLatLng(lat, lng), zoom: _clusterExpandZoom),
       );
-      _loadMapMarkers(lat, lng, 16);
+      _loadMapMarkers(
+        lat,
+        lng,
+        _apiZoomFor(_clusterExpandZoom),
+        rawZoom: _clusterExpandZoom,
+      );
     }
     nav.pendingMapLat.value = null;
     nav.pendingMapLng.value = null;
@@ -222,8 +482,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pendingLocationWorker?.dispose();
+    _mapTabWorker?.dispose();
     _debounce?.cancel();
     _cameraDebounce?.cancel();
+    _freshnessTimer?.cancel();
+    _fanAnimTimer?.cancel();
+    _bubbleLayer.cancelTimers();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -241,32 +505,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Future<void> _doForceRefresh() async {
     if (_mapController == null) return;
-    // 기존 마커 전부 제거 — 수정된 게시글 반영을 위해 재사용 없이 전체 재렌더
-    for (final id in _mapMarkerIds.toList()) {
-      try {
-        _mapController!.deleteOverlay(
-          NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
-        );
-      } catch (_) {}
-    }
-    _mapMarkerIds.clear();
-    _markerRefs.clear();
-    _markerBaseZIndex.clear();
-    _textMarkerCardMode.clear();
-    _markerIconCache.clear();
-    _markerBytesCache.clear();
-    _clusterIconCache.clear();
-    _clusterCurrentSize.clear();
-    _highlightedMarkerId = null;
-
     final camera = await _mapController!.getCameraPosition();
     if (!mounted) return;
-    _lastQueriedTarget = null;
-    _loadMapMarkers(
+    await _loadMapMarkers(
       camera.target.latitude,
       camera.target.longitude,
-      camera.zoom.round(),
+      _apiZoomFor(camera.zoom),
       rawZoom: camera.zoom,
+      forceRebuild: true,
+      reason: MapReloadReason.manual,
     );
   }
 
@@ -275,7 +522,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
         return;
       }
 
@@ -289,7 +541,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
         return;
       }
 
@@ -319,62 +576,161 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (!mounted) return;
       if (position != null) {
         debugPrint('[map] updateCamera → (${position.latitude.toStringAsFixed(5)}, '
-            '${position.longitude.toStringAsFixed(5)}) zoom=15');
+            '${position.longitude.toStringAsFixed(5)}) zoom=$_defaultEntryZoom');
         _mapController?.updateCamera(
           NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(position.latitude, position.longitude),
-            zoom: 15,
+            zoom: _defaultEntryZoom,
           ),
         );
-        _loadMapMarkers(position.latitude, position.longitude, 15);
+        _loadMapMarkers(
+          position.latitude,
+          position.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       } else {
         debugPrint('[map] fallback → seoulCityHall');
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       }
     } catch (e) {
       debugPrint('[map] _moveToCurrentLocationOrDefault outer catch: $e → fallback');
       if (mounted) {
-        _loadMapMarkers(seoulCityHall.latitude, seoulCityHall.longitude, 15);
+        _loadMapMarkers(
+          seoulCityHall.latitude,
+          seoulCityHall.longitude,
+          _apiZoomFor(_defaultEntryZoom),
+          rawZoom: _defaultEntryZoom,
+        );
       }
     }
   }
 
-  Future<void> _loadMapMarkers(double latitude, double longitude, int zoom,
-      {double? rawZoom}) async {
-    if (_mapController == null) {
-      debugPrint('[map] _loadMapMarkers skipped (controller null)');
-      return;
-    }
+  Future<bool> _loadMapMarkers(
+    double latitude,
+    double longitude,
+    int zoom, {
+    double? rawZoom,
+    bool forceRebuild = false,
+    MapReloadReason reason = MapReloadReason.manual,
+    int? pendingGenerationAtRequest,
+  }) async {
+    if (_mapController == null) return false;
     if (_isLoadingMarkers) {
-      debugPrint('[map] _loadMapMarkers skipped (already loading) '
+      // 그냥 버리지 않고 마지막 요청을 큐잉 — 현재 로드 완료 후 재실행.
+      // (debounce 콜백이 _lastQueriedTarget 을 이미 갱신한 뒤라, 여기서
+      // 버리면 해당 뷰포트는 다음 idle 에서도 "변화 없음"으로 영영 스킵된다)
+      _pendingReloadArgs = (
+        lat: latitude,
+        lng: longitude,
+        zoom: zoom,
+        rawZoom: rawZoom,
+        forceRebuild: forceRebuild,
+        reason: reason,
+        pendingGenerationAtRequest:
+            pendingGenerationAtRequest ?? _pendingAutoRefreshGeneration,
+      );
+      debugPrint('[map] _loadMapMarkers queued (already loading) '
           '→ (${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
-      return; // 중복 호출 방지
+      return false;
     }
     debugPrint('[map] _loadMapMarkers start '
         '(${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}) z=$zoom');
+    final pendingGenerationAtStart =
+        pendingGenerationAtRequest ?? _pendingAutoRefreshGeneration;
     _isLoadingMarkers = true;
-    // 의도적 조회 — 이 호출 직후 카메라가 같은 좌표로 이동하며 onCameraIdle이
-    // 다시 trigger될 때, 변화량 비교에서 걸려 자동 재조회가 발동하지 않도록
-    // 사전에 갱신. Android에서 의도/자동 _loadMapMarkers가 연속 호출될 때
-    // native overlay race("overlay can't found")가 발생하는 원인이었다.
-    _lastQueriedTarget = NLatLng(latitude, longitude);
-    // 실제 카메라 줌(소수)을 저장 — 반올림 정수를 쓰면 경계(17.5) 비교가 불안정해진다.
-    _lastQueriedZoom = rawZoom ?? zoom.toDouble();
+    var outcome = _MapMarkerLoadOutcome.transportFailure;
     try {
-      await _loadMapMarkersInternal(latitude, longitude, zoom, rawZoom: rawZoom);
+      outcome = await _loadMapMarkersInternal(
+        latitude,
+        longitude,
+        zoom,
+        rawZoom: rawZoom,
+        forceRebuild: forceRebuild,
+        reason: reason,
+      );
+      if (outcome == _MapMarkerLoadOutcome.applied && mounted) {
+        _lastQueriedTarget = NLatLng(latitude, longitude);
+        _lastQueriedZoom = rawZoom ?? zoom.toDouble();
+        _lastQueriedApiZoom = zoom;
+        _lastSuccessfulMapRefreshAt = DateTime.now();
+        _successfulMapRefreshGeneration++;
+        final hasNewerPending =
+            pendingGenerationAtStart != _pendingAutoRefreshGeneration;
+        final preserveSpatialPending = _freshnessRefreshPending &&
+            hasNewerPending &&
+            _isSpatialReloadReason(_pendingFreshnessReason);
+        // 성공은 네트워크 회복을 증명하므로 이전 retry 지연은 더 이상 필요 없다.
+        _pendingAutoRefreshNotBefore = null;
+        if (!preserveSpatialPending) {
+          _freshnessRefreshPending = false;
+        }
+        _scheduleFreshness();
+      } else if (outcome == _MapMarkerLoadOutcome.deferred && mounted) {
+        _deferFreshness(reason);
+      } else if (outcome == _MapMarkerLoadOutcome.transportFailure &&
+          mounted) {
+        _deferFreshness(
+          reason,
+          notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+        );
+        _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      }
+    } catch (e) {
+      debugPrint('[map] reload failed reason=${reason.name} error=$e');
+      if (mounted) {
+        _deferFreshness(
+          reason,
+          notBefore: DateTime.now().add(MapReloadPolicy.failureRetryInterval),
+        );
+        _scheduleFreshness(delay: MapReloadPolicy.failureRetryInterval);
+      }
     } finally {
       _isLoadingMarkers = false;
-      // refreshMap()이 로드 중에 호출됐다면 지금 실행
+      // refreshMap()이 로드 중에 호출됐다면 지금 실행 (전체 재렌더가 우선 —
+      // 최신 카메라 기준으로 다시 조회하므로 큐잉된 재조회는 폐기)
       if (_pendingForceRefresh && mounted) {
         _pendingForceRefresh = false;
-        _doForceRefresh();
+        _pendingReloadArgs = null;
+        unawaited(_doForceRefresh());
+      } else if (_pendingReloadArgs != null && mounted) {
+        final args = _pendingReloadArgs!;
+        _pendingReloadArgs = null;
+        unawaited(_loadMapMarkers(
+          args.lat,
+          args.lng,
+          args.zoom,
+          rawZoom: args.rawZoom,
+          forceRebuild: args.forceRebuild,
+          reason: args.reason,
+          pendingGenerationAtRequest: args.pendingGenerationAtRequest,
+        ));
+      } else if (mounted) {
+        unawaited(_consumePendingFreshness());
       }
     }
+    if (outcome == _MapMarkerLoadOutcome.applied && mounted) {
+      // 재조회 완료 후 말풍선 레이어 1회 수렴 — 응답 반영으로 글 집합이
+      // 바뀌었거나 API 대기 중 카메라가 움직였을 수 있다. 반드시
+      // _isLoadingMarkers 해제 후에 호출해야 스킵되지 않는다.
+      unawaited(_syncBubbleLayerWithCurrentCamera());
+    }
+    return outcome == _MapMarkerLoadOutcome.applied;
   }
 
-  Future<void> _loadMapMarkersInternal(
-      double latitude, double longitude, int zoom,
-      {double? rawZoom}) async {
+  Future<_MapMarkerLoadOutcome> _loadMapMarkersInternal(
+    double latitude,
+    double longitude,
+    int zoom, {
+    double? rawZoom,
+    bool forceRebuild = false,
+    required MapReloadReason reason,
+  }) async {
     // await 이후 context 사용을 피하기 위해 함수 시작 시점에 캡처.
     // 다크모드 토글 시 기존 마커는 그대로, 다음 재조회부터 새 색 반영.
     final captionTokens = AppColors.of(context);
@@ -395,53 +751,53 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       longitude: longitude,
       zoom: zoom,
     );
+    if (posts == null) return _MapMarkerLoadOutcome.transportFailure;
+    if (!mounted) return _MapMarkerLoadOutcome.deferred;
+    if (_isAutomaticReloadReason(reason) && !_canApplyAutomaticResponse) {
+      if (kDebugMode) {
+        debugPrint('[map] response deferred reason=${reason.name}');
+      }
+      return _MapMarkerLoadOutcome.deferred;
+    }
+    if (forceRebuild) {
+      await _clearStoryMarkerOverlaysAndCaches();
+    }
     debugPrint('[map] API done (${DateTime.now().difference(apiStart).inMilliseconds}ms) '
         'returned ${posts.length} posts');
-    if (!mounted) return;
 
-    // 같은 좌표끼리 그룹핑 (jitter 오프셋 결정용)
+    // 같은 자리끼리 그룹핑 — 스택 마커(A안)의 단위.
+    // jitter 로 흩뿌리던 방식을 폐기하고 그룹당 마커 하나(대표 + 뒷장 + +N 뱃지)로
+    // 쌓는다. 줌인해도 유지되며, 탭하면 하단 카드 스트립에서 그룹 내 글을 넘겨본다.
+    // 정밀도 주의: kStackGroupPrecision(4자리 ≈ 11m) — 진짜 같은 지점만 묶는다.
     final Map<String, List<MapPost>> grouped = {};
     for (final post in posts) {
-      final key = '${post.latitude.toStringAsFixed(3)},${post.longitude.toStringAsFixed(3)}';
+      final key = _stackGroupKey(post.latitude, post.longitude);
       grouped.putIfAbsent(key, () => []).add(post);
     }
-    // 그룹 내 score 내림차순 (jitter 순서 안정화)
+    // 그룹 내 score 내림차순 — 첫 글이 대표(마커 아이콘·캡션·zIndex 기준)
     for (final list in grouped.values) {
       list.sort((a, b) => b.score.compareTo(a.score));
     }
 
-    // 점진적 표시: 같은 좌표 그룹이 너무 크면 상위 N개만 jitter로 표시.
-    // 나머지는 클러스터링으로 줌인 시 펼쳐지도록 위임.
-    const jitterRadius = 0.00015; // 위경도 약 17m
-    // 백엔드 ZoomLevel.postLimit 기준 — 서버가 이미 해당 줌에서 최대 N개만 반환하므로
-    // 클라이언트 jitter 한도도 같은 값으로 맞춰 불필요한 추가 컷 방지.
-    final maxJitterPerGroup = _zoomPostLimit[zoom] ?? 50;
-    final List<({MapPost post, NLatLng position})> markerData = [];
-    for (final group in grouped.values) {
-      // score 상위 N개까지만 표시
-      final visible = group.length <= maxJitterPerGroup
-          ? group
-          : group.sublist(0, maxJitterPerGroup);
-      for (int i = 0; i < visible.length; i++) {
-        final post = visible[i];
-        NLatLng pos;
-        if (visible.length == 1) {
-          pos = NLatLng(post.latitude, post.longitude);
-        } else {
-          final angle = 2 * pi * i / visible.length;
-          pos = NLatLng(
-            post.latitude + jitterRadius * cos(angle),
-            post.longitude + jitterRadius * sin(angle),
-          );
-        }
-        markerData.add((post: post, position: pos));
-      }
-    }
+    final List<List<MapPost>> markerGroups = grouped.values.toList();
 
-    // 새 결과의 마커 ID 집합 (게시글 id 1:1)
-    final newMarkerIds = markerData.map((m) => m.post.id).toSet();
-    debugPrint('[map] markerData built: ${markerData.length} markers '
-        '(grouped from ${posts.length} posts)');
+    // score 크기 위계 — 화면에 로드된 마커(그룹 대표 score)의 상대 백분위.
+    final tiers =
+        MarkerScoreTiers.fromScores(markerGroups.map((g) => g.first.score));
+
+    // 말풍선 대상 판정 — 밀집 계산은 말풍선 레이어 sync 와 같은 헬퍼를 쓴다.
+    // 여기서는 canCard 태그(탭 줌 유도)에만 사용하며, 점↔말풍선 표현 자체는
+    // 별도 말풍선 레이어가 담당한다 (2-레이어 설계 docs/specs/2026-07-19).
+    final textBubbleEligibleIds = _textBubbleEligibleIds(
+      markerGroups: markerGroups,
+      latitude: latitude,
+      rawZoom: rawZoom ?? zoom.toDouble(),
+    );
+
+    // 새 결과의 마커 ID 집합 (그룹 대표 게시글 id 1:1)
+    final newMarkerIds = markerGroups.map((g) => g.first.id).toSet();
+    debugPrint('[map] markerGroups built: ${markerGroups.length} markers '
+        '(grouped from ${posts.length} posts, tiers=${tiers.enabled})');
 
     // 1) 기존에 있고 새에 없는 마커만 제거
     int deletedCount = 0;
@@ -458,7 +814,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _clusterIconCache.removeWhere((key, _) => key.startsWith('${id}_'));
         _markerRefs.remove(id);
         _markerBaseZIndex.remove(id);
-        _textMarkerCardMode.remove(id);
+        _markerBaseSize.remove(id);
+        _markerStackCount.remove(id);
+        _markerIsHot.remove(id);
+        _markerTitle.remove(id);
         // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
         if (_highlightedMarkerId == id) {
           _highlightedMarkerId = null;
@@ -470,7 +829,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       debugPrint('[map] deleted $deletedCount stale markers');
     }
 
-    // 2) 각 게시글마다 마커 + single-post visibleGroup 추가
+    // 2) 그룹(스택)마다 마커 하나 + visibleGroup(그룹 전체) 추가
     final List<List<MapPost>> visibleGroups = [];
     // 신규 마커는 한 번에 addOverlayAll로 추가한다.
     // 한 개씩 addOverlay 하면 native가 매 호출마다 reclustering(release→retain)을
@@ -481,26 +840,48 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final Set<NClusterableMarker> markersToAdd = {};
     final List<String> markerIdsToAdd = [];
 
-    for (final data in markerData) {
-      final topPost = data.post;
-      final pos = data.position;
+    for (final group in markerGroups) {
+      final topPost = group.first;
+      final pos = NLatLng(topPost.latitude, topPost.longitude);
+      final int stackCount = group.length;
 
       final bool isTextPost = topPost.fileInfoList.isEmpty;
-      // 텍스트 마커: 점↔카드 전환은 줌 히스테리시스로 결정(경계 깜빡임 방지).
-      // 단일 임계값(zoom>=18) 대신 enter/exit 밴드를 둬 카메라가 경계에 멈춰도 안정.
-      final bool textCardMode = _resolveTextCardMode(rawZoom ?? zoom.toDouble());
+      // 말풍선이 뜰 수 있는 글인지 (단일 + 비밀집 텍스트) — canCard 태그와
+      // 탭 줌 유도에만 사용. 점 마커의 payload 는 항상 점이다 (2-레이어).
+      final bool canBecomeCard = textBubbleEligibleIds.contains(topPost.id);
 
-      // 이미 화면에 있는 마커 → 재사용.
-      // 단, 텍스트 마커는 줌 모드(카드↔원)가 바뀌었으면 제거 후 아래에서 재생성한다.
-      // (사진 마커는 줌에 따라 모양이 안 바뀌므로 그대로 재사용 — 기존 동작 보존)
+      // score 크기 위계 (42/50/58/66) — 그룹 대표 score 의 화면 내 백분위.
+      final double tierSize = tiers.sizeFor(topPost.score);
+      final bool isHot = tiers.isHot(topPost.score);
+
+      // 이미 화면에 있는 마커 → 재사용. 스택 글 수가 바뀌면 재생성.
+      // 점↔말풍선 표현은 별도 말풍선 레이어가 담당하므로 여기에는
+      // 표현 전환 분기가 없다 (2-레이어 설계 docs/specs/2026-07-19).
       if (_mapMarkerIds.contains(topPost.id)) {
-        final bool needsRebuild =
-            isTextPost && _textMarkerCardMode[topPost.id] != textCardMode;
-        if (!needsRebuild) {
-          visibleGroups.add([topPost]);
+        final bool stackChanged = _markerStackCount[topPost.id] != stackCount;
+
+        if (!stackChanged) {
+          // 위계 변화(뷰포트 이동으로 백분위가 바뀜)는 재합성 없이 반영:
+          // 크기는 setSize, 캡션 우선권은 setIsForceShowCaption.
+          // 선택 중 마커의 크기는 제외.
+          if (_markerBaseSize[topPost.id] != tierSize) {
+            _markerBaseSize[topPost.id] = tierSize;
+            if (_highlightedMarkerId != topPost.id) {
+              try {
+                _markerRefs[topPost.id]?.setSize(Size(tierSize, tierSize));
+              } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+            }
+          }
+          if (_markerIsHot[topPost.id] != isHot) {
+            _markerIsHot[topPost.id] = isHot;
+            try {
+              _markerRefs[topPost.id]?.setIsForceShowCaption(isHot);
+            } catch (_) {/* same */}
+          }
+          visibleGroups.add(group);
           continue;
         }
-        // 모드 변경 → 제거하고 fall-through 하여 재생성
+        // 재생성 필요 → 제거하고 fall-through
         try {
           _mapController!.deleteOverlay(
             NOverlayInfo(type: NOverlayType.clusterableMarker, id: topPost.id),
@@ -508,53 +889,67 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         } catch (_) {}
         _mapMarkerIds.remove(topPost.id);
         _markerIconCache.remove(topPost.id);
+        _markerBytesCache.remove(topPost.id);
+        // 이전 base 로 합성된 클러스터 아이콘도 무효화 (stale 뱃지 방지)
+        _clusterIconCache
+            .removeWhere((key, _) => key.startsWith('${topPost.id}_'));
         _markerRefs.remove(topPost.id);
         _markerBaseZIndex.remove(topPost.id);
+        _markerBaseSize.remove(topPost.id);
+        _markerStackCount.remove(topPost.id);
+        _markerIsHot.remove(topPost.id);
+        _markerTitle.remove(topPost.id);
       }
 
-      // 신규(또는 모드 변경) 마커 생성
+      // 신규(또는 재생성) 마커 생성 — payload 는 항상 점/썸네일 (2-레이어)
       NOverlayImage? icon;
       Uint8List? baseBytes;
-      Size markerSize = const Size(_normalMarkerSize, _normalMarkerSize);
-      bool suppressCaption = false;
 
       if (!isTextPost) {
-        // ── 사진 글: 기존 이미지 마커 (변경 없음) ──
+        // ── 사진 글: 원형 썸네일 + 링 (내 글=primary, 새 글 24h=accent) ──
         try {
           final firstUrl = topPost.fileInfoList.first.fileUrl;
-          final stream = await _imageService.getImageStream(firstUrl);
-          baseBytes = await _imageService.createMarkerImage(stream);
-          icon = await NOverlayImage.fromByteArray(baseBytes);
+          final stream = await _markerImageFactory.getImageStream(firstUrl);
+          baseBytes = await _markerImageFactory.createMarkerImage(
+            stream,
+            ringColor: markerRingColor(
+              isOwner: topPost.isOwner,
+              createdAt: topPost.createdAt,
+            ),
+          );
         } catch (_) {
           continue;
         }
       } else {
-        // ── 텍스트 글 ──
+        // ── 텍스트 글: 항상 점 ──
         // 실패해도 continue 하지 않음 — 기본 마커로 진행해 사진 마커 흐름 보호.
+        // 사진 마커와 동일한 바이트 파이프라인 → _markerBytesCache 에 저장되어
+        // 클러스터/스택 +N 뱃지가 사진 마커와 똑같이 합성된다.
         try {
-          if (textCardMode) {
-            // 줌인 카드 (fromWidget). 17.5+ 는 클러스터링이 없어 바이트 불필요.
-            icon = await _buildTextCardIcon(topPost);
-            markerSize = _textCardSize;
-            suppressCaption = true; // 카드에 제목/본문 포함 → 하단 캡션 중복 방지
-          } else {
-            // 줌아웃 점: 사진 마커와 동일한 바이트 파이프라인으로 생성.
-            // → baseBytes 가 _markerBytesCache 에 저장되어 클러스터 +N 뱃지가
-            //   사진 마커와 똑같이 자동 합성된다. markerSize 는 기본값(_normalMarkerSize).
-            baseBytes = await _imageService.createTextDotImage();
-            icon = await NOverlayImage.fromByteArray(baseBytes);
-          }
+          baseBytes = await _markerImageFactory.createTextDotImage();
         } catch (e) {
           debugPrint('[map] 텍스트 마커 생성 실패 ${topPost.id}: $e');
         }
-        _textMarkerCardMode[topPost.id] = textCardMode;
       }
 
-      visibleGroups.add([topPost]);
+      // 같은 자리 스택(A안): 대표 마커 뒤 뒷장 + 우상단 +N 뱃지 합성.
+      // _markerBytesCache 에는 합성 전 base 를 남겨 클러스터 뱃지 합성과 호환.
+      if (baseBytes != null) {
+        try {
+          final displayBytes = stackCount > 1
+              ? await _markerImageFactory.composeStackMarker(
+                  baseBytes, stackCount)
+              : baseBytes;
+          icon = await overlayImageFromBytes(displayBytes);
+        } catch (e) {
+          if (!isTextPost) continue; // 사진 글은 아이콘 없이 진행 불가
+          debugPrint('[map] 텍스트 마커 아이콘 생성 실패 ${topPost.id}: $e');
+        }
+      }
+
+      visibleGroups.add(group);
 
       // 클러스터 빌더에서 재사용할 캐시 저장.
-      // 텍스트 마커는 icon 만 캐시(bytes 없음) → 텍스트가 top 인 클러스터의 +N 뱃지
-      // 합성은 생략된다(원 글리프만 표시). 사진이 top 이면 기존대로 뱃지 합성됨.
       if (icon != null) {
         _markerIconCache[topPost.id] = icon;
       }
@@ -567,19 +962,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         id: topPost.id,
         position: pos,
         icon: icon,
-        size: markerSize,
+        size: Size(tierSize, tierSize),
         tags: {
           'score': topPost.score.toString(),
           // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
           // 여기서 계산해 담는다.
           'title': derivedTitle,
-          // 클러스터 빌더에서 텍스트/이미지 구분 → 탭 시 줌 동작 분기.
-          'isText': isTextPost ? '1' : '0',
+          // 말풍선이 뜰 수 있는 텍스트 마커인지 (단일 + 비밀집).
+          // 클러스터 빌더의 단일 마커 탭 시 카드 줌 유도 여부 분기에 사용.
+          // 스택/밀집 텍스트는 줌인해도 점이라 카드 줌 유도가 무의미하다.
+          'canCard': canBecomeCard ? '1' : '0',
+          // 스택 글 수 — 클러스터 +N 뱃지가 마커 수가 아닌 글 수 합계를 표시.
+          'count': stackCount.toString(),
         },
         caption: NOverlayCaption(
-          // 카드 모드는 캡션 비움(카드에 제목 포함). 그 외엔 제목 캡션 표시.
-          text: suppressCaption ? '' : _truncateMarkerTitle(derivedTitle),
-          textSize: 13,
+          text: _truncateMarkerTitle(derivedTitle),
+          textSize: _markerCaptionTextSize,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
         ),
@@ -588,29 +986,57 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final baseZIndex = 200000 + topPost.score.toInt();
       _markerRefs[topPost.id] = marker;
       _markerBaseZIndex[topPost.id] = baseZIndex;
+      _markerBaseSize[topPost.id] = tierSize;
+      _markerStackCount[topPost.id] = stackCount;
+      _markerIsHot[topPost.id] = isHot;
+      _markerTitle[topPost.id] = derivedTitle;
 
       // setter는 모두 addOverlay 전에 호출 — _isAdded=false 가드로 native 호출은
       // 건너뛰고 값만 로컬에 저장된다. addOverlayAll 직렬화 시 함께 전송됨.
       marker.setGlobalZIndex(baseZIndex);
+      // 캡션 우선권 — 마커가 겹치면 zIndex(=score) 낮은 쪽 캡션을 숨긴다.
+      // 핫플(상위 5%)은 어떤 충돌 상황에도 캡션 유지 (피그마 §2).
+      marker.setIsHideCollidedCaptions(true);
+      if (isHot) marker.setIsForceShowCaption(true);
+      // 원형 펼침 중인 스택이 재조회로 재생성되는 경우 숨김 상태 유지.
+      // id 가 아닌 좌표 그룹 키로 비교 — 재조회에서 그룹 대표(최고 score)가
+      // 바뀌면 id 가드는 새 마커를 놓쳐 펼침 한가운데 스택이 다시 보인다.
+      //
+      // 주의: 여기서(add 전) setIsVisible(false)를 부르면 로컬 상태만 false로
+      // 남고 add payload 반영이 보장되지 않는다. 이후 재숨김 호출은 로컬
+      // dedupe 에 걸려 no-op → 마커가 영영 보이는 채로 남는 재발 케이스
+      // (2026-07-14 로그: 재생성 1건 add, 이후 숨김 무효). 숨김은
+      // addOverlayAll 이후 실제 네이티브 호출로 일괄 수행한다.
+      if (_expandedStackId != null &&
+          _stackGroupKey(topPost.latitude, topPost.longitude) ==
+              _expandedStackGroupKey) {
+        // 접을 때 복원할 대상만 새 대표로 갱신 — 숨김은 add 후.
+        _expandedStackId = topPost.id;
+        debugPrint('[map] fan guard: expanded stack rebuilt id=${topPost.id} '
+            '(hide deferred until after add)');
+      }
 
       final markerPostId = topPost.id;
-      final bool markerIsText = isTextPost;
-      final NLatLng markerPos = pos;
+      final bool markerCanBecomeCard = canBecomeCard;
+      final bool markerIsStack = stackCount > 1;
       marker.setOnTapListener((_) async {
         _focusNode.unfocus();
-        // 텍스트 마커: 17.5 미만이면 카드가 펼쳐지도록 17.5로 줌인 후 종료.
-        // (이미지 마커는 기존대로 줌 유지 + 선택)
-        if (markerIsText) {
-          final camera = await _mapController?.getCameraPosition();
-          if (camera != null && camera.zoom < _textCardEnterZoom) {
-            await _zoomToTextCard(markerPos);
-            return;
-          }
+        // 스택(같은 자리 2+ 글) 탭 → 원형 펼침 (B안). 카드는 펼쳐진
+        // 개별 마커를 탭했을 때 연다.
+        if (markerIsStack) {
+          await _expandStackFan(markerPostId);
+          return;
         }
+        // 단일 마커는 어느 줌에서 탭하든 줌인 + 카메라 무빙 + 카드 오픈을
+        // 한 번에 (기존 "줌인만 하고 종료"는 탭이 씹힌 느낌 — 2026-07-13).
+        // 텍스트 카드 마커는 카드 표시 줌(19)까지 당긴다.
         final idx = _postGroups
             .indexWhere((g) => g.isNotEmpty && g.first.id == markerPostId);
         if (idx < 0) return;
-        await _selectMarker(idx);
+        await _selectMarker(
+          idx,
+          minZoom: markerCanBecomeCard ? _textCardCameraZoom : null,
+        );
       });
 
       markersToAdd.add(marker);
@@ -619,19 +1045,27 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
     // 신규 마커들을 한 번에 native로 추가 (1회 reclustering).
     if (markersToAdd.isNotEmpty) {
-      if (!mounted) return;
+      if (!mounted) return _MapMarkerLoadOutcome.deferred;
       final addStart = DateTime.now();
       debugPrint('[map] addOverlayAll start (${markersToAdd.length} markers)');
       await _mapController!.addOverlayAll(markersToAdd);
       debugPrint('[map] addOverlayAll done '
           '(${DateTime.now().difference(addStart).inMilliseconds}ms)');
-      if (!mounted) return;
+      if (!mounted) return _MapMarkerLoadOutcome.deferred;
       _mapMarkerIds.addAll(markerIdsToAdd);
+      // 펼침 중 재생성된 스택 마커 숨김 — add 완료 후 실제 네이티브 호출.
+      if (_expandedStackId != null &&
+          markerIdsToAdd.contains(_expandedStackId)) {
+        try {
+          _markerRefs[_expandedStackId]?.setIsVisible(false);
+          debugPrint('[map] fan guard: post-add hide $_expandedStackId');
+        } catch (_) {}
+      }
     } else {
       debugPrint('[map] addOverlayAll skipped (no new markers)');
     }
 
-    if (!mounted) return;
+    if (!mounted) return _MapMarkerLoadOutcome.deferred;
     debugPrint('[map] setState visibleGroups=${visibleGroups.length}');
     setState(() {
       _postGroups = visibleGroups;
@@ -651,6 +1085,46 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     } else {
       _applySelectionHighlight(null);
     }
+    // 펼침 중 재조회 최종 방어 — 어떤 경로의 재조회든 끝나는 시점에
+    // 펼침 그룹의 원본 마커는 반드시 숨김이어야 한다. 생성 가드가 놓치는
+    // 타이밍(재사용 분기 등)까지 커버하는 이중 안전장치.
+    if (_expandedStackGroupKey != null) {
+      final fanIdx = _postGroups.indexWhere((g) =>
+          g.isNotEmpty &&
+          _stackGroupKey(g.first.latitude, g.first.longitude) ==
+              _expandedStackGroupKey);
+      if (fanIdx >= 0) {
+        final repId = _postGroups[fanIdx].first.id;
+        _expandedStackId = repId; // 접을 때 복원 대상 동기화
+        try {
+          _markerRefs[repId]?.setIsVisible(false);
+          debugPrint('[map] fan defense: re-hide rep=$repId');
+        } catch (_) {}
+      }
+    }
+    return _MapMarkerLoadOutcome.applied;
+  }
+
+  Future<void> _clearStoryMarkerOverlaysAndCaches() async {
+    final controller = _mapController;
+    // 말풍선 레이어는 일반 NMarker 라 clusterableMarker clear 에 안 걸린다.
+    // 검색 핀 등 다른 일반 마커를 지우지 않도록 레이어가 개별 삭제한다.
+    await _bubbleLayer.clear(controller);
+    if (controller != null) {
+      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
+    }
+    _mapMarkerIds.clear();
+    _markerRefs.clear();
+    _markerBaseZIndex.clear();
+    _markerBaseSize.clear();
+    _markerStackCount.clear();
+    _markerIsHot.clear();
+    _markerTitle.clear();
+    _markerIconCache.clear();
+    _markerBytesCache.clear();
+    _clusterIconCache.clear();
+    _clusterCurrentSize.clear();
+    _highlightedMarkerId = null;
   }
 
   Future<void> _onSearch(String query) async {
@@ -680,7 +1154,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final position = NLatLng(result.lat, result.lng);
 
     _mapController?.updateCamera(
-      NCameraUpdate.scrollAndZoomTo(target: position, zoom: 16),
+      NCameraUpdate.scrollAndZoomTo(target: position, zoom: _placeFocusZoom),
     );
 
     _addSearchMarker(result, position);
@@ -694,9 +1168,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _searchMarkerAdded = false;
     }
 
-    final bytes = await _imageService.createPinMarkerImage();
+    final bytes = await _markerImageFactory.createPinMarkerImage();
     if (!mounted) return;
-    final icon = await NOverlayImage.fromByteArray(bytes);
+    final icon = await overlayImageFromBytes(bytes);
 
     final marker = NMarker(
       id: _searchMarkerId,
@@ -722,6 +1196,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
       _searchMarkerAdded = false;
     }
+    unawaited(_resumeAutomaticReloadsAfterInteractionClose());
   }
 
   Future<void> _onSymbolTapped(NSymbolInfo symbolInfo) async {
@@ -738,7 +1213,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
         target: symbolInfo.position,
-        zoom: 16,
+        zoom: _placeFocusZoom,
       ),
     );
 
@@ -752,57 +1227,131 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Future<void> _onCameraIdle() async {
     if (_mapController == null) return;
+    final viewportSize = MediaQuery.sizeOf(context);
     final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
     final currentTarget = camera.target;
     final currentZoom = camera.zoom;
     debugPrint('[map] zoom=${currentZoom.toStringAsFixed(2)} '
         'target=(${currentTarget.latitude.toStringAsFixed(5)}, '
         '${currentTarget.longitude.toStringAsFixed(5)})');
 
-    // 초기화 시점은 자동 호출 없이 기준값만 저장
-    if (!_mapInitialized) {
+    // 스택 펼침 중 지도 이동 → 접기 (피그마 B안: 지도 이동 시 다시 접힘).
+    // 펼침 직후의 자체 카메라 이동은 기준값과 같아 접히지 않는다.
+    if (_expandedStackId != null &&
+        _stackFanBaseTarget != null &&
+        _stackFanBaseZoom != null) {
+      final movedAway =
+          (currentTarget.latitude - _stackFanBaseTarget!.latitude).abs() >
+                  0.0005 ||
+              (currentTarget.longitude - _stackFanBaseTarget!.longitude).abs() >
+                  0.0005 ||
+              (currentZoom - _stackFanBaseZoom!).abs() > 0.5;
+      if (movedAway) {
+        _collapseStackFan();
+      }
+    }
+
+    // 점↔말풍선은 API 재조회와 독립인 로컬 표현 — 같은 API 줌 구간이거나
+    // 이동량이 작아 재조회를 생략해도 실제 카메라 줌으로 즉시 동기화한다
+    // (2-레이어 설계 docs/specs/2026-07-19).
+    unawaited(_syncBubbleLayer(
+      rawZoom: currentZoom,
+      latitude: currentTarget.latitude,
+    ));
+
+    final currentApiZoom = _apiZoomFor(currentZoom);
+    final meterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: currentTarget.latitude,
+      zoom: currentZoom,
+    );
+    final movementThreshold = MapReloadPolicy.movementThresholdMeters(
+      viewportSize: viewportSize,
+      meterPerDp: meterPerDp,
+    );
+    final movedMeters = _lastQueriedTarget == null
+        ? 0.0
+        : Geolocator.distanceBetween(
+            _lastQueriedTarget!.latitude,
+            _lastQueriedTarget!.longitude,
+            currentTarget.latitude,
+            currentTarget.longitude,
+          );
+    final reason = MapReloadPolicy.spatialReason(
+      initialized: _mapInitialized,
+      currentApiZoom: currentApiZoom,
+      lastApiZoom: _lastQueriedApiZoom,
+      movedMeters: movedMeters,
+      movementThresholdMeters: movementThreshold,
+    );
+
+    if (reason == MapReloadReason.initial) {
       _mapInitialized = true;
-      _lastQueriedTarget = currentTarget;
-      _lastQueriedZoom = currentZoom;
-      debugPrint('[map] cameraIdle baseline set (first call)');
+      return;
+    }
+    if (reason == MapReloadReason.none) {
+      if (kDebugMode) {
+        debugPrint('[map] reload skipped reason=withinViewport '
+            'moved=${movedMeters.toStringAsFixed(0)}m '
+            'threshold=${movementThreshold.toStringAsFixed(0)}m');
+      }
+      return;
+    }
+    if (_hasLiveAutoRefreshCooldown) {
+      _cameraDebounce?.cancel();
+      _deferFreshness(reason);
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+    if (!_canAutoRefresh) {
+      _cameraDebounce?.cancel();
+      _deferFreshness(reason);
       return;
     }
 
-    // 변화량 임계값 — 줌 1단계 이상 OR 좌표 ~50m 이상
-    final zoomChanged = (currentZoom - _lastQueriedZoom).abs() >= 1;
-    bool positionChanged = false;
-    if (_lastQueriedTarget != null) {
-      final dLat = (currentTarget.latitude - _lastQueriedTarget!.latitude).abs();
-      final dLng = (currentTarget.longitude - _lastQueriedTarget!.longitude).abs();
-      positionChanged = dLat > 0.0005 || dLng > 0.0005;
-    }
-    // 텍스트 마커 점↔카드 모드가 실제로 바뀔 때만 재조회(히스테리시스 기반).
-    // 경계에서 카메라가 미세하게 흔들려도 모드가 안 바뀌면 재조회하지 않아 깜빡임 제거.
-    final modeFlipped = _peekTextCardMode(currentZoom) != _textCardMode;
-    if (!zoomChanged && !positionChanged && !modeFlipped) {
-      debugPrint('[map] cameraIdle below threshold → skip auto-reload');
-      return;
-    }
-
-    // Debounce 500ms — 카메라 멈춘 시점에 1회 조회
-    debugPrint('[map] cameraIdle changed (zoom=$zoomChanged pos=$positionChanged) '
-        '→ schedule auto-reload in 500ms');
     _cameraDebounce?.cancel();
-    _cameraDebounce = Timer(const Duration(milliseconds: 500), () {
-      debugPrint('[map] cameraIdle debounce fired → auto _loadMapMarkers');
-      _lastQueriedTarget = currentTarget;
-      _lastQueriedZoom = currentZoom;
-      _loadMapMarkers(
+    if (kDebugMode) {
+      debugPrint('[map] reload scheduled reason=${reason.name} '
+          'apiZoom=$currentApiZoom debounce=300ms');
+    }
+    final refreshGeneration = _successfulMapRefreshGeneration;
+    _cameraDebounce = Timer(MapReloadPolicy.cameraDebounce, () {
+      if (refreshGeneration != _successfulMapRefreshGeneration) return;
+      if (_hasLiveAutoRefreshCooldown) {
+        _deferFreshness(reason);
+        unawaited(_consumePendingFreshness());
+        return;
+      }
+      if (!_canAutoRefresh) {
+        _deferFreshness(reason);
+        return;
+      }
+      unawaited(_loadMapMarkers(
         currentTarget.latitude,
         currentTarget.longitude,
-        currentZoom.round(),
+        currentApiZoom,
         rawZoom: currentZoom,
-      );
+        reason: reason,
+      ));
     });
   }
 
-  String _truncateMarkerTitle(String title) =>
-      title.length > 10 ? '${title.substring(0, 10)}...' : title;
+  /// 카메라 줌(소수) → API 줌 변환. **내림(floor)** — 반올림하면 19.79 가
+  /// z=20(반경 100m)으로 올라가 뷰포트보다 좁게 조회돼, 화면에 보이던
+  /// 마커가 줌인 중 삭제되고 밀집 판정까지 뒤집힌다 (2026-07-15 버그).
+  /// 내림은 항상 "한 단계 넓게" 조회하므로 뷰포트 커버가 보장된다.
+  /// 백엔드 ZoomLevel 테이블 범위(6~20)로 클램프.
+  /// (지도 minZoom 6 확장과 함께 백엔드 ZOOM_6~9 추가 — 2026-07-19)
+  int _apiZoomFor(double rawZoom) => rawZoom.floor().clamp(6, 20);
+
+  // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
+  String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
+
+  /// 같은 자리 스택 그룹핑 좌표 키 (kStackGroupPrecision, ≈11m 타일).
+  /// 그룹핑과 펼침 숨김 가드가 반드시 같은 키를 쓰도록 한 곳에서 관리.
+  String _stackGroupKey(double lat, double lng) =>
+      '${lat.toStringAsFixed(kStackGroupPrecision)},'
+      '${lng.toStringAsFixed(kStackGroupPrecision)}';
 
   /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
   /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
@@ -815,31 +1364,172 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     return _textCardMode;
   }
 
-  /// 상태를 바꾸지 않고 현재 줌에서의 모드만 예측 (onCameraIdle 재조회 판단용).
-  bool _peekTextCardMode(double rawZoom) =>
-      _textCardMode ? rawZoom >= _textCardExitZoom : rawZoom >= _textCardEnterZoom;
+  /// 말풍선이 뜰 수 있는 글 집합 — 사진 없는 단일 글 + 비밀집(화면 dp 기준).
+  /// updateMarkers(canCard 태그)와 말풍선 레이어 sync 가 같은 규칙을 쓴다.
+  /// (고정 위경도 반경은 깊은 줌에서 화면 밖 마커까지 밀집으로 잡아
+  /// 줌인할수록 말풍선이 점으로 강제되는 역전 — 2026-07-15)
+  Set<String> _textBubbleEligibleIds({
+    required List<List<MapPost>> markerGroups,
+    required double latitude,
+    required double rawZoom,
+  }) {
+    if (_mapController == null) return const <String>{};
+
+    final denseMeterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: latitude,
+      zoom: rawZoom,
+    );
+    final denseRadiusDeg = kTextCardDenseRadiusDp * denseMeterPerDp / 111320.0;
+    final eligibleIds = <String>{};
+
+    for (final group in markerGroups) {
+      if (group.length != 1) continue;
+      final top = group.first;
+      if (top.fileInfoList.isNotEmpty) continue;
+
+      var neighbors = 0;
+      for (final other in markerGroups) {
+        if (other.isEmpty) continue;
+        final candidate = other.first;
+        if (identical(candidate, top)) continue;
+        if ((candidate.latitude - top.latitude).abs() < denseRadiusDeg &&
+            (candidate.longitude - top.longitude).abs() < denseRadiusDeg) {
+          neighbors++;
+          if (neighbors >= kTextCardDenseNeighbors) break;
+        }
+      }
+      if (neighbors < kTextCardDenseNeighbors) eligibleIds.add(top.id);
+    }
+    return eligibleIds;
+  }
+
+  // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ─────────────────
+
+  /// 현재 카메라를 읽어 말풍선 레이어를 동기화한다 — 재조회 완료·카드
+  /// 열림/닫힘 등 "지금 화면 기준 수렴"이 필요한 지점의 공용 진입점.
+  Future<void> _syncBubbleLayerWithCurrentCamera() async {
+    if (!mounted || _mapController == null) return;
+    final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
+    await _syncBubbleLayer(
+      rawZoom: camera.zoom,
+      latitude: camera.target.latitude,
+    );
+  }
+
+  /// 말풍선 레이어를 현재 줌 기준 목표 집합으로 수렴시킨다.
+  /// - 전역 모드(히스테리시스)가 카드이고 바텀 카드가 닫혀 있을 때만
+  ///   대상 글의 말풍선을 표시한다. 아니면 목표 공집합(전부 제거).
+  /// - 점 레이어는 건드리지 않는다. 수명주기·페이드는 BubbleMarkerLayer 가
+  ///   담당한다.
+  /// - 재조회 중에는 조작하지 않는다(C3) — 재조회 완료 수렴 패스가 재호출.
+  Future<void> _syncBubbleLayer({
+    required double rawZoom,
+    required double latitude,
+  }) async {
+    if (!mounted || _mapController == null) return;
+    final cardMode = _resolveTextCardMode(rawZoom);
+    if (_isLoadingMarkers) return;
+
+    // 목표 집합 계산
+    final targets = <BubbleMarkerTarget>[];
+    if (cardMode && _selectedGroupIndex == null) {
+      final markerGroups = List<List<MapPost>>.from(_postGroups);
+      final eligibleIds = _textBubbleEligibleIds(
+        markerGroups: markerGroups,
+        latitude: latitude,
+        rawZoom: rawZoom,
+      );
+      for (final group in markerGroups) {
+        if (group.length != 1) continue;
+        final post = group.first;
+        if (post.fileInfoList.isNotEmpty) continue;
+        if (!eligibleIds.contains(post.id)) continue;
+        // 점 마커가 화면에 있는 글만 — 재조회 집합과 어긋난 말풍선 방지.
+        if (!_mapMarkerIds.contains(post.id)) continue;
+        final postId = post.id;
+        targets.add(BubbleMarkerTarget(
+          id: postId,
+          position: NLatLng(post.latitude, post.longitude),
+          score: post.score.toInt(),
+          buildIcon: () => _buildTextCardIcon(post),
+          onTap: () {
+            _focusNode.unfocus();
+            final idx = _postGroups
+                .indexWhere((g) => g.isNotEmpty && g.first.id == postId);
+            if (idx < 0) return;
+            unawaited(_selectMarker(idx, minZoom: _textCardCameraZoom));
+          },
+        ));
+      }
+    }
+
+    await _bubbleLayer.sync(
+      controller: _mapController!,
+      targets: targets,
+      canApply: () =>
+          mounted &&
+          _mapController != null &&
+          !_isLoadingMarkers &&
+          _selectedGroupIndex == null,
+    );
+  }
 
   void _closeAllCards() {
     if (_searchMarkerAdded && _mapController != null) {
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
       _searchMarkerAdded = false;
     }
+    // 지도 탭 = 펼침도 접는다 (피그마 B안: 재탭/이동 시 접힘)
+    _collapseStackFan();
     setState(() {
       _selectedSymbol = null;
       _selectedPlace = null;
       _isLoadingPlace = false;
       _selectedGroupIndex = null;
+      _selectedPostIndex = null;
       _isCardExpanded = false;
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
+    unawaited(_resumeAutomaticReloadsAfterInteractionClose());
   }
 
-  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트.
-  /// 아이콘은 그대로 유지 (사진 마커 유지).
-  /// [markerId]가 null이면 부스트만 해제.
+  /// 상호작용(카드/검색/펼침) 종료 후 자동 재조회 재개.
+  /// 카드 닫힘의 말풍선 복원은 내부 _onCameraIdle 의 말풍선 레이어 sync 가
+  /// 담당한다 (2-레이어: 열림 중 목표 공집합 → 닫힘 시 현재 줌 기준 복원).
+  Future<void> _resumeAutomaticReloadsAfterInteractionClose() async {
+    await _onCameraIdle();
+    if (!mounted) return;
+    await _consumePendingFreshness();
+  }
+
+  /// 기본(비선택) 캡션 — 8자 말줄임. 제목이 비면 캡션 없음.
+  NOverlayCaption _defaultCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title.isEmpty ? '' : _truncateMarkerTitle(title),
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+      );
+
+  /// 선택(포커스) 캡션 — 전체 타이틀을 requestWidth 로 2~3줄 랩
+  /// (피그마 18-2 ⑤).
+  NOverlayCaption _selectedCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title,
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        requestWidth: kSelectedMarkerCaptionWidth,
+      );
+
+  /// 선택된 마커의 z-index를 다른 마커보다 위로 부스트 + 점/사진 마커는
+  /// 1.18x 확대 + 전체 타이틀 캡션(줌 숨김 보호 forceShowCaption).
+  /// [markerId]가 null이면 부스트·확대·캡션을 기본값으로 복원.
   /// idempotent: 재조회로 마커 객체가 새로 만들어진 케이스에도 안전하게 재적용됨.
   void _applySelectionHighlight(String? markerId) {
+    final colors = AppColors.of(context);
     final prevId = _highlightedMarkerId;
     if (prevId != null && prevId != markerId) {
       final prevMarker = _markerRefs[prevId];
@@ -850,6 +1540,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             prevMarker.setGlobalZIndex(baseZ);
           } catch (_) {/* overlay가 이미 네이티브에서 제거된 경우 무시 */}
         }
+        // 크기·캡션 복원 (2-레이어: 점 레이어는 항상 점이라 무조건 복원).
+        // 크기는 score 위계(42/50/58/66) 기준값으로 — 고정 50 아님.
+        final baseSize = _markerBaseSize[prevId] ?? _normalMarkerSize;
+        try {
+          prevMarker.setSize(Size(baseSize, baseSize));
+        } catch (_) {/* same */}
+        // 캡션 복원 — 8자 말줄임, 강제 노출은 핫플만.
+        final title = _markerTitle[prevId];
+        if (title != null) {
+          try {
+            prevMarker.setCaption(_defaultCaption(title, colors));
+            prevMarker
+                .setIsForceShowCaption(_markerIsHot[prevId] ?? false);
+          } catch (_) {/* same */}
+        }
       }
     }
     _highlightedMarkerId = markerId;
@@ -859,16 +1564,33 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         try {
           marker.setGlobalZIndex(_selectedMarkerZIndex);
         } catch (_) {/* same */}
+        // 선택 강조: 살짝 확대 (아이콘 재합성 없이 setSize만 —
+        // iOS 마커 이미지 캐시 경합 리스크 없음. marker_constants 참고)
+        // 확대 기준도 위계 크기 — 핫플은 66 x 1.18 까지 커진다.
+        final baseSize = _markerBaseSize[markerId] ?? _normalMarkerSize;
+        try {
+          marker.setSize(Size(
+              baseSize * kSelectedMarkerScale,
+              baseSize * kSelectedMarkerScale));
+        } catch (_) {/* same */}
+        // 선택 마커는 전체 타이틀 노출 + 줌/충돌 숨김 보호.
+        final title = _markerTitle[markerId];
+        if (title != null && title.isNotEmpty) {
+          try {
+            marker.setCaption(_selectedCaption(title, colors));
+            marker.setIsForceShowCaption(true);
+          } catch (_) {/* same */}
+        }
       }
     }
   }
 
-  /// 텍스트 글 — 줌인 카드 아이콘. 꼬리 끝이 박스 하단 중앙(anchor 기본 0.5,1.0)에 오도록
-  /// bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 아래 점 앵커 합성). 점 꼬리 끝이 박스
+  /// 하단 중앙(anchor 기본 0.5,1.0)에 오도록 bottomCenter 정렬. 제목 없으면 본문만 카드.
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
-    return NOverlayImage.fromWidget(
+    return overlayImageFromWidget(
       context: context,
       size: _textCardSize,
       widget: SizedBox(
@@ -876,23 +1598,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         height: _textCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: TextMarkerCard(title: title, body: post.content, maxLines: 2),
+          child: TextBubbleMarker(
+            title: title,
+            body: post.content,
+            time: relativeTimeFromString(post.createdAt),
+            maxLines: 2,
+          ),
         ),
       ),
     );
-  }
-
-  /// 텍스트 마커/클러스터 탭 시 카드가 펼쳐지도록 17.5로 줌인.
-  Future<void> _zoomToTextCard(NLatLng target) async {
-    if (_mapController == null) return;
-    final update = NCameraUpdate.scrollAndZoomTo(
-      target: target,
-      zoom: _textCardCameraZoom,
-    )..setAnimation(
-        animation: NCameraAnimation.fly,
-        duration: const Duration(milliseconds: 600),
-      );
-    await _mapController!.updateCamera(update);
   }
 
   /// 클러스터 마커 빌더.
@@ -900,36 +1614,46 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
     debugPrint('[map] clusterBuilder called size=${info.size}');
     try {
-    // children 중 score 최대 마커 식별
+    // children 중 score 최대 마커 식별 + 스택 글 수 합산
     String? topId;
     String? topTitle;
     NLatLng? topPosition;
-    bool topIsText = false;
+    bool topCanCard = false;
+    int topOwnCount = 1;
     double topScore = -1;
+    // 클러스터가 품은 총 글 수 — 스택 마커(count 2+)를 포함하므로
+    // 마커 수(info.size)가 아니라 count 태그 합계를 뱃지에 표시.
+    int totalCount = 0;
     for (final child in info.children) {
+      final childCount = int.tryParse(child.tags['count'] ?? '1') ?? 1;
+      totalCount += childCount;
       final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
       if (s > topScore) {
         topScore = s;
         topId = child.id;
         topTitle = child.tags['title'];
         topPosition = child.position;
-        topIsText = child.tags['isText'] == '1';
+        topCanCard = child.tags['canCard'] == '1';
+        topOwnCount = childCount;
       }
     }
 
     if (topId != null) {
-      // 현재 빌드 시점의 size 기록 → 비동기 합성 결과의 stale 적용 방지
-      _clusterCurrentSize[topId] = info.size;
+      // 현재 빌드 시점의 총 글 수 기록 → 비동기 합성 결과의 stale 적용 방지
+      _clusterCurrentSize[topId] = totalCount;
 
       if (info.size == 1) {
-        // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시 (사이즈 + 뱃지 없음)
+        // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시.
+        // 아이콘 캐시에 스택 합성본이 들어 있으므로 뱃지 추가 합성 불필요.
+        // 크기는 score 위계 기준값(42/50/58/66).
         final base = _markerIconCache[topId];
         if (base != null) {
+          final baseSize = _markerBaseSize[topId] ?? _normalMarkerSize;
           clusterMarker.setIcon(base);
-          clusterMarker.setSize(const Size(_normalMarkerSize, _normalMarkerSize));
+          clusterMarker.setSize(Size(baseSize, baseSize));
         }
       } else {
-        final cacheKey = '${topId}_${info.size}';
+        final cacheKey = '${topId}_$totalCount';
         final composed = _clusterIconCache[cacheKey];
         if (composed != null) {
           // 합성 캐시 있음 → 즉시 적용
@@ -942,7 +1666,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             clusterMarker.setIcon(base);
             clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
           }
-          _composeClusterIconAsync(topId, info.size, clusterMarker);
+          _composeClusterIconAsync(topId, totalCount, clusterMarker);
         }
       }
     }
@@ -951,7 +1675,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final title = (topTitle ?? '').trim();
     clusterMarker.setCaption(NOverlayCaption(
       text: title.isEmpty ? '' : _truncateMarkerTitle(title),
-      textSize: 13,
+      textSize: _markerCaptionTextSize,
       color: AppColors.of(context).textPrimary,
       haloColor: AppColors.of(context).background,
     ));
@@ -963,42 +1687,36 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // NClusterMarker에 직접 listener를 달아 선택 흐름으로 전달.
     if (info.size == 1 && topId != null) {
       final singleId = topId;
-      final bool isTxt = topIsText;
-      final NLatLng? tpos = topPosition;
+      final bool canCard = topCanCard;
+      final bool isStack = topOwnCount > 1;
       clusterMarker.setOnTapListener((_) async {
         _focusNode.unfocus();
-        // 텍스트 단일 마커: 17.5 미만이면 17.5로 줌인(카드). 이미지는 기존대로 선택.
-        if (isTxt && tpos != null) {
-          final camera = await _mapController?.getCameraPosition();
-          if (camera != null && camera.zoom < _textCardEnterZoom) {
-            await _zoomToTextCard(tpos);
-            return;
-          }
+        // 스택 마커 → 원형 펼침 (B안).
+        if (isStack) {
+          await _expandStackFan(singleId);
+          return;
         }
+        // 단일 마커 = 줌인 + 카메라 무빙 + 카드 오픈 한 번에 (위 탭 핸들러와 동일).
         final idx = _postGroups
             .indexWhere((g) => g.isNotEmpty && g.first.id == singleId);
         if (idx < 0) return;
-        _selectMarker(idx);
+        _selectMarker(idx, minZoom: canCard ? _textCardCameraZoom : null);
       });
     }
 
-    // 클러스터(size>1) 탭 → 줌 16+ 자동 확대. 줌 16부터 클러스터링이 비활성
-    // 이므로 자연스럽게 풀리며, 사용자가 펼쳐진 jitter 마커를 한 번 더 탭해서
-    // 카드/스트립으로 진입.
+    // 클러스터(size>1) 탭 = 카드 없이 대표(최고 score) 마커 위치로 카메라만
+    // 이동 + kClusterTapZoom(18)까지 당긴다. 클러스터링(≤16)이 풀리고
+    // 10~20m 간격 스택들도 확실히 벌어져 개별 마커가 보인다.
+    // 카드는 사용자가 펼쳐진 마커를 직접 탭했을 때만 연다.
     if (info.size > 1 && topPosition != null) {
       final target = topPosition;
-      final bool isTxt = topIsText;
       clusterMarker.setOnTapListener((_) async {
         if (_mapController == null) return;
         _focusNode.unfocus();
         final camera = await _mapController!.getCameraPosition();
-        // 텍스트 클러스터 → 17.5(카드). 이미지 클러스터 → 기존(16+ 확대) 유지.
-        final nextZoom = isTxt
-            ? _textCardCameraZoom
-            : (camera.zoom < 16 ? 16.0 : camera.zoom);
         final update = NCameraUpdate.scrollAndZoomTo(
           target: target,
-          zoom: nextZoom,
+          zoom: camera.zoom < kClusterTapZoom ? kClusterTapZoom : camera.zoom,
         )..setAnimation(
             animation: NCameraAnimation.fly,
             duration: const Duration(milliseconds: 600),
@@ -1010,33 +1728,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   /// 클러스터 뱃지가 합성된 아이콘을 비동기로 만들어 캐시에 저장하고 마커에 적용.
-  /// 클러스터링 incremental 호출(size 1→2→3..) 동안 카운트업 잔상을 피하려고
-  /// 합성 후 짧게 기다린 뒤 그 시점의 최종 size일 때만 setIcon 적용.
+  /// [count] = 클러스터가 품은 총 글 수 (스택 마커의 count 태그 합계).
+  /// 클러스터링 incremental 호출(count 증가) 동안 카운트업 잔상을 피하려고
+  /// 합성 후 짧게 기다린 뒤 그 시점의 최종 count일 때만 setIcon 적용.
   Future<void> _composeClusterIconAsync(
-      String topId, int size, NClusterMarker clusterMarker) async {
+      String topId, int count, NClusterMarker clusterMarker) async {
     final baseBytes = _markerBytesCache[topId];
     if (baseBytes == null) {
-      debugPrint('[map] composeCluster skip (no baseBytes) topId=$topId size=$size');
+      debugPrint('[map] composeCluster skip (no baseBytes) topId=$topId count=$count');
       return;
     }
-    debugPrint('[map] composeCluster start topId=$topId size=$size');
+    debugPrint('[map] composeCluster start topId=$topId count=$count');
     try {
-      final composedBytes = await _imageService.addClusterBadge(baseBytes, size);
-      final composedIcon = await NOverlayImage.fromByteArray(composedBytes);
+      final composedBytes = await _markerImageFactory.addClusterBadge(baseBytes, count);
+      final composedIcon = await overlayImageFromBytes(composedBytes);
       if (!mounted) return;
-      _clusterIconCache['${topId}_$size'] = composedIcon;
+      _clusterIconCache['${topId}_$count'] = composedIcon;
 
-      // 클러스터링 안정 대기 — 그 사이 같은 topId의 더 큰 size가 도착하면 stale 처리
+      // 클러스터링 안정 대기 — 그 사이 같은 topId의 더 큰 count가 도착하면 stale 처리
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-      if (_clusterCurrentSize[topId] != size) {
-        debugPrint('[map] composeCluster stale topId=$topId size=$size '
+      if (_clusterCurrentSize[topId] != count) {
+        debugPrint('[map] composeCluster stale topId=$topId count=$count '
             'now=${_clusterCurrentSize[topId]}');
-        return; // 이미 다른 size로 변경됨
+        return; // 이미 다른 count로 변경됨
       }
       // delay 사이 native에서 클러스터가 사라졌을 수 있음 — isAdded로 한 번 더 검증.
       if (!clusterMarker.isAdded) {
-        debugPrint('[map] composeCluster notAdded topId=$topId size=$size');
+        debugPrint('[map] composeCluster notAdded topId=$topId count=$count');
         return;
       }
 
@@ -1045,7 +1764,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       try {
         clusterMarker.setIcon(composedIcon);
         clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
-        debugPrint('[map] composeCluster applied topId=$topId size=$size');
+        debugPrint('[map] composeCluster applied topId=$topId count=$count');
       } catch (e) {
         debugPrint('[map] composeCluster setIcon caught: $e');
       }
@@ -1059,7 +1778,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// 알고리즘: 카메라 target을 (markerPos + (cameraTarget - desiredCoord))로 두면
   /// 새 카메라에서 markerPos가 원하는 픽셀에 정확히 매핑됨. 줌이 바뀌면 lat/lng 오프셋을
   /// 2^(currentZoom - targetZoom) 비율로 스케일해야 픽셀 위치가 맞음.
-  Future<void> _moveCameraToMarker(NLatLng markerPos, {double? zoom}) async {
+  /// [keepStackFan]: true 면 스택 펼침 유지 — 이동 목표를 펼침 기준값으로
+  /// 갱신해 카메라 idle 의 자동 접힘 판정을 통과시킨다 (펼침 마커 탭 경로).
+  Future<void> _moveCameraToMarker(
+    NLatLng markerPos, {
+    double? zoom,
+    bool keepStackFan = false,
+  }) async {
     if (_mapController == null) return;
     final size = MediaQuery.sizeOf(context);
 
@@ -1096,20 +1821,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _lastQueriedTarget = adjustedTarget;
     // 줌도 함께 기준값으로 갱신 — 카드 넘김 시 idle에서 불필요한 재조회가 도는 것 방지.
     _lastQueriedZoom = targetZoom;
+    if (keepStackFan && _expandedStackId != null) {
+      // idle 콜백이 애니메이션 완료 전에 돌 수 있어 updateCamera 이전에 갱신.
+      _stackFanBaseTarget = adjustedTarget;
+      _stackFanBaseZoom = targetZoom;
+    }
     await _mapController!.updateCamera(update);
   }
 
-  /// 주어진 인덱스의 마커를 선택: 카메라 이동(필요시 줌16) + z-index 부스트 + 스트립 위치 갱신.
+  /// 주어진 인덱스의 마커를 선택: 카메라 이동(필요시 kClusterExpandZoom까지 줌인)
+  /// + z-index 부스트 + 스트립 위치 갱신.
   /// 마커 탭, 스트립 탭, 카드 좌우 스와이프 등 모든 그룹 전환 경로의 공통 진입점.
-  Future<void> _selectMarker(int idx) async {
+  ///
+  /// [postIndex]: 그룹 내 특정 글 페이지로 카드를 연다 (스택 펼침 마커 탭).
+  /// [moveCamera]: false 면 카메라 이동·하이라이트 없이 카드만 연다
+  /// (펼침 상태에서는 이미 줌인돼 있고 원본 스택 마커는 숨김 상태).
+  /// [minZoom]: 줌인 하한 재정의 — 기본은 kClusterExpandZoom.
+  /// 텍스트 카드 마커는 카드 표시 줌(kTextCardCameraZoom)까지 당긴다.
+  Future<void> _selectMarker(
+    int idx, {
+    int? postIndex,
+    bool moveCamera = true,
+    double? minZoom,
+  }) async {
     if (idx < 0 || idx >= _postGroups.length) return;
     if (_mapController == null) return;
     final post = _postGroups[idx].first;
     final markerPos = _markerRefs[post.id]?.position
         ?? NLatLng(post.latitude, post.longitude);
-
-    final camera = await _mapController!.getCameraPosition();
-    final targetZoom = camera.zoom < 16 ? 16.0 : camera.zoom;
 
     setState(() {
       _searchResults = [];
@@ -1117,9 +1856,545 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPlace = null;
       _isLoadingPlace = false;
       _selectedGroupIndex = idx;
+      _selectedPostIndex = postIndex;
     });
+    // 카드 열림 → 말풍선 레이어 제거 (피그마 18-2 ④ — sync 가 선택 중엔
+    // 목표 공집합). 카메라 이동과 독립적으로 적용.
+    unawaited(_syncBubbleLayerWithCurrentCamera());
+    if (!moveCamera) return;
+
+    final camera = await _mapController!.getCameraPosition();
+    // 클러스터 탭과 동일한 깊이(kClusterExpandZoom)로 — 어디서 탭하든 일관되게
+    // 인접 마커가 구분되는 줌까지 들어간다. 이미 더 깊으면 현재 줌 유지.
+    final double floorZoom = minZoom ?? _clusterExpandZoom;
+    final targetZoom = camera.zoom < floorZoom ? floorZoom : camera.zoom;
     _applySelectionHighlight(post.id);
     await _moveCameraToMarker(markerPos, zoom: targetZoom);
+  }
+
+  // ── 스택 원형 펼침 (피그마 "15 B안 — 탭하면 부채꼴 펼침") ────────────────
+
+  /// 펼침 마커 아이콘 생성 — 병렬 실행용.
+  /// 대표 마커로 이미 그려진 바이트 캐시(`_markerBytesCache`)가 있으면 재사용
+  /// (동일한 링 썸네일/점 비트맵 — 재다운로드·재합성 방지). 실패 시 null
+  /// (마커 기본 아이콘으로 표시).
+  Future<NOverlayImage?> _buildFanIcon(MapPost post) async {
+    try {
+      final cached = _markerBytesCache[post.id];
+      if (cached != null) return await overlayImageFromBytes(cached);
+      final Uint8List bytes;
+      if (post.fileInfoList.isNotEmpty) {
+        final stream = await _markerImageFactory
+            .getImageStream(post.fileInfoList.first.fileUrl);
+        bytes = await _markerImageFactory.createMarkerImage(
+          stream,
+          ringColor: markerRingColor(
+            isOwner: post.isOwner,
+            createdAt: post.createdAt,
+          ),
+        );
+      } else {
+        bytes = await _markerImageFactory.createTextDotImage();
+      }
+      return await overlayImageFromBytes(bytes);
+    } catch (e) {
+      debugPrint('[map] 스택 펼침 아이콘 생성 실패 ${post.id}: $e');
+      return null;
+    }
+  }
+
+  /// 펼침 팬아웃 애니메이션 (Phase 3-a) — 중심에서 목표 좌표로 미끄러지며
+  /// 페이드인 (33ms × 8 스텝 ≈ 264ms, easeOutCubic).
+  /// 팬 마커의 position/alpha 는 펼침·접기 코드만 소유하므로 다른 경로와의
+  /// 설정 경합이 없다 (크기 트윈 롤백 교훈 — plans/2026-07-15 문서 참고).
+  /// 접기·재펼침 시 seq 가드/타이머 취소로 중단된다.
+  void _startFanOutAnimation({
+    required int seq,
+    required NLatLng center,
+    required List<(NMarker, NLatLng)> flights,
+    required Set<NAddableOverlay<NOverlay<void>>> legs,
+    required List<String> legIds,
+    required AppColors colors,
+  }) {
+    _fanAnimTimer?.cancel();
+    const int steps = 8;
+    int step = 0;
+    _fanAnimTimer = Timer.periodic(const Duration(milliseconds: 33), (t) {
+      if (!mounted || _mapController == null || seq != _stackFanSeq) {
+        t.cancel();
+        return;
+      }
+      step++;
+      final bool last = step >= steps;
+      final double p = step / steps;
+      final double eased = 1 - pow(1 - p, 3).toDouble(); // easeOutCubic
+      final double alpha = min(1.0, p * 1.6); // 위치보다 빨리 나타나게
+      for (final (marker, target) in flights) {
+        try {
+          marker.setPosition(last
+              ? target
+              : NLatLng(
+                  center.latitude +
+                      (target.latitude - center.latitude) * eased,
+                  center.longitude +
+                      (target.longitude - center.longitude) * eased,
+                ));
+          marker.setAlpha(last ? 1.0 : alpha);
+        } catch (_) {/* 제거된 마커 — seq 가드가 다음 tick에 종료 */}
+      }
+      if (last) {
+        t.cancel();
+        unawaited(_finalizeFanOut(seq, legs, legIds, colors));
+      }
+    });
+  }
+
+  /// 팬아웃 완료 처리 — 점선 다리 추가 + 기본 캡션 + 포커스 캡션 적용.
+  Future<void> _finalizeFanOut(
+    int seq,
+    Set<NAddableOverlay<NOverlay<void>>> legs,
+    List<String> legIds,
+    AppColors colors,
+  ) async {
+    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    try {
+      await _mapController!.addOverlayAll(legs);
+      _stackFanLegIds.addAll(legIds);
+    } catch (_) {}
+    if (!mounted || seq != _stackFanSeq) return;
+    _stackFanMarkerRefs.forEach((postId, marker) {
+      final title = _stackFanTitles[postId] ?? '';
+      try {
+        marker.setCaption(_defaultCaption(title, colors));
+      } catch (_) {}
+    });
+    // 카드가 현재 보여주는 글의 전체 타이틀 캡션 적용 (조기 오픈 시점엔
+    // 마커가 없어 보류했던 것).
+    _applyFanFocusCaption(_stackFanFocusedPostId);
+  }
+
+  /// 스택 마커 탭 → kStackFanZoom 까지 당긴 뒤 그룹 글들을 실제 좌표 중심
+  /// 원형으로 펼친다. 점선 다리 = 실제 좌표 표시. 원본 스택 마커는 숨김.
+  /// 지도 이동/지도 탭 시 [_collapseStackFan] 으로 접힘.
+  /// [openCard]: false 면 카드는 건드리지 않는다 — 카드 스와이프로 스택
+  /// 그룹에 진입한 경우 카드가 이미 해당 페이지를 보여주는 중.
+  Future<void> _expandStackFan(String stackId, {bool openCard = true}) async {
+    if (_mapController == null) return;
+    final gIdx = _postGroups
+        .indexWhere((g) => g.isNotEmpty && g.first.id == stackId);
+    if (gIdx < 0) return;
+    final group = _postGroups[gIdx];
+    if (group.length < 2) return;
+
+    // 경합 가드 — 카드 연속 스와이프 등으로 펼침이 겹쳐 호출되면
+    // 이전 호출은 await 지점 이후를 포기한다 (고아 오버레이 방지).
+    final int seq = ++_stackFanSeq;
+
+    // 펼치는 중 표식 — 아래 첫 await 이전에 세팅해, onGroupChanged 직후
+    // 동기로 들어오는 onPostChanged(_followStackFanPost)가 좌표 미생성
+    // 상태에서도 이 그룹을 인식하고 포커스를 예약할 수 있게 한다.
+    _expandingStackId = stackId;
+    _pendingFanFocusPostIndex = null;
+    try {
+
+    // 예약된 자동 재조회 취소 — 펼침 도중 재조회가 돌면 그룹 대표 교체 시
+    // 원본 스택 마커가 다시 보이는 레이스가 있다 (2026-07-13 재발 보고).
+    _cameraDebounce?.cancel();
+
+    // await 이전에 캡처 (context 사용 규칙)
+    final captionTokens = AppColors.of(context);
+
+    // 재펼침 직전 접기는 즉시 — 같은 id 재사용과 수렴 애니메이션의
+    // 삭제 경합 방지 (_collapseStackFan 주석 참고).
+    await _collapseStackFan(animate: false);
+
+    final top = group.first;
+    final center = NLatLng(top.latitude, top.longitude);
+
+    // 펼침 상태를 카메라 이동 '이전'에 확정 — 진행 중이던 로드나 큐잉된
+    // 재조회가 펼침 도중에 끝나도, 마커 생성 가드와 재조회 종료 시점의
+    // 재숨김 방어가 이 값을 보고 동작한다. (기존엔 펼침 완료 시점 설정이라
+    // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
+    _expandedStackId = stackId;
+    _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
+    _stackFanCenter = center;
+    debugPrint('[map] expandStackFan start id=$stackId seq=$seq');
+
+    // 1) 펼침 줌까지 당기면서 중심(실제 위치)을 카드 위(화면 22%)에 배치.
+    // 카메라 비행·아이콘 생성·카드 슬라이드업을 **병렬** 진행 — 기존엔
+    // 비행 완료 후 아이콘을 직렬 생성(썸네일 개별 fetch)해
+    // "한참 멈췄다 팍 펼쳐지는" 체감의 원인이었다.
+    final camera = await _mapController!.getCameraPosition();
+    final double fanZoom =
+        camera.zoom < kStackFanZoom ? kStackFanZoom : camera.zoom;
+    final Future<void> cameraFuture =
+        _moveCameraToMarker(center, zoom: fanZoom);
+    final Future<List<NOverlayImage?>> iconsFuture =
+        Future.wait([for (final p in group) _buildFanIcon(p)]);
+
+    // 카드 조기 오픈 — 비행과 동시에 슬라이드업(260ms)이 진행돼 탭 반응이
+    // 즉각적으로 느껴진다. 포커스 캡션은 팬아웃 완료 시점에 적용
+    // (마커가 아직 없으므로). onPostChanged 에코 카메라 이동 방지를 위해
+    // focused 를 먼저 기록하는 것은 기존과 동일.
+    if (openCard) {
+      final int cardIdx = _postGroups
+          .indexWhere((g) => g.isNotEmpty && g.first.id == stackId);
+      if (cardIdx >= 0) {
+        _stackFanFocusedPostId = stackId;
+        _selectMarker(cardIdx, postIndex: 0, moveCamera: false);
+      }
+    }
+
+    // 2) 화면 dp 반지름 → 위경도 오프셋 변환 — meterPerDp 는 동기 순수
+    // 계산이라 카메라 settle 대기 불필요 (fanZoom 이 곧 settle 후 줌).
+    final meterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: center.latitude,
+      zoom: fanZoom,
+    );
+    // 글 수가 많으면 원주가 모자라지 않게 반지름 자동 확대
+    final double radiusDp = max(
+      kStackFanBaseRadiusDp,
+      group.length * (kNormalMarkerSize + kStackFanMarkerGapDp) / (2 * pi),
+    );
+    final double radiusM = radiusDp * meterPerDp;
+    final double dLat = radiusM / 111320.0;
+    final double dLng =
+        radiusM / (111320.0 * cos(center.latitude * pi / 180));
+
+    // 비행·아이콘 둘 다 완료 대기 — 체감 대기 = max(비행, 아이콘 병렬).
+    await cameraFuture;
+    final List<NOverlayImage?> icons = await iconsFuture;
+    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    final settled = await _mapController!.getCameraPosition();
+
+    // 3) 오버레이 구성: 중심점 + 펼침 마커.
+    // 마커는 **중심 좌표 + alpha 0** 으로 추가 — 팬아웃 애니메이션이
+    // 목표 좌표로 미끄러뜨리며 페이드인한다 (Phase 3-a).
+    // 점선 다리·캡션은 애니메이션 완료 후 적용 (비행 중엔 어색함).
+    final overlays = <NAddableOverlay<NOverlay<void>>>{};
+    final legOverlays = <NAddableOverlay<NOverlay<void>>>{};
+    final List<String> legIds = [];
+    final List<(NMarker, NLatLng)> fanFlights = [];
+
+    // 중심점 = 실제 위치. GPS 현재위치 스타일 이중 원으로 강조 —
+    // 연한 할로(넓게) + 진한 점(화이트 링). 할로가 점 아래에 깔리도록 z 분리.
+    final haloCircle = NCircleOverlay(
+      id: _stackFanCenterHaloId,
+      center: center,
+      radius: kStackFanCenterHaloRadiusDp * meterPerDp,
+      color: captionTokens.primary.withValues(alpha: 0.18),
+    )..setGlobalZIndex(_stackFanZIndex - 2);
+    final dotCircle = NCircleOverlay(
+      id: _stackFanCenterId,
+      center: center,
+      radius: kStackFanCenterDotRadiusDp * meterPerDp,
+      color: captionTokens.primary,
+      outlineColor: captionTokens.surface,
+      outlineWidth: 3,
+    )..setGlobalZIndex(_stackFanZIndex - 1);
+    overlays.add(haloCircle);
+    overlays.add(dotCircle);
+    _stackFanCenterAdded = true;
+
+    for (int i = 0; i < group.length; i++) {
+      final post = group[i];
+      // 12시 방향부터 시계방향 배치
+      final double angle = 2 * pi * i / group.length;
+      final pos = NLatLng(
+        center.latitude + dLat * cos(angle),
+        center.longitude + dLng * sin(angle),
+      );
+      _stackFanPositions[post.id] = pos;
+
+      // 점선 다리 — 실제 좌표(중심) 표시. 팬아웃 완료 후 추가.
+      final legId = 'stack_fan_leg_${post.id}';
+      legOverlays.add(NPolylineOverlay(
+        id: legId,
+        coords: [center, pos],
+        color: captionTokens.borderStrong,
+        width: 1.5,
+        pattern: kStackFanLegPattern,
+      ));
+      legIds.add(legId);
+
+      // 펼침 마커 아이콘 — 병렬 생성 완료분 (사진=링 썸네일, 텍스트=점)
+      final NOverlayImage? icon = icons[i];
+
+      final fanId = 'stack_fan_${post.id}';
+      final title = displayTitle(post.title, post.content);
+      final fanMarker = NMarker(
+        id: fanId,
+        position: center, // 팬아웃 시작점 — 애니메이션이 pos 로 이동
+        alpha: 0, // 페이드인 시작값
+        icon: icon,
+        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+      );
+      fanMarker.setGlobalZIndex(_stackFanZIndex + i);
+      final int postIdx = i;
+      fanMarker.setOnTapListener((_) {
+        _focusNode.unfocus();
+        // 그룹 인덱스는 재조회로 바뀔 수 있어 탭 시점에 재탐색
+        final idx = _postGroups
+            .indexWhere((g) => g.isNotEmpty && g.first.id == stackId);
+        if (idx < 0) return;
+        _selectMarker(idx, postIndex: postIdx, moveCamera: false);
+        // 기존 마커 선택과 동일하게 — 탭한 펼침 마커가 카드 위(화면 22%)에
+        // 보이도록 이동. keepStackFan 으로 펼침은 유지.
+        // focused 갱신 → 카드 페이지 에코(onPostChanged)의 중복 이동 방지.
+        _stackFanFocusedPostId = post.id;
+        _applyFanFocusCaption(post.id);
+        _moveCameraToMarker(pos, keepStackFan: true);
+      });
+      overlays.add(fanMarker);
+      fanFlights.add((fanMarker, pos));
+      _stackFanMarkerIds.add(fanId);
+      _stackFanMarkerRefs[post.id] = fanMarker;
+      _stackFanTitles[post.id] = title;
+    }
+
+    if (!mounted || _mapController == null || seq != _stackFanSeq) return;
+    await _mapController!.addOverlayAll(overlays);
+
+    // 원본 스택 마커 숨김 (접을 때 복원). 펼침 도중 재조회가 대표를
+    // 교체했을 수 있으므로 stackId 가 아닌 현재 _expandedStackId 기준
+    // (생성 가드가 새 대표 id 로 갱신해 둔다).
+    try {
+      _markerRefs[_expandedStackId ?? stackId]?.setIsVisible(false);
+    } catch (_) {}
+    debugPrint('[map] expandStackFan done id=$_expandedStackId '
+        '(fan=${_stackFanMarkerIds.length})');
+
+    _stackFanBaseTarget = settled.target;
+    _stackFanBaseZoom = settled.zoom;
+
+    // 팬아웃 애니메이션 시작 — 중심에서 목표 좌표로 미끄러지며 페이드인.
+    // 완료 시 점선 다리·캡션·포커스 캡션 적용 (카드는 이미 조기 오픈됨).
+    _startFanOutAnimation(
+      seq: seq,
+      center: center,
+      flights: fanFlights,
+      legs: legOverlays,
+      legIds: legIds,
+      colors: captionTokens,
+    );
+
+    if (!openCard) {
+      // 카드 스와이프로 스택에 진입한 경우 — 카드는 이미 특정 글을
+      // 보여주는 중이다. 펼침 전(좌표 미생성)에 들어와 예약된 팔로우가
+      // 있으면, 그 글의 펼침 마커로 카메라를 1회 옮겨 카드와 포커스를
+      // 일치시킨다. 예약이 없으면(엣지) 대표 글 인덱스 0을 사용.
+      final int focusIdx = _pendingFanFocusPostIndex ?? 0;
+      if (focusIdx >= 0 && focusIdx < group.length) {
+        final focusPost = group[focusIdx];
+        final pos = _stackFanPositions[focusPost.id];
+        if (pos != null && focusPost.id != _stackFanFocusedPostId) {
+          _stackFanFocusedPostId = focusPost.id;
+          _applyFanFocusCaption(focusPost.id);
+          await _moveCameraToMarker(pos, keepStackFan: true);
+        }
+      }
+    }
+    _pendingFanFocusPostIndex = null;
+    } finally {
+      // 성공/조기 반환/예외 모두 최신 seq의 진행 중 표식을 해제한다.
+      _finishStackExpansion(seq);
+    }
+  }
+
+  void _finishStackExpansion(int seq) {
+    if (seq != _stackFanSeq) return;
+    _expandingStackId = null;
+    unawaited(_consumePendingFreshness());
+  }
+
+  /// 카드 페이지 이동 팔로우 — 펼침 상태에서 같은 스택 안의 다른 글로
+  /// 넘어가면 해당 펼침 마커가 카드 위(22%)에 오도록 카메라 이동.
+  /// 펼침이 아니거나 다른 그룹이면 무시 (그룹 경계는 onGroupChanged 가 처리).
+  void _followStackFanPost(int groupIndex, int postIndex) {
+    if (groupIndex < 0 || groupIndex >= _postGroups.length) return;
+    final group = _postGroups[groupIndex];
+    if (group.isEmpty) return;
+    // 이미 펼쳐졌거나(_expandedStackId) 펼치는 중인(_expandingStackId)
+    // 그룹만 대상. 카드 스와이프로 스택에 막 진입한 최초 프레임에서는
+    // onGroupChanged(펼침 비동기 시작) 직후 이 콜백이 동기로 들어오므로
+    // _expandedStackId 는 아직 null 이고 _expandingStackId 로 식별한다.
+    final activeStackId = _expandedStackId ?? _expandingStackId;
+    if (activeStackId == null || group.first.id != activeStackId) return;
+    if (postIndex < 0 || postIndex >= group.length) return;
+    final postId = group[postIndex].id;
+    if (postId == _stackFanFocusedPostId) return; // 탭 에코 등 중복 방지
+    final pos = _stackFanPositions[postId];
+    if (pos == null) {
+      // 펼침이 아직 좌표를 만들지 않음 — 완료 시점(_expandStackFan 종료)에
+      // 적용하도록 예약만 하고 반환.
+      _pendingFanFocusPostIndex = postIndex;
+      return;
+    }
+    _pendingFanFocusPostIndex = null;
+    _stackFanFocusedPostId = postId;
+    _applyFanFocusCaption(postId);
+    _moveCameraToMarker(pos, keepStackFan: true);
+  }
+
+  /// 펼침 마커 포커스 캡션 — 카드가 현재 보여주는 글의 펼침 마커만
+  /// 전체 타이틀(requestWidth 랩 + forceShowCaption), 이전 포커스는
+  /// 8자 말줄임으로 복원 (피그마 18-2 ⑤ — 선택 마커는 전체 타이틀).
+  void _applyFanFocusCaption(String? postId) {
+    if (_fanCaptionFocusedPostId == postId) return;
+    final colors = AppColors.of(context);
+    final prevId = _fanCaptionFocusedPostId;
+    _fanCaptionFocusedPostId = postId;
+    if (prevId != null) {
+      final prev = _stackFanMarkerRefs[prevId];
+      final title = _stackFanTitles[prevId];
+      if (prev != null && title != null) {
+        try {
+          prev.setCaption(_defaultCaption(title, colors));
+          prev.setIsForceShowCaption(false);
+        } catch (_) {/* 이미 제거된 경우 무시 */}
+      }
+    }
+    if (postId != null) {
+      final marker = _stackFanMarkerRefs[postId];
+      final title = _stackFanTitles[postId];
+      if (marker != null && title != null && title.isNotEmpty) {
+        try {
+          marker.setCaption(_selectedCaption(title, colors));
+          marker.setIsForceShowCaption(true);
+        } catch (_) {/* same */}
+      }
+    }
+  }
+
+  /// 펼침 해제 — 오버레이 제거 + 원본 스택 마커 복원.
+  /// [animate]: 팬 마커가 중심으로 수렴하며 페이드아웃 (지도 탭·카드 닫기·
+  /// 지도 이동 자동 접힘). **재펼침 직전 호출은 반드시 false** — 같은 스택
+  /// 재펼침 시 팬 마커 id 가 재사용되는데, 늦게 끝나는 수렴 애니메이션의
+  /// 삭제가 새 펼침의 네이티브 오버레이를 지워버리는 경합이 있다.
+  ///
+  /// 상태는 항상 **즉시** 정리한다 — 수렴은 상태와 분리된 "고아 오버레이"
+  /// 위에서 진행되므로 재펼침·재조회가 애니메이션을 기다리지 않는다.
+  Future<void> _collapseStackFan({bool animate = true}) async {
+    _fanAnimTimer?.cancel(); // 팬아웃 진행 중 접기 — 애니메이션 중단
+    if (_expandedStackId == null) {
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+    final stackId = _expandedStackId!;
+    debugPrint('[map] collapseStackFan id=$stackId (animate=$animate)');
+
+    // 시각 요소 로컬 캡처 — 아래에서 상태를 비운 뒤에도 접기 연출에 사용.
+    final controller = _mapController;
+    final NLatLng? center = _stackFanCenter;
+    final List<NMarker> dyingMarkers = _stackFanMarkerRefs.values.toList();
+    final List<String> dyingMarkerIds = List.of(_stackFanMarkerIds);
+    final List<String> dyingLegIds = List.of(_stackFanLegIds);
+    final bool hadCenter = _stackFanCenterAdded;
+
+    _expandedStackId = null;
+    _expandedStackGroupKey = null;
+    _stackFanCenter = null;
+    _stackFanBaseTarget = null;
+    _stackFanBaseZoom = null;
+    _stackFanPositions.clear();
+    _stackFanFocusedPostId = null;
+    _pendingFanFocusPostIndex = null;
+    _stackFanMarkerRefs.clear();
+    _stackFanTitles.clear();
+    _fanCaptionFocusedPostId = null;
+    _stackFanMarkerIds.clear();
+    _stackFanLegIds.clear();
+    _stackFanCenterAdded = false;
+
+    // 다리·중심원은 즉시 제거 — 수렴 중엔 어색하고, 원본 스택 마커가
+    // 같은 자리에 복원돼 앵커 역할을 대신한다.
+    for (final id in dyingLegIds) {
+      try {
+        controller?.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.polylineOverlay, id: id));
+      } catch (_) {}
+    }
+    if (hadCenter) {
+      try {
+        controller?.deleteOverlay(NOverlayInfo(
+            type: NOverlayType.circleOverlay, id: _stackFanCenterId));
+      } catch (_) {}
+      try {
+        controller?.deleteOverlay(NOverlayInfo(
+            type: NOverlayType.circleOverlay, id: _stackFanCenterHaloId));
+      } catch (_) {}
+    }
+
+    // 원본 스택 마커 즉시 복원 — 조각들이 그 위로 합쳐지는 연출.
+    try {
+      _markerRefs[stackId]?.setIsVisible(true);
+    } catch (_) {}
+
+    void deleteDyingMarkers() {
+      for (final id in dyingMarkerIds) {
+        // 같은 스택 재펼침이 이 id 를 재사용 중이면 건드리지 않는다
+        // (새 addOverlayAll 이 네이티브 객체를 이미 교체했음).
+        if (_stackFanMarkerIds.contains(id)) continue;
+        try {
+          controller?.deleteOverlay(
+              NOverlayInfo(type: NOverlayType.marker, id: id));
+        } catch (_) {}
+      }
+    }
+
+    if (!animate ||
+        controller == null ||
+        center == null ||
+        dyingMarkers.isEmpty) {
+      deleteDyingMarkers();
+      unawaited(_consumePendingFreshness());
+      return;
+    }
+
+    // 수렴 애니메이션 (33ms × 6 ≈ 200ms, easeInCubic) — 탭 리스너·캡션은
+    // 시작 시 제거 (죽어가는 마커가 반응하지 않게).
+    final List<NLatLng> starts = [];
+    for (final m in dyingMarkers) {
+      starts.add(m.position);
+      try {
+        m.removeOnTapListener();
+        // 주의: setCaption(null) 금지 — Dart 시그니처는 nullable 이지만
+        // iOS 네이티브(MarkerHandler.swift:66)가 강제 언래핑해 크래시
+        // (2026-07-16 재현). 빈 캡션으로 지운다 (내지도 검증 패턴).
+        m.setCaption(const NOverlayCaption(text: ''));
+        m.setIsForceShowCaption(false);
+      } catch (_) {}
+    }
+    const int steps = 6;
+    int step = 0;
+    Timer.periodic(const Duration(milliseconds: 33), (t) {
+      if (!mounted) {
+        t.cancel();
+        return; // 화면 해체 중 — 오버레이는 지도와 함께 소멸
+      }
+      step++;
+      final bool last = step >= steps;
+      final double p = step / steps;
+      final double eased = p * p * p; // easeInCubic — 가속하며 수렴
+      for (int i = 0; i < dyingMarkers.length; i++) {
+        final m = dyingMarkers[i];
+        final s = starts[i];
+        try {
+          m.setPosition(last
+              ? center
+              : NLatLng(
+                  s.latitude + (center.latitude - s.latitude) * eased,
+                  s.longitude + (center.longitude - s.longitude) * eased,
+                ));
+          m.setAlpha(1.0 - p);
+        } catch (_) {/* 이미 제거됨 — 무시 */}
+      }
+      if (last) {
+        t.cancel();
+        deleteDyingMarkers();
+        unawaited(_consumePendingFreshness());
+      }
+    });
   }
 
   void _onCardDragUpdate(DragUpdateDetails details) {
@@ -1148,30 +2423,29 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           NaverMap(
             options: NaverMapViewOptions(
               contentPadding: safeAreaPadding,
-              initialCameraPosition: NCameraPosition(target: seoulCityHall, zoom: 15),
+              initialCameraPosition:
+                  NCameraPosition(target: seoulCityHall, zoom: _defaultEntryZoom),
               consumeSymbolTapEvents: true,
-              minZoom: 10,
+              // 기본 지도 POI 심볼 축소 — 공용 상수 (모든 지도 화면 동일).
+              symbolScale: kMapSymbolScale,
+              minZoom: 6,
               maxZoom: 20,
               // 다크모드일 때만 navi 타입 + 야간 모드 (라이브러리 한계: nightMode는 navi 전용)
               mapType: isDark ? NMapType.navi : NMapType.basic,
               nightModeEnable: isDark,
             ),
             clusterOptions: NaverMapClusteringOptions(
-              // 줌 15까지 클러스터링, 16+ 부터는 모든 마커 펼침.
-              // 기본 진입 줌(15)에서도 가까운 사진 마커를 묶어 밀집 지역의
-              // 시각적 혼잡을 줄인다.
-              enableZoomRange: const NInclusiveRange(0, 15),
-              // 0으로 두어 size 1→2→3 점진 증가하는 카운트업 잔상 제거
-              animationDuration: Duration.zero,
+              // 줌 16까지 클러스터링, 17+ 부터는 모든 마커(스택 포함) 펼침.
+              // 기본 진입 줌(16.5)에서 화면상 겹치는 마커(40dp)만 묶어
+              // 스택끼리 포개지는 문제 해소. 클러스터 탭 → 대표 선택 + 17.5 줌인.
+              enableZoomRange: const NInclusiveRange(0, 16),
+              // 병합/분리 애니메이션 — 공용 상수 (줌아웃 순간이동 제거).
+              // 카운트업 잔상은 _composeClusterIconAsync 의 300ms 안정화 +
+              // stale 체크가 방어 (과거 Duration.zero 로 끄던 이유).
+              animationDuration: kClusterAnimationDuration,
+              // 병합 거리 — 공용 상수 (내지도와 동일).
               mergeStrategy: const NClusterMergeStrategy(
-                willMergedScreenDistance: {
-                  // 줌 10-12 (시·도): 100dp 이내 마커 묶음 (넓게)
-                  NInclusiveRange(10, 12): 100.0,
-                  // 줌 13-14 (구·동): 85dp (동네 단위 정리)
-                  NInclusiveRange(13, 14): 85.0,
-                  // 줌 15 (기본 진입): 가까운 마커만 60dp 이내로 묶음
-                  NInclusiveRange(15, 15): 60.0,
-                },
+                willMergedScreenDistance: kClusterMergeDistances,
               ),
               clusterMarkerBuilder: _buildClusterMarker,
             ),
@@ -1199,7 +2473,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                 child: Column(
               children: [
                 Container(
-                  key: _searchBarKey,
                   decoration: BoxDecoration(
                     color: AppColors.of(context).surface,
                     borderRadius: BorderRadius.circular(24),
@@ -1326,8 +2599,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               child: NMyLocationButtonWidget(
                 key: ValueKey(_isAnyCardOpen),
                 mapController: _mapController,
-                size: 40,
-                borderRadius: BorderRadius.circular(18),
+                size: 36,
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          // '내 지도' 진입 버튼 — 우측 하단(네비게이션 바 위). 카드 열리면 페이드아웃.
+          Positioned(
+            right: 16,
+            bottom: 45,
+            child: IgnorePointer(
+              ignoring: _isAnyCardOpen,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: _isAnyCardOpen ? 0 : 1,
+                child: _buildMyMapButton(),
               ),
             ),
           ),
@@ -1385,19 +2671,46 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       key: const ValueKey('card'),
                       groups: _postGroups,
                       initialGroupIndex: _selectedGroupIndex!,
-                      minTopMargin: _searchBarBottom > 0
-                          ? _searchBarBottom + 30
-                          : MediaQuery.paddingOf(context).top + 80,
+                      // 스택 펼침 마커 탭 → 그룹 내 해당 글 페이지로 바로 연다.
+                      initialPostIndex: _selectedPostIndex,
+                      // 확장 카드 상단 여백. 이 화면은 root의 bottomNavigationBar
+                      // (높이 64 + 하단 safe area)만큼 본문이 줄어든 영역이라,
+                      // 네비바 소비 높이를 더해 카드 상단 위치를 보정한다.
+                      // 비율(0.18)을 키울수록 카드가 더 아래에서 시작한다(짧아짐).
+                      // 확장 시 검색바는 페이드아웃돼 가려져도 무방.
+                      minTopMargin: MediaQuery.sizeOf(context).height * 0.15 +
+                          64 +
+                          MediaQuery.paddingOf(context).bottom,
                       onClose: () {
                         setState(() {
                           _selectedGroupIndex = null;
                           _isCardExpanded = false;
                         });
                         _applySelectionHighlight(null);
+                        unawaited(
+                          _resumeAutomaticReloadsAfterInteractionClose(),
+                        );
                       },
                       onGroupChanged: (newIdx) {
-                        _selectMarker(newIdx);
+                        if (newIdx >= 0 &&
+                            newIdx < _postGroups.length &&
+                            _postGroups[newIdx].length >= 2) {
+                          // 카드 스와이프로 다른 스택 그룹 진입 → 카메라 이동
+                          // + 그 스택도 펼친다. 카드는 이미 해당 페이지를
+                          // 보여주는 중이라 다시 열지 않는다 (openCard: false).
+                          setState(() {
+                            _selectedGroupIndex = newIdx;
+                            _selectedPostIndex = null;
+                          });
+                          _expandStackFan(
+                            _postGroups[newIdx].first.id,
+                            openCard: false,
+                          );
+                        } else {
+                          _selectMarker(newIdx);
+                        }
                       },
+                      onPostChanged: _followStackFanPost,
                       onExpandedChanged: (expanded) {
                         WidgetsBinding.instance.addPostFrameCallback((_) {
                           if (mounted) setState(() => _isCardExpanded = expanded);

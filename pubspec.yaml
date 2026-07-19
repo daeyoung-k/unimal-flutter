@@ -16,8 +16,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-# 안드로이드 9버전, ios 9버전 사용중
-version: 1.2.0+9
+# 안드로이드 10버전, ios 10버전 사용중
+version: 1.5.0+12
 
 environment:
   sdk: ^3.8.0
@@ -37,7 +37,6 @@ dependencies:
   # 추가 라이브러리
   flutter_native_splash: ^2.4.4           # 스플래시 화면 제작
   flutter_svg: ^2.0.17                    # svg 파일 사용
-  google_maps_flutter: ^2.12.3            # google map
   flutter_dotenv: ^5.2.1                  # 환경변수 .env 파일 사용
   kakao_flutter_sdk: ^1.9.6               # 카카오 로그인
   naver_login_sdk: ^2.3.0                 # 네이버 로그인
@@ -60,6 +59,8 @@ dependencies:
   device_info_plus: ^10.1.0               # 디바이스 정보
   cached_network_image: ^3.4.1            # 이미지 디스크 캐싱
   flutter_naver_map: ^1.4.4               # 네이버 지도
+  path_provider: ^2.1.4                   # 캐시 디렉토리 접근 (네이버맵 이미지 캐시 정리용)
+  google_mobile_ads: ^8.0.0               # AdMob 광고 (배너/네이티브/보상형)
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

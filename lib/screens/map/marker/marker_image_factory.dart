@@ -1,0 +1,395 @@
+import 'dart:async';
+import 'dart:convert' show base64Decode;
+import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart';
+import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
+import 'package:unimal/theme/app_colors.dart';
+
+Future<void> _overlayImageChain = Future.value();
+
+/// [NOverlayImage.fromByteArray] 전역 직렬화 래퍼 — 마커 아이콘 생성은
+/// 반드시 이 함수를 거칠 것 (직접 fromByteArray 호출 금지).
+///
+/// 플러그인(1.4.4)은 바이트를 콘텐츠 해시 파일명(fnm1_img/*.png)으로 임시
+/// 저장하는데, 같은 내용의 이미지가 동시에 들어오면 한쪽이 쓰는 중인
+/// 미완성 파일을 다른 쪽이 "이미 캐시됨"으로 보고 그대로 참조한다.
+/// iOS 네이티브가 이 파일을 강제 언래핑하다 크래시한다
+/// (NOverlayImage.swift:16, 플러그인 이슈 #251 — 1.4.4 미해결).
+/// 호출을 체인으로 직렬화해 실행 중 쓰기 경합을 차단한다.
+/// 앱 시작 시 캐시 정리(main.dart)는 이전 실행의 깨진 파일만 막아준다.
+Future<NOverlayImage> overlayImageFromBytes(Uint8List bytes) {
+  final completer = Completer<NOverlayImage>();
+  _overlayImageChain = _overlayImageChain.then((_) async {
+    try {
+      completer.complete(await NOverlayImage.fromByteArray(bytes));
+    } catch (e, st) {
+      completer.completeError(e, st);
+    }
+  });
+  return completer.future;
+}
+
+/// [NOverlayImage.fromWidget] 직렬화 래퍼 — 위젯 마커 아이콘 생성은
+/// 반드시 이 함수를 거칠 것 (직접 fromWidget 호출 금지).
+///
+/// fromWidget 도 내부적으로 fromByteArray 와 같은 파일 캐시
+/// (`ImageUtil.saveImage`)를 쓰므로 동일한 쓰기/초기화 경합이 존재한다.
+/// [overlayImageFromBytes] 와 같은 체인에 태워 경합을 차단한다.
+Future<NOverlayImage> overlayImageFromWidget({
+  required Widget widget,
+  required Size size,
+  required BuildContext context,
+}) {
+  final completer = Completer<NOverlayImage>();
+  _overlayImageChain = _overlayImageChain.then((_) async {
+    try {
+      completer.complete(await NOverlayImage.fromWidget(
+          widget: widget, size: size, context: context));
+    } catch (e, st) {
+      completer.completeError(e, st);
+    }
+  });
+  return completer.future;
+}
+
+/// 플러그인 이미지 임시 폴더를 앱 시작 시 미리 1회 초기화(웜업).
+/// **다른 어떤 마커 아이콘 생성보다 먼저 await 할 것** (main.dart).
+///
+/// flutter_naver_map(1.4.4) `ImageUtil._getDir()` 은 락 없는 lazy 초기화라,
+/// 앱 시작(핫 리스타트 포함) 직후 이미지 저장이 동시에 들어오면
+/// `_initTempDir()` 이 두 번 실행된다. 늦게 시작한 쪽이 먼저 만들어진
+/// 세션 폴더(fnm1_img/fnm1_img_XXXX)를 "이전 세션"으로 오인해 삭제하고
+/// (unawaited), 그 폴더에 이미 저장된 마커 아이콘 경로를 iOS 네이티브가
+/// 로드하다 강제 언래핑 크래시한다 (NOverlayImage.swift:16,
+/// 2026-07-14 크래시 리포트 — 같은 폴더 이중 삭제의 PathNotFoundException 이
+/// 동반 증거). 여기서 초기화를 단일 실행으로 끝내면 이후 호출은 전부
+/// fast path(캐시된 Directory 반환)라 경합 자체가 사라진다.
+Future<void> warmUpOverlayImageCache() async {
+  // 1x1 PNG — 내용은 무관, temp dir 초기화 트리거 용도.
+  final Uint8List bytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+  try {
+    await overlayImageFromBytes(bytes);
+    debugPrint('[naverMap] 오버레이 이미지 캐시 웜업 완료');
+  } catch (e) {
+    debugPrint('[naverMap] 오버레이 이미지 캐시 웜업 실패(무시): $e');
+  }
+}
+
+/// 게시글의 링(테두리) 색 결정 (피그마 "17 마커 변형 시트" §1).
+///
+/// 모양은 원형 하나 — 의미는 링 색으로만 구분한다:
+/// - 내 글 → `primary` 링
+/// - 새 글(작성 후 24시간, [kNewPostRingDuration]) → `accent` 링
+/// - 그 외 → 화이트 (기본값 — 색 링 남발 금지)
+///
+/// 우선순위: 내 글 > 새 글. 마커 비트맵은 라이트 팔레트 고정이므로
+/// `AppColors.light` 를 쓴다 (파일 상단 주석 참고).
+Color markerRingColor({required bool isOwner, required String createdAt}) {
+  if (isOwner) return AppColors.light.primary;
+  final created = DateTime.tryParse(createdAt);
+  if (created != null &&
+      DateTime.now().difference(created) < kNewPostRingDuration) {
+    return AppColors.light.accent;
+  }
+  return Colors.white;
+}
+
+/// 지도 마커 비트맵 팩토리 — 마커 이미지 합성을 한 곳에서 관리한다.
+///
+/// 기존 `service/image/image_service.dart`에 흩어져 있던 마커 합성 로직을
+/// 마커 시스템(`marker_constants.dart`)과 같은 폴더로 통합했다.
+/// 메인 지도(`map_naver.dart`)와 내지도(`my_story_map_screen.dart`)가 공유한다.
+///
+/// 색상 기본값은 `AppColors.light` 토큰이다. 마커 비트맵은 포스트 단위로
+/// 캐시되어 테마 전환에 실시간 반응하지 않으므로(기존 동작과 동일),
+/// 지도 라이트/다크 스타일 모두에서 잘 보이는 라이트 팔레트를 기본으로 쓴다.
+class MarkerImageFactory {
+  Future<ImageStream> getImageStream(String url) async {
+    final NetworkImage assetImage = NetworkImage(url);
+    final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
+    return stream;
+  }
+
+  Future<ui.Image> _resolveImage(ImageStream stream) {
+    final Completer<ui.Image> completer = Completer<ui.Image>();
+    stream.addListener(ImageStreamListener(
+      (ImageInfo info, bool _) {
+        if (!completer.isCompleted) completer.complete(info.image);
+      },
+      onError: (exception, stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(exception, stackTrace);
+        }
+      },
+    ));
+    return completer.future;
+  }
+
+  /// 사진 글 마커 — 링 + 원형 썸네일 (기존 커스텀 마커, 2026-07 복귀).
+  ///
+  /// 한때 티어드롭 핀 프레임으로 바꿨으나(bae1eec) 원형으로 되돌렸다.
+  /// 핀 시절의 개선점은 유지: 원본 **중앙 정사각 크롭**으로 비정사각 사진이
+  /// 원 안에서 찌그러지지 않는다.
+  /// 200x200 규격 — [addClusterBadge](+N 뱃지) 합성을 그대로 탈 수 있다.
+  ///
+  /// [ringColor]: 링 색 (기본 화이트). 의미 있는 글만 색 링 —
+  /// [markerRingColor] 로 결정한다 (내 글=primary, 새 글 24h=accent).
+  Future<Uint8List> createMarkerImage(
+    ImageStream stream, {
+    Color ringColor = Colors.white,
+  }) async {
+    final loadedImage = await _resolveImage(stream);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    final paint = Paint();
+    const double size = 200.0;
+
+    const center = Offset(size / 2, size / 2);
+    // 링 두께 — 표시 dp(kMarkerRingWidthDp) 를 200px 캔버스로 환산.
+    // 기본 크기(50dp) 기준 4dp. 크기 위계로 표시 크기가 42~66dp 로 변해도
+    // 비트맵은 하나라 링 두께는 크기에 비례해 살짝 달라진다 (의도된 동작).
+    const double borderWidth = kMarkerRingWidthDp * size / kNormalMarkerSize;
+    const double outerRadius = size / 2;
+    const double innerRadius = outerRadius - borderWidth;
+
+    // 링 (기본 화이트, 내 글/새 글은 색 링)
+    canvas.drawCircle(center, outerRadius, Paint()..color = ringColor);
+
+    // 이미지를 내부 원에 클립하여 그리기
+    final clipPath = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: innerRadius));
+    canvas.clipPath(clipPath);
+
+    final Rect dstRect = Rect.fromCircle(center: center, radius: innerRadius);
+    // 원본 중앙 정사각형 크롭 — 비정사각 사진 왜곡 방지 (핀 시절 개선점 유지)
+    final double srcW = loadedImage.width.toDouble();
+    final double srcH = loadedImage.height.toDouble();
+    final double srcSide = math.min(srcW, srcH);
+    final Rect srcRect = Rect.fromLTWH(
+        (srcW - srcSide) / 2, (srcH - srcSide) / 2, srcSide, srcSide);
+
+    canvas.drawImageRect(loadedImage, srcRect, dstRect, paint);
+
+    final ui.Image finalImage =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final ByteData? byteData =
+        await finalImage.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  /// 마커 이미지 위에 우상단 +N 뱃지를 합성해 새 PNG bytes 반환.
+  /// 클러스터 마커용. base는 [createMarkerImage] 결과(200x200 가정).
+  Future<Uint8List> addClusterBadge(
+    Uint8List baseBytes,
+    int count, {
+    Color? badgeColor,
+  }) async {
+    final codec = await ui.instantiateImageCodec(baseBytes);
+    final frame = await codec.getNextFrame();
+    final base = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+
+    // base 이미지 그리기
+    canvas.drawImageRect(
+      base,
+      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+      Rect.fromLTWH(0, 0, size, size),
+      Paint(),
+    );
+
+    // 우상단 뱃지
+    const double badgeRadius = 40.0;
+    const badgeCenter = Offset(size - badgeRadius, badgeRadius);
+    // 외곽 흰 테두리
+    canvas.drawCircle(
+      badgeCenter,
+      badgeRadius + 4,
+      Paint()..color = Colors.white,
+    );
+    // 브랜드 푸른색 원 (검색 핀 마커와 동일 톤으로 통일)
+    canvas.drawCircle(
+      badgeCenter,
+      badgeRadius,
+      Paint()..color = (badgeColor ?? AppColors.light.primary),
+    );
+    // +N 텍스트
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '+$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 44,
+          fontWeight: FontWeight.w700,
+          fontFamily: 'Pretendard',
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout();
+    tp.paint(
+      canvas,
+      Offset(
+        badgeCenter.dx - tp.width / 2,
+        badgeCenter.dy - tp.height / 2,
+      ),
+    );
+
+    final composedImage =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final byteData =
+        await composedImage.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  /// 같은 자리 스택 마커 합성 (피그마 "17 마커 변형 시트" §3 · A안).
+  ///
+  /// 같은 좌표의 다중 글을 jitter 로 흩뿌리는 대신 마커 하나로 쌓는다:
+  /// 대표(최고 score) 마커 뒤로 살짝 겹친 "뒷장" 원 + 우상단 +N 뱃지.
+  /// base 는 [createMarkerImage]/[createTextDotImage] 결과(200x200)를 그대로 받아
+  /// 같은 200x200 규격으로 반환 — 클러스터 파이프라인과 규격 호환.
+  Future<Uint8List> composeStackMarker(Uint8List baseBytes, int count) async {
+    final codec = await ui.instantiateImageCodec(baseBytes);
+    final frame = await codec.getNextFrame();
+    final base = frame.image;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+
+    // 뒷장 원 — 좌측에 살짝 보이는 "겹친 글" 표현. 사진 없이 중립 톤.
+    // (center.x - radius ≥ 0 이어야 캔버스에 잘려 평평해지지 않음)
+    const ghostCenter = Offset(60, 100);
+    const double ghostRadius = 58.0;
+    canvas.drawCircle(
+      ghostCenter,
+      ghostRadius,
+      Paint()..color = Colors.white,
+    );
+    canvas.drawCircle(
+      ghostCenter,
+      ghostRadius - 10,
+      Paint()..color = AppColors.light.surfaceMuted,
+    );
+
+    // 대표 마커 — 뒷장이 좌측에 보이도록 살짝 줄여서 중앙 배치.
+    const double mainRadius = 88.0;
+    canvas.drawImageRect(
+      base,
+      Rect.fromLTWH(0, 0, base.width.toDouble(), base.height.toDouble()),
+      Rect.fromCircle(center: const Offset(size / 2, size / 2), radius: mainRadius),
+      Paint(),
+    );
+
+    final composed =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final byteData = await composed.toByteData(format: ui.ImageByteFormat.png);
+    final stacked = byteData!.buffer.asUint8List();
+
+    // 우상단 +N 뱃지는 클러스터와 동일 스타일로 합성.
+    return addClusterBadge(stacked, count);
+  }
+
+  /// 검색 결과 위치 표시용 단색 푸른 핀 이미지를 만들어 PNG bytes 반환.
+  /// 모양: 티어드롭(원형 머리 + 뾰족 꼬리). 가운데 작은 흰 점.
+  /// 좌표 anchor = bottom-center(NPoint(0.5, 1.0))에 맞춰 꼬리 끝이 캔버스 맨 아래.
+  Future<Uint8List> createPinMarkerImage({Color? pinColor}) async {
+    const double width = 200.0;
+    const double height = 256.0;
+    const Offset headCenter = Offset(100, 95);
+    const double headRadius = 80.0;
+    const Offset tailTip = Offset(100, 252);
+    // 머리 원의 수직 아래 기준 좌우 각도. 35도면 꼬리 폭이 적당.
+    const double tailHalfAngle = 35 * math.pi / 180;
+    final Color color = pinColor ?? AppColors.light.primary;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    final leftAngle = math.pi / 2 + tailHalfAngle;
+    final leftAnchor = Offset(
+      headCenter.dx + headRadius * math.cos(leftAngle),
+      headCenter.dy + headRadius * math.sin(leftAngle),
+    );
+
+    // 좌측 꼬리 시작점에서 시계방향으로 머리 원의 위쪽을 둘러 우측 꼬리 시작점까지.
+    // sweep = 2π - 2*tailHalfAngle (꼬리에 해당하는 호 부분만 제외).
+    final pinPath = Path()
+      ..moveTo(leftAnchor.dx, leftAnchor.dy)
+      ..arcTo(
+        Rect.fromCircle(center: headCenter, radius: headRadius),
+        leftAngle,
+        2 * math.pi - 2 * tailHalfAngle,
+        false,
+      )
+      ..lineTo(tailTip.dx, tailTip.dy)
+      ..close();
+
+    canvas.drawShadow(pinPath, Colors.black.withValues(alpha: 0.25), 4, false);
+    canvas.drawPath(pinPath, Paint()..color = color);
+    canvas.drawPath(
+      pinPath,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 8
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawCircle(headCenter, 22, Paint()..color = Colors.white);
+
+    final image =
+        await recorder.endRecording().toImage(width.toInt(), height.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
+  }
+
+  /// [createTextDotImage] 기본 팔레트 결과 캐시 — 점 그림은 글과 무관하게
+  /// 항상 같으므로 프로세스당 1회만 래스터화한다.
+  Uint8List? _textDotBytesCache;
+
+  /// 텍스트 전용(사진 없는) 글의 줌아웃 점 마커 이미지를 PNG bytes 로 생성.
+  /// 사진 마커([createMarkerImage])와 동일한 200x200 규격이라 [addClusterBadge]
+  /// 합성(+N 뱃지)을 그대로 탈 수 있다.
+  /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 (튀어나온 꼬리 없음 —
+  /// 피그마 "18 텍스트 마커 변형 시트" 확정안, 카드/점 같은 패밀리).
+  /// 원 바닥이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
+  /// 위젯([TextDotGlyph])과 [paintTextDot] 로 같은 그림을 공유한다.
+  Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
+    if (bubbleColor == null && _textDotBytesCache != null) {
+      return _textDotBytesCache!;
+    }
+
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const double size = 200.0;
+    // 좌우 8px·상단 16px 여유(테두리 안티앨리어싱 + 그림자), 원 바닥 = 캔버스
+    // 하단(200). 표시 크기(위계 42~66dp 정사각) 기준 원 지름 = 0.92x.
+    const double unit = (size - 16) / kTextDotFrameH;
+
+    paintTextDot(
+      canvas,
+      origin: const Offset(
+          (size - kTextDotFrameW * unit) / 2, size - kTextDotFrameH * unit),
+      unit: unit,
+      withShadow: true,
+      glyph: bubbleColor ?? AppColors.light.primaryStrong,
+    );
+
+    final ui.Image image =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final ByteData? byteData =
+        await image.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = byteData!.buffer.asUint8List();
+    if (bubbleColor == null) _textDotBytesCache = bytes;
+    return bytes;
+  }
+}

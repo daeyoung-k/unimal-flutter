@@ -93,7 +93,7 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
               return CachedNetworkImage(
                 imageUrl: widget.images[index].fileUrl,
                 fit: BoxFit.cover,
-                placeholder: (_, __) => _placeholder(context),
+                placeholder: (_, __) => const _ImageSkeleton(),
                 errorWidget: (_, __, ___) => _placeholder(context),
               );
             },
@@ -187,6 +187,60 @@ class _PostImageCarouselState extends State<PostImageCarousel> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// 이미지 로딩 중 표시하는 시머 스켈레톤.
+/// 좌→우로 밝은 띠가 흐르며 부드럽게 로딩을 알린다(이미지 없음 이모지 대체).
+class _ImageSkeleton extends StatefulWidget {
+  const _ImageSkeleton();
+
+  @override
+  State<_ImageSkeleton> createState() => _ImageSkeletonState();
+}
+
+class _ImageSkeletonState extends State<_ImageSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+    final base = colors.surfaceVariant;
+    final highlight = colors.surface;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        // -1(좌측 밖) → 2(우측 밖)로 밝은 띠가 흐른다.
+        final dx = -1.0 + 3.0 * _ctrl.value;
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment(dx - 0.5, 0),
+              end: Alignment(dx + 0.5, 0),
+              colors: [base, highlight, base],
+              stops: const [0.35, 0.5, 0.65],
+            ),
+          ),
+          child: const SizedBox.expand(),
+        );
+      },
     );
   }
 }

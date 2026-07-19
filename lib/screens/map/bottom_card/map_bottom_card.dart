@@ -28,6 +28,11 @@ enum _CardState { default_, expanded }
 class MapBottomCard extends StatefulWidget {
   final List<List<MapPost>> groups;
   final int initialGroupIndex;
+
+  /// 그룹 내 특정 글 페이지로 열기 (스택 원형 펼침 마커 탭).
+  /// null 이면 그룹 첫 글부터. 스와이프로 인한 그룹 변경 에코와 구분하기 위해
+  /// "의도 없음"을 null 로 표현한다.
+  final int? initialPostIndex;
   final VoidCallback onClose;
 
   /// 카드가 올라갈 수 있는 화면 상단 한계 (검색바+필터 하단).
@@ -37,6 +42,10 @@ class MapBottomCard extends StatefulWidget {
   /// 사용자가 다른 그룹으로 이동했을 때 parent에 알림.
   /// (좌우 카드 스와이프) parent는 카메라 이동 + 마커 하이라이트 + 스트립 위치 갱신을 처리한다.
   final ValueChanged<int>? onGroupChanged;
+
+  /// 페이지(글) 이동 시 parent에 알림 — 같은 그룹 안 이동 포함.
+  /// 스택 펼침 상태에서 카메라가 해당 글의 펼침 마커를 따라가는 데 쓴다.
+  final void Function(int groupIndex, int postIndex)? onPostChanged;
 
   /// 카드 확장/축소 상태 변경 시 parent에 알림.
   final ValueChanged<bool>? onExpandedChanged;
@@ -49,9 +58,11 @@ class MapBottomCard extends StatefulWidget {
     super.key,
     required this.groups,
     required this.initialGroupIndex,
+    this.initialPostIndex,
     required this.onClose,
     required this.minTopMargin,
     this.onGroupChanged,
+    this.onPostChanged,
     this.onExpandedChanged,
     this.onPostEdited,
   });
@@ -73,6 +84,11 @@ class _MapBottomCardState extends State<MapBottomCard> {
 
   late PostGroupNavigator _nav;
   late PageController _pageController;
+  // PageView 페이지 = (그룹, 그룹 내 글) 평탄화 목록.
+  // 같은 자리 스택(A안): 스택 그룹의 글들이 연속 페이지로 이어져
+  // 좌우 스와이프만으로 그룹 내 글 → 다음 마커로 자연스럽게 넘어간다.
+  late List<({int g, int p})> _pages;
+  int _currentPageIndex = 0;
   _CardState _cardState = _CardState.default_;
   double _handleDragAccum = 0;
   bool _isHandleDragging = false;
@@ -84,56 +100,132 @@ class _MapBottomCardState extends State<MapBottomCard> {
   final Map<String, LikeInfo> _likeOverrides = {};
   bool _isLiking = false;
 
+  void _rebuildPages() {
+    _pages = [
+      for (int g = 0; g < widget.groups.length; g++)
+        for (int p = 0; p < widget.groups[g].length; p++) (g: g, p: p),
+    ];
+  }
+
+  /// (그룹, 글) → 평탄화 페이지 인덱스. 못 찾으면 0 (방어).
+  int _pageIndexOf(int g, [int p = 0]) {
+    final idx = _pages.indexWhere((e) => e.g == g && e.p == p);
+    return idx >= 0 ? idx : 0;
+  }
+
   @override
   void initState() {
     super.initState();
+    _rebuildPages();
+    final initialPost = widget.initialPostIndex ?? 0;
     _nav = PostGroupNavigator(
       groups: widget.groups,
       initialGroupIndex: widget.initialGroupIndex,
+      initialPostIndex: _safePostIndex(widget.initialGroupIndex, initialPost),
     );
+    _currentPageIndex =
+        _pageIndexOf(widget.initialGroupIndex, _nav.postIndex);
     _pageController = PageController(
-      initialPage: widget.initialGroupIndex,
+      initialPage: _currentPageIndex,
       viewportFraction: _pageViewportFraction,
     );
+  }
+
+  /// 그룹 범위를 벗어나는 postIndex 방어 (그룹 구성이 바뀐 직후 등).
+  int _safePostIndex(int g, int p) {
+    if (g < 0 || g >= widget.groups.length) return 0;
+    return p.clamp(0, widget.groups[g].length - 1);
   }
 
   @override
   void didUpdateWidget(covariant MapBottomCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     final groupsChanged = oldWidget.groups != widget.groups;
-    final indexChanged =
-        oldWidget.initialGroupIndex != widget.initialGroupIndex;
     if (groupsChanged) {
-      _nav = PostGroupNavigator(
-        groups: widget.groups,
-        initialGroupIndex: widget.initialGroupIndex,
-      );
-      _cardState = _CardState.default_;
-      _loadedDetail = null;
-      _isLoadingDetail = false;
-      _pageController.dispose();
-      _pageController = PageController(
-        initialPage: widget.initialGroupIndex,
-        viewportFraction: _pageViewportFraction,
-      );
-      widget.onExpandedChanged?.call(false);
-    } else if (indexChanged) {
-      // 외부 트리거(마커 탭 등) — PageView를 새 인덱스로 애니메이션.
-      _nav.jumpToGroup(widget.initialGroupIndex);
-      _cardState = _CardState.default_;
-      _loadedDetail = null;
-      _isLoadingDetail = false;
-      widget.onExpandedChanged?.call(false);
-      if (_pageController.hasClients) {
-        final current = _pageController.page?.round();
-        if (current != widget.initialGroupIndex) {
-          _pageController.animateToPage(
-            widget.initialGroupIndex,
-            duration: const Duration(milliseconds: 320),
-            curve: Curves.easeOutCubic,
-          );
+      // 지도 재조회로 groups 가 통째로 바뀌는 경우 — 보던 글이 새 목록에도
+      // 있으면 그 위치를 유지한다. 인덱스 기준으로만 리셋하면 목록이
+      // 축소·재정렬됐을 때 옆의 다른 글로 튄다 (2026-07-13 카드-마커 불일치).
+      final String? keepPostId =
+          _nav.groupIndex < oldWidget.groups.length ? _nav.currentPost.id : null;
+      _rebuildPages();
+      int targetG = -1;
+      int targetP = 0;
+      if (keepPostId != null) {
+        outer:
+        for (int g = 0; g < widget.groups.length; g++) {
+          for (int p = 0; p < widget.groups[g].length; p++) {
+            if (widget.groups[g][p].id == keepPostId) {
+              targetG = g;
+              targetP = p;
+              break outer;
+            }
+          }
         }
       }
+      final bool samePostKept = targetG >= 0;
+      if (!samePostKept) {
+        targetG = widget.initialGroupIndex.clamp(0, widget.groups.length - 1);
+        targetP = 0;
+      }
+      _nav = PostGroupNavigator(
+        groups: widget.groups,
+        initialGroupIndex: targetG,
+        initialPostIndex: _safePostIndex(targetG, targetP),
+      );
+      // 같은 글을 계속 보는 중이면 확장 상태·로드된 상세도 유지 —
+      // 백그라운드 새로고침이 읽던 화면을 접지 않게 한다.
+      if (!samePostKept) {
+        _cardState = _CardState.default_;
+        _loadedDetail = null;
+        _isLoadingDetail = false;
+        widget.onExpandedChanged?.call(false);
+      }
+      _currentPageIndex = _pageIndexOf(targetG, _nav.postIndex);
+      _pageController.dispose();
+      _pageController = PageController(
+        initialPage: _currentPageIndex,
+        viewportFraction: _pageViewportFraction,
+      );
+      return;
+    }
+
+    // 외부 의도 감지: 그룹이 바뀌었거나(마커 탭), postIndex 강제가 새로 왔거나
+    // (스택 펼침 마커 탭). 스와이프 에코(이미 그 그룹에 있고 post 강제 없음)는
+    // 무시 — 뒤로 스와이프 시 스택 마지막 글에 머무는 게 자연스럽다.
+    final bool groupIntent =
+        oldWidget.initialGroupIndex != widget.initialGroupIndex;
+    final bool postIntent = widget.initialPostIndex != null &&
+        widget.initialPostIndex != oldWidget.initialPostIndex;
+    if (!groupIntent && !postIntent) return;
+
+    final current =
+        _pageController.hasClients ? _pageController.page?.round() : null;
+    final currentG = (current != null && current < _pages.length)
+        ? _pages[current].g
+        : null;
+    // 그룹 에코 (post 강제 없음) → 무시
+    if (widget.initialPostIndex == null &&
+        currentG == widget.initialGroupIndex) {
+      return;
+    }
+
+    final targetPost = _safePostIndex(
+        widget.initialGroupIndex, widget.initialPostIndex ?? 0);
+    final targetPage = _pageIndexOf(widget.initialGroupIndex, targetPost);
+    if (current == targetPage) return; // 이미 그 페이지
+
+    _nav.jumpTo(widget.initialGroupIndex, targetPost);
+    _cardState = _CardState.default_;
+    _loadedDetail = null;
+    _isLoadingDetail = false;
+    widget.onExpandedChanged?.call(false);
+    _currentPageIndex = targetPage;
+    if (_pageController.hasClients) {
+      _pageController.animateToPage(
+        targetPage,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
     }
   }
 
@@ -287,15 +379,24 @@ class _MapBottomCardState extends State<MapBottomCard> {
     }
   }
 
-  // ── PageView (그룹 좌우 스와이프) ─────────────────────────────────────
+  // ── PageView (글/그룹 좌우 스와이프) ──────────────────────────────────
 
   void _onPageChanged(int idx) {
-    if (idx == _nav.groupIndex) return;
+    if (idx == _currentPageIndex) return;
+    final entry = _pages[idx];
+    final crossedGroup = entry.g != _nav.groupIndex;
     setState(() {
-      _nav.jumpToGroup(idx);
+      _currentPageIndex = idx;
+      _nav.jumpTo(entry.g, entry.p);
       _loadedDetail = null;
     });
-    widget.onGroupChanged?.call(idx);
+    // 그룹(마커) 경계를 넘었을 때 parent에 알림 — 카메라 이동 + 하이라이트.
+    if (crossedGroup) {
+      widget.onGroupChanged?.call(entry.g);
+    }
+    // 글 단위 이동은 항상 알림 — 스택 펼침 상태에서 같은 그룹 안을 넘길 때
+    // 카메라가 해당 펼침 마커를 따라가야 한다 (parent가 상황 판단).
+    widget.onPostChanged?.call(entry.g, entry.p);
     // 경계는 PageView 자체가 막아주므로 별도 햅틱 없음.
     HapticFeedback.selectionClick();
   }
@@ -368,19 +469,48 @@ class _MapBottomCardState extends State<MapBottomCard> {
   Widget _buildSwipeablePages(BuildContext context) {
     return PageView.builder(
       controller: _pageController,
-      itemCount: widget.groups.length,
+      itemCount: _pages.length,
       onPageChanged: _onPageChanged,
       // 가로 스크롤만 — 수직 드래그는 자식 GestureDetector(handle)로 전달.
       itemBuilder: (context, idx) {
-        final post = widget.groups[idx].first;
-        final isCenter = idx == _nav.groupIndex;
+        final entry = _pages[idx];
+        final group = widget.groups[entry.g];
+        final post = group[entry.p];
+        final isCenter = idx == _currentPageIndex;
         return Padding(
           padding:
               const EdgeInsets.symmetric(horizontal: _pageItemHPadding),
-          child: _buildCardShell(
-            context: context,
-            child: _buildDefaultContentFor(post, isCenter: isCenter),
-            isHandleInteractive: isCenter,
+          child: Stack(
+            children: [
+              _buildCardShell(
+                context: context,
+                child: _buildDefaultContentFor(post, isCenter: isCenter),
+                isHandleInteractive: isCenter,
+              ),
+              // 같은 자리 스택(2+ 글) — "n/N" 위치 표시 (마커 +N 뱃지와 호응)
+              if (group.length > 1)
+                Positioned(
+                  top: 8,
+                  right: 12,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.of(context).surfaceMuted,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${entry.p + 1}/${group.length}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.of(context).textTertiary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         );
       },

@@ -2,6 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<!-- AdMob App ID (iOS, 실제 발급). -->
+		<key>GADApplicationIdentifier</key>
+		<string>ca-app-pub-9450783467122178~8762861696</string>
+		<!-- ATT(앱 추적 투명성) 권한 요청 문구. iOS 14.5+ 맞춤 광고용. -->
+		<key>NSUserTrackingUsageDescription</key>
+		<string>맞춤형 광고를 제공하기 위해 기기 식별자 사용 권한이 필요합니다.</string>
+		<!-- SKAdNetwork — 광고 기여(어트리뷰션)용. 아래는 구글 기본 항목.
+		     수익 최적화 시 구글 공식 문서의 전체 목록으로 보강 권장. -->
+		<key>SKAdNetworkItems</key>
+		<array>
+			<dict>
+				<key>SKAdNetworkIdentifier</key>
+				<string>cstr6suwn9.skadnetwork</string>
+			</dict>
+		</array>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>
@@ -68,6 +83,27 @@
 		<string>스토리 동영상 촬영 시 오디오 녹음에 사용됩니다.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>스토리에 사진을 첨부하거나 프로필 사진을 설정하는 데 사용됩니다.</string>
+		<key>UIApplicationSceneManifest</key>
+		<dict>
+			<key>UIApplicationSupportsMultipleScenes</key>
+			<false/>
+			<key>UISceneConfigurations</key>
+			<dict>
+				<key>UIWindowSceneSessionRoleApplication</key>
+				<array>
+					<dict>
+						<key>UISceneClassName</key>
+						<string>UIWindowScene</string>
+						<key>UISceneDelegateClassName</key>
+						<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+						<key>UISceneConfigurationName</key>
+						<string>flutter</string>
+						<key>UISceneStoryboardFile</key>
+						<string>Main</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UIBackgroundModes</key>

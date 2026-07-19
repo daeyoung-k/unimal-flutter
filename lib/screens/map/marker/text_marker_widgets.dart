@@ -2,274 +2,262 @@ import 'package:flutter/material.dart';
 
 /// 텍스트 전용 커스텀 마커 위젯 모음.
 ///
-/// 피그마 "텍스트 마커 v2 (대영 제안)" 기준.
-/// - 줌인: [TextMarkerCard] — 흰 카드 + 제목 아이콘 + 본문 2줄 + 꼬리
-/// - 줌아웃: [TextMarkerDot] — 원 글리프 + 제목 라벨
+/// 피그마 "18 텍스트 마커 변형 시트" 확정안(점 앵커 + 꼬리 없는 말풍선) 기준.
+/// - 줌인: [TextBubbleMarker] — 흰 콘텐츠 카드(꼬리 없음) + 4px 아래 점 앵커
+/// - 카드: [TextMarkerCard] — 제목+시간 행 + 본문 2줄, 고정 폭 204(본문 180)
+/// - 점: [TextDotGlyph] — 32dp 화이트 원 + 블루 챗 글리프 (튀어나온 꼬리 없음)
 ///
-/// 사진 마커가 "원 안에 사진"이라면, 텍스트 마커는 "원 안에 텍스트 줄 글리프".
-/// [TextGlyph] 모티프를 카드 제목 아이콘과 줌아웃 마커에 동일하게 써서
-/// 줌 전환 시 "같은 글"이라는 연속성을 준다.
+/// 구 디자인(파란 말풍선 + 가짜 줄 3개)에서 **색 반전**했다: 화이트 면 +
+/// 블루 글리프. "블루는 배경이 아니라 강조 액센트로만" 톤 가이드와 일치.
+/// 점 마커가 좌표 앵커(원 바닥 = 지도 좌표, 사진 마커와 동일)를 담당하고,
+/// 말풍선 카드는 그 위에 4px 간격으로 떠 있다 (카드 자체엔 꼬리 없음).
 ///
 /// 이 위젯들은 `NOverlayImage.fromWidget(widget:, size:, context:)` 으로
 /// 비트맵 변환해 네이버 지도 마커 아이콘으로 사용한다. Theme.extension 미정착
 /// 상태라 색은 토큰 상수를 직접 참조한다 (off-tree 렌더 안정성).
+/// 줌아웃 점(클러스터/스택 +N 뱃지 합성 필요)은 바이트 파이프라인이라
+/// `MarkerImageFactory.createTextDotImage` 가 [paintTextDot] 로 같은 그림을 그린다.
 class TextMarkerTokens {
-  // app_colors.dart 라이트 토큰과 동기화.
-  static const Color glyphBlue = Color(0xFF4D91FF); // primaryStrong
-  static const Color badgeBlue = Color(0xFF3578E5); // primary
-  static const Color cardBg = Color(0xFFFFFFFF);
-  static const Color cardBorder = Color(0xFFEEF0F3);
-  static const Color divider = Color(0xFFEEF0F3);
+  // app_colors.dart 라이트 토큰과 동기화 (마커 비트맵은 라이트 팔레트 고정).
+  static const Color glyph = Color(0xFF4D91FF); // primaryStrong
+  static const Color badge = Color(0xFF3578E5); // primary
+  static const Color surface = Color(0xFFFFFFFF); // surface (카드/점 면)
+  static const Color border = Color(0xFFE5E7EB); // border (1px 테두리)
   static const Color titleText = Color(0xFF1A1A2E); // textPrimary
   static const Color bodyText = Color(0xFF374151); // textSecondary
-  static const Color shadow = Color(0x1F000000); // 12% black
+  static const Color timeText = Color(0xFF9CA3AF); // textMuted
 }
 
-/// 텍스트 줄 글리프가 들어간 원. 카드 제목 아이콘(16) / 줌아웃 마커(44) 공용.
-class TextGlyph extends StatelessWidget {
-  const TextGlyph({super.key, required this.size, this.withBorder = false});
+/// 점 마커 기준 프레임 (피그마 스펙 시트 기준, 단위 dp). 원 32x32.
+/// 피그마의 다이아 꼬리는 원 뒤에 완전히 숨는 장식이라 그리지 않는다
+/// (2026-07-14 피드백: 튀어나온 꼬리는 디자인에 없음). 좌표 앵커는
+/// 사진 마커와 동일하게 원 바닥(anchor 0.5, 1.0).
+const double kTextDotFrameW = 32.0;
+const double kTextDotFrameH = 32.0;
 
-  final double size;
+/// 텍스트 점 마커 그림 — 피그마 "text-marker-dot" 노드의 기하를 그대로 옮겼다.
+/// - 화이트 원 32dp + border 1dp (외곽 = 정확히 32dp)
+/// - 챗 글리프: primaryStrong 라운드 사각 15 x 11.5 (r4) + 좌하단 작은 꼬리
+/// - 원 바닥 = (16, 32) = 지도 좌표 (anchor 0.5, 1.0)
+///
+/// [origin]은 32x32 기준 프레임의 좌상단이 놓일 캔버스 위치, [unit]은 1dp당 px.
+/// 위젯([TextDotGlyph])과 바이트 팩토리([MarkerImageFactory.createTextDotImage])가
+/// 이 함수 하나로 같은 모양을 그린다.
+void paintTextDot(
+  Canvas canvas, {
+  required Offset origin,
+  required double unit,
+  bool withShadow = false,
+  Color face = TextMarkerTokens.surface,
+  Color border = TextMarkerTokens.border,
+  Color glyph = TextMarkerTokens.glyph,
+}) {
+  Offset at(double x, double y) =>
+      Offset(origin.dx + x * unit, origin.dy + y * unit);
 
-  /// 줌아웃 마커처럼 단독으로 쓸 때 흰 테두리 + 그림자.
-  final bool withBorder;
+  final facePaint = Paint()
+    ..color = face
+    ..isAntiAlias = true;
+  final borderPaint = Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = unit // 1dp
+    ..color = border
+    ..isAntiAlias = true;
+
+  final circleCenter = at(16, 16);
+
+  if (withShadow) {
+    // 피그마: 점 svg 자체에 은은한 드롭 섀도.
+    final shadowPath = Path()
+      ..addOval(Rect.fromCircle(center: circleCenter, radius: 16 * unit));
+    canvas.drawShadow(shadowPath, const Color(0x22000000), unit, false);
+  }
+
+  // 원 — 테두리는 안쪽으로 (외곽이 정확히 32dp).
+  canvas.drawCircle(circleCenter, 16 * unit, facePaint);
+  canvas.drawCircle(circleCenter, 15.5 * unit, borderPaint);
+
+  // 챗 글리프 — 블루 라운드 사각(8.5,9 ~ 15x11.5, r4) + 좌하단 꼬리.
+  final glyphPaint = Paint()
+    ..color = glyph
+    ..isAntiAlias = true;
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+          origin.dx + 8.5 * unit, origin.dy + 9 * unit, 15 * unit, 11.5 * unit),
+      Radius.circular(4 * unit),
+    ),
+    glyphPaint,
+  );
+  final glyphTail = Path()
+    ..moveTo(at(11, 19.5).dx, at(11, 19.5).dy)
+    ..lineTo(at(16, 19.5).dx, at(16, 19.5).dy)
+    ..lineTo(at(11.8, 23.5).dx, at(11.8, 23.5).dy)
+    ..close();
+  canvas.drawPath(glyphTail, glyphPaint);
+}
+
+/// 점 앵커 위젯 — [TextBubbleMarker] 에서 카드 아래에 붙는다.
+/// [diameter] = 원 지름(dp). 원 바닥이 위젯 하단 중앙(=지도 좌표).
+class TextDotGlyph extends StatelessWidget {
+  const TextDotGlyph({super.key, this.diameter = 32});
+
+  final double diameter;
 
   @override
   Widget build(BuildContext context) {
-    final double inner = size * 0.5;
-    final double lineH = (size * 0.08).clamp(1.4, 4.0);
-    final int lines = size >= 24 ? 3 : 2;
-    const List<double> widths = [0.62, 0.82, 0.5];
-
-    final List<Widget> lineWidgets = [];
-    for (int i = 0; i < lines; i++) {
-      lineWidgets.add(Container(
-        width: inner * widths[i],
-        height: lineH,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(lineH),
-        ),
-      ));
-      if (i < lines - 1) lineWidgets.add(SizedBox(height: lineH * 1.1));
-    }
-
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: TextMarkerTokens.glyphBlue,
-        shape: BoxShape.circle,
-        border: withBorder
-            ? Border.all(
-                color: Colors.white,
-                width: (size * 0.06).clamp(1.5, 3.0),
-              )
-            : null,
-        boxShadow: withBorder
-            ? const [
-                BoxShadow(
-                  color: Color(0x33000000),
-                  blurRadius: 4,
-                  offset: Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: lineWidgets,
-        ),
-      ),
+    final double unit = diameter / kTextDotFrameW;
+    // 좌우 2px·상단 1px 여유 (테두리 안티앨리어싱). 하단은 여유 없이
+    // 원 바닥 = 위젯 바닥 — 앵커(0.5, 1.0) 정합.
+    return CustomPaint(
+      size: Size(diameter + 4, kTextDotFrameH * unit + 1),
+      painter: _TextDotPainter(unit),
     );
   }
 }
 
-/// 말풍선 모양 ShapeBorder — 둥근 사각형 본체 + 하단 중앙 꼬리를
-/// "하나의 연속 외곽선"으로 그린다. 카드와 꼬리를 따로 그릴 때 생기던
-/// 경계선/그림자 이음새가 사라져 진짜 말풍선처럼 보인다.
-/// 채움·테두리·그림자(ShapeDecoration.shadows)가 모두 이 외곽선을 공유.
-class _SpeechBubbleShape extends ShapeBorder {
-  const _SpeechBubbleShape();
+class _TextDotPainter extends CustomPainter {
+  const _TextDotPainter(this.unit);
 
-  static const double radius = 16; // 본체 모서리
-  static const double tailWidth = 18; // 꼬리 밑변
-  static const double tailHeight = 9; // 꼬리 높이(아래로)
-  static const Color borderColor = Color(0xFFE6E9EF);
-  static const double borderWidth = 1;
-
-  // 콘텐츠 영역이 꼬리를 침범하지 않도록 하단 inset 확보.
-  @override
-  EdgeInsetsGeometry get dimensions =>
-      const EdgeInsets.only(bottom: tailHeight);
-
-  Path _outline(Rect rect) {
-    final double left = rect.left;
-    final double top = rect.top;
-    final double right = rect.right;
-    final double bottom = rect.bottom - tailHeight; // 본체 하단(꼬리 제외)
-    final double cx = rect.center.dx;
-    const double r = radius;
-    const double tw = tailWidth / 2;
-
-    return Path()
-      ..moveTo(left + r, top)
-      ..lineTo(right - r, top)
-      ..arcToPoint(Offset(right, top + r), radius: const Radius.circular(r))
-      ..lineTo(right, bottom - r)
-      ..arcToPoint(Offset(right - r, bottom), radius: const Radius.circular(r))
-      ..lineTo(cx + tw, bottom) // 꼬리 우측 밑
-      ..lineTo(cx, bottom + tailHeight) // 꼬리 끝(=지도 좌표)
-      ..lineTo(cx - tw, bottom) // 꼬리 좌측 밑
-      ..lineTo(left + r, bottom)
-      ..arcToPoint(Offset(left, bottom - r), radius: const Radius.circular(r))
-      ..lineTo(left, top + r)
-      ..arcToPoint(Offset(left + r, top), radius: const Radius.circular(r))
-      ..close();
-  }
+  final double unit;
 
   @override
-  Path getOuterPath(Rect rect, {TextDirection? textDirection}) =>
-      _outline(rect);
-
-  @override
-  Path getInnerPath(Rect rect, {TextDirection? textDirection}) =>
-      _outline(rect);
-
-  @override
-  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
-    canvas.drawPath(
-      _outline(rect),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = borderWidth
-        ..color = borderColor,
+  void paint(Canvas canvas, Size size) {
+    paintTextDot(
+      canvas,
+      origin: Offset(
+        (size.width - kTextDotFrameW * unit) / 2,
+        size.height - kTextDotFrameH * unit,
+      ),
+      unit: unit,
     );
   }
 
   @override
-  ShapeBorder scale(double t) => const _SpeechBubbleShape();
+  bool shouldRepaint(covariant _TextDotPainter old) => old.unit != unit;
 }
 
-/// 줌인 시 보이는 텍스트 카드 마커.
+/// 줌인 시 보이는 텍스트 카드(말풍선). 꼬리 없음 — 좌표 앵커는 아래 점이 담당.
 ///
-/// [title] 이 null 이면 "본문만" 변형. [maxLines] 로 본문 줄 수 제한(말줄임).
+/// 피그마 "text-marker-card": 고정 폭 204 (패딩 12 → 본문 폭 180 고정),
+/// radius 14 · border 1 · 그림자 y2 blur8 8% · 제목/시간 gap 8 · 헤더-본문 gap 4.
+/// [title] 이 null 이면 "본문만" 변형(시간 행 → 본문). [maxLines] 로 본문 줄 수 제한.
+/// [time] 은 상대 시간 문자열(예: "1시간 전"), null 이면 표시 안 함.
 class TextMarkerCard extends StatelessWidget {
   const TextMarkerCard({
     super.key,
     this.title,
     required this.body,
+    this.time,
     this.maxLines = 2,
-    this.cardWidth = 184,
+    this.cardWidth = 204,
   });
 
   final String? title;
   final String body;
+  final String? time;
   final int maxLines;
   final double cardWidth;
 
   @override
   Widget build(BuildContext context) {
     final bool hasTitle = title != null && title!.trim().isNotEmpty;
+    final bool hasTime = time != null && time!.trim().isNotEmpty;
 
-    // 카드 본체 + 꼬리를 하나의 말풍선 ShapeDecoration 으로. 꼬리 끝이
-    // 박스 하단 중앙(anchor 0.5,1.0)에 오므로 지도 좌표를 정확히 가리킨다.
+    const titleStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontWeight: FontWeight.w600,
+      fontSize: 13,
+      height: 1.2,
+      color: TextMarkerTokens.titleText,
+    );
+    const timeStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontWeight: FontWeight.w400,
+      fontSize: 10,
+      height: 1.2,
+      color: TextMarkerTokens.timeText,
+    );
+
+    Widget? header;
+    if (hasTitle) {
+      header = Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Flexible(
+            child: Text(title!,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
+          ),
+          if (hasTime) ...[
+            const SizedBox(width: 8),
+            Text(time!, maxLines: 1, style: timeStyle),
+          ],
+        ],
+      );
+    } else if (hasTime) {
+      header = Text(time!, maxLines: 1, style: timeStyle);
+    }
+
     return Container(
-      // 고정 너비 대신 최대 너비만 제한 → 내용에 맞춰 너비가 줄어든다.
-      // (짧은 글은 좁게, 긴 글만 cardWidth 에서 줄바꿈)
-      constraints: BoxConstraints(maxWidth: cardWidth),
-      // 좌우 패딩을 0으로 두고 Row/Text 각각에 패딩을 적용.
-      // 구분선은 패딩을 9로 줘서 텍스트(13)보다 양쪽 4px씩 더 길게 보이도록.
-      padding: const EdgeInsets.only(
-          top: 11, bottom: 11 + _SpeechBubbleShape.tailHeight),
-      decoration: const ShapeDecoration(
-        color: TextMarkerTokens.cardBg,
-        shape: _SpeechBubbleShape(),
-        shadows: [
+      width: cardWidth,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: TextMarkerTokens.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: TextMarkerTokens.border, width: 1),
+        boxShadow: const [
+          // 피그마: y2 blur8 8%. 화이트 톤이라 그림자는 최소한.
           BoxShadow(
-            color: Color(0x1A000000), // 10% — 부드럽게
-            blurRadius: 12,
-            offset: Offset(0, 4),
+            color: Color(0x14000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
-      // IntrinsicWidth: 자식들 중 가장 넓은 폭에 맞춰 카드 너비 결정(최대 cardWidth).
-      // stretch: 구분선이 카드 너비를 꽉 채우도록.
-      child: IntrinsicWidth(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (hasTitle) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 13),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const TextGlyph(size: 16),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        title!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13,
-                          height: 1.2,
-                          color: TextMarkerTokens.titleText,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 7),
-              // 텍스트 패딩(13)보다 작게 줘서 양쪽 4px씩 더 길어 보임.
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 9),
-                child: Container(height: 1, color: TextMarkerTokens.divider),
-              ),
-              const SizedBox(height: 7),
-            ],
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 13),
-              child: Text(
-                body,
-                maxLines: maxLines,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w400,
-                  fontSize: 11,
-                  height: 1.36,
-                  color: TextMarkerTokens.bodyText,
-                ),
-              ),
-            ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (header != null) ...[
+            header,
+            const SizedBox(height: 4),
           ],
-        ),
+          Text(
+            body,
+            maxLines: maxLines,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w400,
+              fontSize: 12,
+              height: 1.45,
+              color: TextMarkerTokens.bodyText,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// 줌아웃 시 보이는 텍스트 전용 마커. 원 글리프 + 제목 라벨(사진 마커 패밀리).
-class TextMarkerDot extends StatelessWidget {
-  const TextMarkerDot({
+/// 줌인 텍스트 마커 = 카드(위) + 4px 간격 + 점 앵커(아래).
+/// 하단 중앙(점의 원 바닥)이 지도 좌표(anchor 0.5, 1.0)를 가리킨다.
+/// 카드와 점을 한 위젯으로 합성해 `fromWidget` 한 번으로 비트맵화한다.
+class TextBubbleMarker extends StatelessWidget {
+  const TextBubbleMarker({
     super.key,
-    required this.title,
-    this.diameter = 44,
-    this.count,
+    this.title,
+    required this.body,
+    this.time,
+    this.maxLines = 2,
+    this.cardWidth = 204,
   });
 
-  final String title;
-  final double diameter;
-
-  /// 2 이상이면 클러스터 — +N 뱃지 표시.
-  final int? count;
+  final String? title;
+  final String body;
+  final String? time;
+  final int maxLines;
+  final double cardWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -277,55 +265,15 @@ class TextMarkerDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            TextGlyph(size: diameter, withBorder: true),
-            if (count != null && count! >= 2)
-              Positioned(
-                right: -6,
-                top: -4,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: TextMarkerTokens.badgeBlue,
-                    borderRadius: BorderRadius.circular(9),
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                  child: Text(
-                    '+${count! - 1}',
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                      fontSize: 9,
-                      height: 1.0,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-          ],
+        TextMarkerCard(
+          title: title,
+          body: body,
+          time: time,
+          maxLines: maxLines,
+          cardWidth: cardWidth,
         ),
         const SizedBox(height: 4),
-        // 지도 배경 위 가독성을 위해 흰색 halo(그림자) 적용.
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-            height: 1.1,
-            color: TextMarkerTokens.titleText,
-            shadows: [
-              Shadow(color: Colors.white, blurRadius: 2),
-              Shadow(color: Colors.white, blurRadius: 2),
-            ],
-          ),
-        ),
+        const TextDotGlyph(),
       ],
     );
   }
