@@ -486,9 +486,33 @@ void main() {
     expect(builder, contains('NMarker('));
     expect(builder, isNot(contains('NClusterableMarker')));
     expect(builder, contains('300000 + post.score.toInt()'));
-    // 밑의 점 마커·캡션은 payload 변경 없이 네이티브 충돌 숨김으로 처리.
-    expect(builder, contains('setIsHideCollidedMarkers(true)'));
-    expect(builder, contains('setIsHideCollidedCaptions(true)'));
+    // 페이드 인 시작값 — 충돌 숨김은 빌드 시점이 아니라 페이드 완료 후.
+    expect(builder, contains('alpha: 0'));
+    expect(builder, isNot(contains('setIsHideCollidedMarkers')));
+  });
+
+  test('말풍선 전환은 페이드 트윈이고 충돌 숨김은 페이드와 교차된다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final syncStart = source.indexOf('Future<void> _syncBubbleLayer(');
+    final regionEnd = source.indexOf('void _closeAllCards()', syncStart);
+    final region = source.substring(syncStart, regionEnd);
+
+    // 추가: alpha 0 add → 페이드 인 → 완료 후 충돌 숨김 on.
+    final addFade = region.indexOf("_fadeBubble(id, marker, to: 1.0");
+    expect(addFade, isNonNegative);
+    expect(region, contains('_setBubbleCollisionHiding(marker, true)'));
+    // 제거: 충돌 숨김 off → 페이드 아웃 → 완료 후 delete.
+    final unhide = region.indexOf('_setBubbleCollisionHiding(marker, false)');
+    final fadeOut = region.indexOf("_fadeBubble(id, marker, to: 0.0", unhide);
+    final delete = region.indexOf('deleteOverlay', fadeOut);
+    expect(unhide, isNonNegative);
+    expect(fadeOut, greaterThan(unhide));
+    expect(delete, greaterThan(fadeOut));
+    // 페이드 아웃 중 재목표 시 취소 후 복귀.
+    expect(region, contains('_bubbleRemovingIds.remove(id)'));
+    // 트윈은 말풍선 레이어(일반 NMarker) 전용 — 재전환 시 이전 트윈 취소.
+    expect(region, contains('_bubbleFadeTimers.remove(id)?.cancel()'));
+    expect(region, contains('kBubbleFadeDuration'));
   });
 
   test('idle 은 공간 재조회 판단 전에 말풍선 레이어를 동기화한다', () {

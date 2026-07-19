@@ -119,8 +119,15 @@ const double kTextCardCameraZoom = 19.0;
 /// 텍스트 마커 표현(점↔카드) 전환 히스테리시스.
 /// enter 이상으로 줌인하면 카드로, 그 후 exit 미만으로 줌아웃해야 점으로 복귀.
 /// 단일 임계값을 쓰면 파킹 줌과 경계가 겹쳐 카메라 미세 흔들림에 깜빡인다.
-const double kTextCardEnterZoom = 17.3;
-const double kTextCardExitZoom = 16.8;
+/// 17.3/16.8 → 16.8/16.3 으로 하향 (2026-07-19) — 더 줌아웃된 높이에서도
+/// 말풍선 표시. 하한 주의: 클러스터링 구간(≤16, enableZoomRange)과 겹치면
+/// 클러스터 위에 말풍선이 뜨므로 exit 는 16 초과를 유지할 것.
+const double kTextCardEnterZoom = 16.8;
+const double kTextCardExitZoom = 16.3;
+
+/// 말풍선 레이어 페이드 인/아웃 시간 (2-레이어 설계 docs/specs/2026-07-19).
+/// 일반 NMarker 전용 alpha 트윈 — 클러스터러블에는 사용 금지 (payload 되돌림).
+const Duration kBubbleFadeDuration = Duration(milliseconds: 200);
 
 /// 같은 자리 스택(A안) 그룹핑 좌표 정밀도 — 소수점 자리 수.
 /// 4자리 = 위경도 약 11m 타일. "같은 자리"(같은 가게·같은 지점)만 스택으로
