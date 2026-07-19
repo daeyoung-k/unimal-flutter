@@ -115,6 +115,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 화면 전체 텍스트 마커 표현 모드(true=카드, false=점). 줌 히스테리시스로 갱신.
   // 경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게 하는 핵심 상태.
   bool _textCardMode = false;
+  // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ──
+  // 점(클러스터러블)의 payload 는 영원히 점이고, 말풍선은 별도 id 의 일반
+  // NMarker 다. 일반 마커는 네이티브 클러스터러가 관여하지 않아 리클러스터링
+  // 되돌림(C1)이 없고, 같은 id 재생성이 없어 탭 핸들러 경합(C2)도 없다.
+  final Map<String, NMarker> _bubbleMarkerRefs = {};
+  final Set<String> _bubbleMarkerIds = {};
+  // 말풍선 sync latest-wins 세대 — 비동기 아이콘 생성 중 새 sync 가 시작되면
+  // 이전 결과는 폐기된다.
+  int _bubbleSyncGeneration = 0;
   // 바텀 카드 열림 동안 텍스트 말풍선(카드 아이콘)을 점으로 강제하는 상태
   // (피그마 18-2 ④ — 카드가 콘텐츠를 대신하므로 지도는 위치만 표시).
   bool _textBubblesSuppressed = false;
@@ -725,6 +734,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         unawaited(_consumePendingFreshness());
       }
     }
+    if (outcome == _MapMarkerLoadOutcome.applied && mounted) {
+      // 재조회 완료 후 말풍선 레이어 1회 수렴 — 응답 반영으로 글 집합이
+      // 바뀌었거나 API 대기 중 카메라가 움직였을 수 있다. 반드시
+      // _isLoadingMarkers 해제 후에 호출해야 스킵되지 않는다.
+      unawaited(_syncBubbleLayerWithCurrentCamera());
+    }
     return outcome == _MapMarkerLoadOutcome.applied;
   }
 
@@ -790,30 +805,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final tiers =
         MarkerScoreTiers.fromScores(markerGroups.map((g) => g.first.score));
 
-    // 밀집 지역 판정(C안) — 주변에 다른 마커 그룹이 몰려 있으면
-    // 텍스트 마커를 줌인해도 카드로 펼치지 않고 점으로 고정.
-    // 반경은 **화면 dp 기준** → 현재 줌의 meterPerDp 로 위경도 환산.
-    // (고정 위경도 반경은 깊은 줌에서 화면 밖 마커까지 밀집으로 잡아
-    // 줌인할수록 말풍선이 점으로 강제되는 역전 — 2026-07-15)
-    final double denseMeterPerDp = _mapController!.getMeterPerDpAtLatitude(
+    // 말풍선 대상 판정 — 밀집 계산은 말풍선 레이어 sync 와 같은 헬퍼를 쓴다.
+    // 여기서는 canCard 태그(탭 줌 유도)에만 사용하며, 점↔말풍선 표현 자체는
+    // 별도 말풍선 레이어가 담당한다 (2-레이어 설계 docs/specs/2026-07-19).
+    final textBubbleEligibleIds = _textBubbleEligibleIds(
+      markerGroups: markerGroups,
       latitude: latitude,
-      zoom: rawZoom ?? zoom.toDouble(),
+      rawZoom: rawZoom ?? zoom.toDouble(),
     );
-    final double denseRadiusDeg =
-        kTextCardDenseRadiusDp * denseMeterPerDp / 111320.0;
-    bool isDenseGroup(MapPost top) {
-      int neighbors = 0;
-      for (final other in markerGroups) {
-        final o = other.first;
-        if (identical(o, top)) continue;
-        if ((o.latitude - top.latitude).abs() < denseRadiusDeg &&
-            (o.longitude - top.longitude).abs() < denseRadiusDeg) {
-          neighbors++;
-          if (neighbors >= kTextCardDenseNeighbors) return true;
-        }
-      }
-      return false;
-    }
 
     // 새 결과의 마커 ID 집합 (그룹 대표 게시글 id 1:1)
     final newMarkerIds = markerGroups.map((g) => g.first.id).toSet();
@@ -863,68 +862,31 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final Set<NClusterableMarker> markersToAdd = {};
     final List<String> markerIdsToAdd = [];
 
-    // 텍스트 점↔카드 전환은 화면 단위 줌 히스테리시스 — 루프 밖에서 1회 결정.
-    // (경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게)
-    final bool globalTextCardMode =
-        _resolveTextCardMode(rawZoom ?? zoom.toDouble());
-
     for (final group in markerGroups) {
       final topPost = group.first;
       final pos = NLatLng(topPost.latitude, topPost.longitude);
       final int stackCount = group.length;
 
       final bool isTextPost = topPost.fileInfoList.isEmpty;
-      // 텍스트 카드가 될 수 있는 조건: 단일 글 + 밀집 아님(C안).
-      // 스택(2+)과 밀집 지역은 줌인해도 점 유지 — 글은 하단 스트립에서 읽는다.
-      final bool canBecomeCard =
-          isTextPost && stackCount == 1 && !isDenseGroup(topPost);
-      // 바텀 카드 열림 중엔 말풍선을 아예 만들지 않는다 (피그마 18-2 ④).
-      // add 직후 setIcon 스왑은 클러스터 파이프라인의 비동기 네이티브 등록과
-      // 경합해 "overlay can't found"로 조용히 무시될 수 있어(전역 핸들러가
-      // 흡수), 빌드 시점에 점으로 결정하는 것이 유일하게 안전한 경로다.
-      final bool suppressBubble = _selectedGroupIndex != null;
-      final bool textCardMode =
-          canBecomeCard && globalTextCardMode && !suppressBubble;
-      if (canBecomeCard && globalTextCardMode && suppressBubble) {
-        _textBubbleRestoreIds.add(topPost.id);
-      }
+      // 말풍선이 뜰 수 있는 글인지 (단일 + 비밀집 텍스트) — canCard 태그와
+      // 탭 줌 유도에만 사용. 점 마커의 payload 는 항상 점이다 (2-레이어).
+      final bool canBecomeCard = textBubbleEligibleIds.contains(topPost.id);
 
       // score 크기 위계 (42/50/58/66) — 그룹 대표 score 의 화면 내 백분위.
       final double tierSize = tiers.sizeFor(topPost.score);
       final bool isHot = tiers.isHot(topPost.score);
 
-      // 이미 화면에 있는 마커 → 재사용.
-      // 스택 글 수가 바뀌면 재생성. 텍스트 점↔카드 모드 전환은 in-place
-      // (setIcon/setSize/setCaption)로 처리 — delete+add 재생성은 Dart 쪽
-      // 오버레이 핸들러 등록에 공백을 만들어, 그 사이 탭이 플러그인에서
-      // "Null check operator" 로 삼켜져 마커가 무반응이 된다 (2026-07-14).
+      // 이미 화면에 있는 마커 → 재사용. 스택 글 수가 바뀌면 재생성.
+      // 점↔말풍선 표현은 별도 말풍선 레이어가 담당하므로 여기에는
+      // 표현 전환 분기가 없다 (2-레이어 설계 docs/specs/2026-07-19).
       if (_mapMarkerIds.contains(topPost.id)) {
         final bool stackChanged = _markerStackCount[topPost.id] != stackCount;
-        final bool modeFlipped =
-            isTextPost && _textMarkerCardMode[topPost.id] != textCardMode;
 
-        if (!stackChanged && modeFlipped) {
-          final flipped = await _flipTextMarkerModeInPlace(
-            topPost,
-            toCard: textCardMode,
-            tierSize: tierSize,
-            isHot: isHot,
-            colors: captionTokens,
-          );
-          if (flipped) {
-            visibleGroups.add(group);
-            continue;
-          }
-          // 실패 시 기존 재생성 경로로 폴백 (fall-through)
-        }
-
-        final bool needsRebuild = modeFlipped || stackChanged;
-        if (!needsRebuild) {
+        if (!stackChanged) {
           // 위계 변화(뷰포트 이동으로 백분위가 바뀜)는 재합성 없이 반영:
           // 크기는 setSize, 캡션 우선권은 setIsForceShowCaption.
-          // 카드 모드(가변 크기)와 선택 중 마커의 크기는 제외.
-          final bool cardSized = isTextPost && textCardMode;
-          if (!cardSized && _markerBaseSize[topPost.id] != tierSize) {
+          // 선택 중 마커의 크기는 제외.
+          if (_markerBaseSize[topPost.id] != tierSize) {
             _markerBaseSize[topPost.id] = tierSize;
             if (_highlightedMarkerId != topPost.id) {
               try {
@@ -962,11 +924,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _textBubbleRestoreIds.remove(topPost.id);
       }
 
-      // 신규(또는 재생성) 마커 생성
+      // 신규(또는 재생성) 마커 생성 — payload 는 항상 점/썸네일 (2-레이어)
       NOverlayImage? icon;
       Uint8List? baseBytes;
-      Size markerSize = Size(tierSize, tierSize);
-      bool suppressCaption = false;
 
       if (!isTextPost) {
         // ── 사진 글: 원형 썸네일 + 링 (내 글=primary, 새 글 24h=accent) ──
@@ -984,24 +944,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           continue;
         }
       } else {
-        // ── 텍스트 글 ──
+        // ── 텍스트 글: 항상 점 ──
         // 실패해도 continue 하지 않음 — 기본 마커로 진행해 사진 마커 흐름 보호.
+        // 사진 마커와 동일한 바이트 파이프라인 → _markerBytesCache 에 저장되어
+        // 클러스터/스택 +N 뱃지가 사진 마커와 똑같이 합성된다.
         try {
-          if (textCardMode) {
-            // 줌인 카드 (fromWidget). 17.5+ 는 클러스터링이 없어 바이트 불필요.
-            icon = await _buildTextCardIcon(topPost);
-            markerSize = _textCardSize;
-            suppressCaption = true; // 카드에 제목/본문 포함 → 하단 캡션 중복 방지
-          } else {
-            // 줌아웃 점: 사진 마커와 동일한 바이트 파이프라인으로 생성.
-            // → baseBytes 가 _markerBytesCache 에 저장되어 클러스터/스택 +N 뱃지가
-            //   사진 마커와 똑같이 합성된다.
-            baseBytes = await _markerImageFactory.createTextDotImage();
-          }
+          baseBytes = await _markerImageFactory.createTextDotImage();
         } catch (e) {
           debugPrint('[map] 텍스트 마커 생성 실패 ${topPost.id}: $e');
         }
-        _textMarkerCardMode[topPost.id] = textCardMode;
       }
 
       // 같은 자리 스택(A안): 대표 마커 뒤 뒷장 + 우상단 +N 뱃지 합성.
@@ -1022,8 +973,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       visibleGroups.add(group);
 
       // 클러스터 빌더에서 재사용할 캐시 저장.
-      // 텍스트 카드 마커는 icon 만 캐시(bytes 없음) → 텍스트가 top 인 클러스터의
-      // +N 뱃지 합성은 생략된다(글리프만 표시). 그 외에는 뱃지 합성됨.
       if (icon != null) {
         _markerIconCache[topPost.id] = icon;
       }
@@ -1036,13 +985,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         id: topPost.id,
         position: pos,
         icon: icon,
-        size: markerSize,
+        size: Size(tierSize, tierSize),
         tags: {
           'score': topPost.score.toString(),
           // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
           // 여기서 계산해 담는다.
           'title': derivedTitle,
-          // 카드로 펼쳐질 수 있는 텍스트 마커인지 (단일 + 비밀집).
+          // 말풍선이 뜰 수 있는 텍스트 마커인지 (단일 + 비밀집).
           // 클러스터 빌더의 단일 마커 탭 시 카드 줌 유도 여부 분기에 사용.
           // 스택/밀집 텍스트는 줌인해도 점이라 카드 줌 유도가 무의미하다.
           'canCard': canBecomeCard ? '1' : '0',
@@ -1050,8 +999,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           'count': stackCount.toString(),
         },
         caption: NOverlayCaption(
-          // 카드 모드는 캡션 비움(카드에 제목 포함). 그 외엔 제목 캡션 표시.
-          text: suppressCaption ? '' : _truncateMarkerTitle(derivedTitle),
+          text: _truncateMarkerTitle(derivedTitle),
           textSize: _markerCaptionTextSize,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
@@ -1187,8 +1135,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   Future<void> _clearStoryMarkerOverlaysAndCaches() async {
     final controller = _mapController;
     if (controller != null) {
+      // 말풍선 레이어는 일반 NMarker 라 clusterableMarker clear 에 안 걸린다.
+      // 검색 핀 등 다른 일반 마커를 지우지 않도록 개별 삭제.
+      for (final id in _bubbleMarkerIds.toList()) {
+        try {
+          controller.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.marker, id: _bubbleOverlayId(id)),
+          );
+        } catch (_) {}
+      }
       await controller.clearOverlays(type: NOverlayType.clusterableMarker);
     }
+    _bubbleMarkerIds.clear();
+    _bubbleMarkerRefs.clear();
     _mapMarkerIds.clear();
     _markerRefs.clear();
     _markerBaseZIndex.clear();
@@ -1332,6 +1291,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       }
     }
 
+    // 점↔말풍선은 API 재조회와 독립인 로컬 표현 — 같은 API 줌 구간이거나
+    // 이동량이 작아 재조회를 생략해도 실제 카메라 줌으로 즉시 동기화한다
+    // (2-레이어 설계 docs/specs/2026-07-19).
+    unawaited(_syncBubbleLayer(
+      rawZoom: currentZoom,
+      latitude: currentTarget.latitude,
+    ));
+
     final currentApiZoom = _apiZoomFor(currentZoom);
     final meterPerDp = _mapController!.getMeterPerDpAtLatitude(
       latitude: currentTarget.latitude,
@@ -1433,6 +1400,186 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (rawZoom >= _textCardEnterZoom) _textCardMode = true;
     }
     return _textCardMode;
+  }
+
+  /// 말풍선이 뜰 수 있는 글 집합 — 사진 없는 단일 글 + 비밀집(화면 dp 기준).
+  /// updateMarkers(canCard 태그)와 말풍선 레이어 sync 가 같은 규칙을 쓴다.
+  /// (고정 위경도 반경은 깊은 줌에서 화면 밖 마커까지 밀집으로 잡아
+  /// 줌인할수록 말풍선이 점으로 강제되는 역전 — 2026-07-15)
+  Set<String> _textBubbleEligibleIds({
+    required List<List<MapPost>> markerGroups,
+    required double latitude,
+    required double rawZoom,
+  }) {
+    if (_mapController == null) return const <String>{};
+
+    final denseMeterPerDp = _mapController!.getMeterPerDpAtLatitude(
+      latitude: latitude,
+      zoom: rawZoom,
+    );
+    final denseRadiusDeg = kTextCardDenseRadiusDp * denseMeterPerDp / 111320.0;
+    final eligibleIds = <String>{};
+
+    for (final group in markerGroups) {
+      if (group.length != 1) continue;
+      final top = group.first;
+      if (top.fileInfoList.isNotEmpty) continue;
+
+      var neighbors = 0;
+      for (final other in markerGroups) {
+        if (other.isEmpty) continue;
+        final candidate = other.first;
+        if (identical(candidate, top)) continue;
+        if ((candidate.latitude - top.latitude).abs() < denseRadiusDeg &&
+            (candidate.longitude - top.longitude).abs() < denseRadiusDeg) {
+          neighbors++;
+          if (neighbors >= kTextCardDenseNeighbors) break;
+        }
+      }
+      if (neighbors < kTextCardDenseNeighbors) eligibleIds.add(top.id);
+    }
+    return eligibleIds;
+  }
+
+  // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ─────────────────
+
+  String _bubbleOverlayId(String postId) => 'bubble_$postId';
+
+  /// 현재 카메라를 읽어 말풍선 레이어를 동기화한다 — 재조회 완료·카드
+  /// 열림/닫힘 등 "지금 화면 기준 수렴"이 필요한 지점의 공용 진입점.
+  Future<void> _syncBubbleLayerWithCurrentCamera() async {
+    if (!mounted || _mapController == null) return;
+    final camera = await _mapController!.getCameraPosition();
+    if (!mounted) return;
+    await _syncBubbleLayer(
+      rawZoom: camera.zoom,
+      latitude: camera.target.latitude,
+    );
+  }
+
+  /// 말풍선 레이어를 현재 줌 기준 목표 집합으로 수렴시킨다.
+  /// - 전역 모드(히스테리시스 17.3/16.8)가 카드이고 바텀 카드가 닫혀 있을 때만
+  ///   대상 글의 말풍선을 표시한다.
+  /// - 점 레이어는 건드리지 않는다. 추가/제거 대상이 없으면 no-op.
+  /// - 재조회 중에는 조작하지 않는다(C3) — 재조회 완료 수렴 패스가 재호출.
+  Future<void> _syncBubbleLayer({
+    required double rawZoom,
+    required double latitude,
+  }) async {
+    if (!mounted || _mapController == null) return;
+    final cardMode = _resolveTextCardMode(rawZoom);
+    if (_isLoadingMarkers) return;
+    final generation = ++_bubbleSyncGeneration;
+
+    // 목표 집합 계산
+    final targetPosts = <String, MapPost>{};
+    if (cardMode && _selectedGroupIndex == null) {
+      final markerGroups = List<List<MapPost>>.from(_postGroups);
+      final eligibleIds = _textBubbleEligibleIds(
+        markerGroups: markerGroups,
+        latitude: latitude,
+        rawZoom: rawZoom,
+      );
+      for (final group in markerGroups) {
+        if (group.length != 1) continue;
+        final post = group.first;
+        if (post.fileInfoList.isNotEmpty) continue;
+        if (!eligibleIds.contains(post.id)) continue;
+        // 점 마커가 화면에 있는 글만 — 재조회 집합과 어긋난 말풍선 방지.
+        if (!_mapMarkerIds.contains(post.id)) continue;
+        targetPosts[post.id] = post;
+      }
+    }
+
+    // 제거분 — Phase 1 은 즉시 삭제 (페이드 아웃은 Phase 2).
+    final removeIds =
+        _bubbleMarkerIds.difference(targetPosts.keys.toSet()).toList();
+    for (final id in removeIds) {
+      try {
+        _mapController!.deleteOverlay(
+          NOverlayInfo(type: NOverlayType.marker, id: _bubbleOverlayId(id)),
+        );
+      } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+      _bubbleMarkerIds.remove(id);
+      _bubbleMarkerRefs.remove(id);
+    }
+
+    // 추가분 — 아이콘을 전부 준비한 뒤 일괄 add (리클러스터링/프레임 최소화).
+    final addIds = targetPosts.keys
+        .where((id) => !_bubbleMarkerIds.contains(id))
+        .toList();
+    if (addIds.isEmpty) {
+      if (removeIds.isNotEmpty && kDebugMode) {
+        debugPrint('[map] bubble sync z=${rawZoom.toStringAsFixed(2)} '
+            '-${removeIds.length}');
+      }
+      return;
+    }
+    final built = <String, NMarker>{};
+    for (final id in addIds) {
+      final post = targetPosts[id]!;
+      final NOverlayImage icon;
+      try {
+        icon = await _buildTextCardIcon(post);
+      } catch (e) {
+        debugPrint('[map] 말풍선 아이콘 생성 실패 $id: $e');
+        continue; // 이 글만 생략 — 점은 그대로 보인다.
+      }
+      if (!mounted || generation != _bubbleSyncGeneration) {
+        return; // 더 최신 sync 시작됨 — 이번 결과 폐기.
+      }
+      built[id] = _buildBubbleMarker(post, icon);
+    }
+    if (built.isEmpty) return;
+    if (!mounted ||
+        _mapController == null ||
+        _isLoadingMarkers ||
+        _selectedGroupIndex != null ||
+        generation != _bubbleSyncGeneration) {
+      return;
+    }
+    try {
+      await _mapController!.addOverlayAll(built.values.toSet());
+    } catch (e) {
+      debugPrint('[map] 말풍선 add 실패: $e'); // 다음 sync 가 재시도
+      return;
+    }
+    if (!mounted) return;
+    for (final entry in built.entries) {
+      _bubbleMarkerIds.add(entry.key);
+      _bubbleMarkerRefs[entry.key] = entry.value;
+    }
+    if (kDebugMode) {
+      debugPrint('[map] bubble sync z=${rawZoom.toStringAsFixed(2)} '
+          '+${built.length} -${removeIds.length}');
+    }
+  }
+
+  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드+아래 점 합성이라 기본 앵커
+  /// (0.5, 1.0) 기준으로 밑의 점 마커 위에 정확히 겹친다.
+  NMarker _buildBubbleMarker(MapPost post, NOverlayImage icon) {
+    final marker = NMarker(
+      id: _bubbleOverlayId(post.id),
+      position: NLatLng(post.latitude, post.longitude),
+      icon: icon,
+      size: _textCardSize,
+    );
+    // 점 레이어(200000+score)보다 항상 위.
+    marker.setGlobalZIndex(300000 + post.score.toInt());
+    // 밑의 점 마커(+제목 캡션)를 네이티브 충돌 처리로 숨긴다 (설계 Q1).
+    // 점 payload 는 그대로라 되돌림(C1) 무관하고, 말풍선이 사라지면
+    // SDK 가 자동 복원한다. 아이콘의 TextDotGlyph 가 점 시각을 대신한다.
+    marker.setIsHideCollidedMarkers(true);
+    marker.setIsHideCollidedCaptions(true);
+    final postId = post.id;
+    marker.setOnTapListener((_) async {
+      _focusNode.unfocus();
+      final idx = _postGroups
+          .indexWhere((g) => g.isNotEmpty && g.first.id == postId);
+      if (idx < 0) return;
+      await _selectMarker(idx, minZoom: _textCardCameraZoom);
+    });
+    return marker;
   }
 
   void _closeAllCards() {
@@ -2028,6 +2175,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
     // 카드 열림 → 말풍선 억제 (피그마 18-2 ④). 카메라 이동과 독립적으로 적용.
     unawaited(_syncTextBubbleSuppression());
+    // 카드 열림 → 말풍선 레이어 제거 (sync 가 선택 중엔 목표 공집합).
+    unawaited(_syncBubbleLayerWithCurrentCamera());
     if (!moveCamera) return;
 
     final camera = await _mapController!.getCameraPosition();

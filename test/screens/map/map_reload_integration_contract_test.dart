@@ -440,6 +440,106 @@ void main() {
     );
   });
 
+  // ── 2-레이어 말풍선 계약 (docs/specs/2026-07-19) ──────────────────────
+
+  test('점 레이어 payload 는 항상 점 — updateMarkers 에 카드 표현 분기가 없다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final start = source.indexOf(
+      'Future<_MapMarkerLoadOutcome> _loadMapMarkersInternal(',
+    );
+    final end = source.indexOf(
+      'Future<void> _clearStoryMarkerOverlaysAndCaches()',
+      start,
+    );
+    final method = source.substring(start, end);
+
+    // 클러스터러블 마커에 카드 아이콘·in-place 전환 금지 (C1 되돌림).
+    expect(method, isNot(contains('_buildTextCardIcon(')));
+    expect(method, isNot(contains('_flipTextMarkerModeInPlace(')));
+    expect(method, isNot(contains('textCardMode')));
+    // canCard 태그(탭 줌 유도)는 유지 — 말풍선 레이어와 같은 판정 헬퍼 사용.
+    expect(method, contains('_textBubbleEligibleIds('));
+    expect(method, contains("'canCard': canBecomeCard ? '1' : '0'"));
+  });
+
+  test('말풍선 레이어는 일반 NMarker 이고 클러스터러블을 만들지 않는다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final start = source.indexOf('Future<void> _syncBubbleLayer(');
+    expect(start, isNonNegative);
+    if (start < 0) return;
+    final end = source.indexOf('/// 말풍선 일반 NMarker 생성', start);
+    final method = source.substring(start, end);
+    final builderStart = source.indexOf('NMarker _buildBubbleMarker(');
+    final builderEnd = source.indexOf('void _closeAllCards()', builderStart);
+    final builder = source.substring(builderStart, builderEnd);
+
+    // sync 는 재조회를 트리거하지 않고, 클러스터러블 레이어를 건드리지 않는다.
+    expect(method, isNot(contains('_loadMapMarkers(')));
+    expect(method, isNot(contains('NOverlayType.clusterableMarker')));
+    expect(method, contains('NOverlayType.marker'));
+    // 재조회 중 조작 금지 (C3) + latest-wins 세대.
+    expect(method, contains('if (_isLoadingMarkers) return'));
+    expect(method, contains('generation != _bubbleSyncGeneration'));
+    // 히스테리시스는 공용 상태 하나로 판정.
+    expect(method, contains('_resolveTextCardMode(rawZoom)'));
+    // 말풍선은 일반 NMarker + 점 레이어보다 위 zIndex.
+    expect(builder, contains('NMarker('));
+    expect(builder, isNot(contains('NClusterableMarker')));
+    expect(builder, contains('300000 + post.score.toInt()'));
+    // 밑의 점 마커·캡션은 payload 변경 없이 네이티브 충돌 숨김으로 처리.
+    expect(builder, contains('setIsHideCollidedMarkers(true)'));
+    expect(builder, contains('setIsHideCollidedCaptions(true)'));
+  });
+
+  test('idle 은 공간 재조회 판단 전에 말풍선 레이어를 동기화한다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final start = source.indexOf('Future<void> _onCameraIdle()');
+    final end = source.indexOf('int _apiZoomFor(', start);
+    final method = source.substring(start, end);
+    final sync = method.indexOf('_syncBubbleLayer(');
+    final spatial = method.indexOf('MapReloadPolicy.spatialReason');
+
+    expect(sync, isNonNegative);
+    expect(spatial, greaterThan(sync));
+  });
+
+  test('재조회 성공 후 로딩 해제 뒤에 말풍선 레이어를 수렴시킨다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final start = source.indexOf('Future<bool> _loadMapMarkers(');
+    final end = source.indexOf(
+      'Future<_MapMarkerLoadOutcome> _loadMapMarkersInternal(',
+      start,
+    );
+    final method = source.substring(start, end);
+    final loadingCleared = method.indexOf('_isLoadingMarkers = false');
+    final converge = method.indexOf(
+      'unawaited(_syncBubbleLayerWithCurrentCamera())',
+    );
+    final returnOutcome = method.indexOf(
+      'return outcome == _MapMarkerLoadOutcome.applied',
+    );
+
+    expect(loadingCleared, isNonNegative);
+    expect(converge, greaterThan(loadingCleared));
+    expect(returnOutcome, greaterThan(converge));
+  });
+
+  test('카드 열림은 말풍선 레이어를 비우고 닫힘 idle 이 복원한다', () {
+    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final selectStart = source.indexOf('Future<void> _selectMarker(');
+    final selectEnd = source.indexOf('// ── 스택 원형 펼침', selectStart);
+    final select = source.substring(selectStart, selectEnd);
+    final syncStart = source.indexOf('Future<void> _syncBubbleLayer(');
+    final syncEnd = source.indexOf('/// 말풍선 일반 NMarker 생성', syncStart);
+    final sync = source.substring(syncStart, syncEnd);
+
+    // 열림: sync 호출 (선택 중엔 목표 공집합 → 전부 제거).
+    expect(select, contains('_syncBubbleLayerWithCurrentCamera()'));
+    expect(sync, contains('_selectedGroupIndex == null'));
+    // 닫힘: 기존 resume 경로의 _onCameraIdle 이 sync 를 다시 부른다.
+    expect(source, contains('await _onCameraIdle()'));
+  });
+
   test('카드 close는 말풍선 복원 후 재조회하고 stale marker 전환을 버린다', () {
     final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
     final helperStart = source.indexOf(
