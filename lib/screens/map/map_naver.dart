@@ -1365,8 +1365,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// z=20(반경 100m)으로 올라가 뷰포트보다 좁게 조회돼, 화면에 보이던
   /// 마커가 줌인 중 삭제되고 밀집 판정까지 뒤집힌다 (2026-07-15 버그).
   /// 내림은 항상 "한 단계 넓게" 조회하므로 뷰포트 커버가 보장된다.
-  /// 백엔드 ZoomLevel 테이블 범위(10~20)로 클램프.
-  int _apiZoomFor(double rawZoom) => rawZoom.floor().clamp(10, 20);
+  /// 백엔드 ZoomLevel 테이블 범위(6~20)로 클램프.
+  /// (지도 minZoom 6 확장과 함께 백엔드 ZOOM_6~9 추가 — 2026-07-19)
+  int _apiZoomFor(double rawZoom) => rawZoom.floor().clamp(6, 20);
 
   // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
   String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
@@ -2602,7 +2603,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               consumeSymbolTapEvents: true,
               // 기본 지도 POI 심볼 축소 — 공용 상수 (모든 지도 화면 동일).
               symbolScale: kMapSymbolScale,
-              minZoom: 10,
+              minZoom: 6,
               maxZoom: 20,
               // 다크모드일 때만 navi 타입 + 야간 모드 (라이브러리 한계: nightMode는 navi 전용)
               mapType: isDark ? NMapType.navi : NMapType.basic,
