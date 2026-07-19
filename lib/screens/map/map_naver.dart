@@ -80,10 +80,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   double? _stackFanBaseZoom;
   // 펼침 팬아웃 애니메이션 타이머 — 접기/재펼침 시 취소.
   Timer? _fanAnimTimer;
-  // 텍스트 마커 점↔말풍선 전환 페이드인 — id별 진행 중 타이머.
-  // 일반 마커의 alpha 는 이 경로만 만진다 (크기 트윈 롤백 교훈: 다른
-  // 경로와 공유되는 속성엔 비동기 트윈 금지 — alpha 는 단독 소유라 안전).
-  final Map<String, Timer> _alphaTweens = {};
   // 펼침 중심 좌표 — 접기 수렴 애니메이션의 목표점.
   NLatLng? _stackFanCenter;
   // 펼침 호출 시퀀스 — 연속 호출 경합 시 이전 호출 무효화.
@@ -109,9 +105,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   static const int _stackFanZIndex = 900000000;
   static const String _stackFanCenterId = 'stack_fan_center';
   static const String _stackFanCenterHaloId = 'stack_fan_center_halo';
-  // 텍스트 마커 ID → 마지막으로 그린 모드(true=카드/줌인, false=원/줌아웃).
-  // 줌이 임계(16)를 넘나들면 모드가 바뀌므로 재생성 판단에 사용.
-  final Map<String, bool> _textMarkerCardMode = {};
   // 화면 전체 텍스트 마커 표현 모드(true=카드, false=점). 줌 히스테리시스로 갱신.
   // 경계 줌에서 카메라가 미세하게 흔들려도 점↔카드가 깜빡이지 않게 하는 핵심 상태.
   bool _textCardMode = false;
@@ -130,14 +123,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   final Map<String, double> _bubbleAlpha = {};
   // 페이드 아웃 진행 중(삭제 예정)인 말풍선 — 다시 목표가 되면 취소 후 복귀.
   final Set<String> _bubbleRemovingIds = {};
-  // 바텀 카드 열림 동안 텍스트 말풍선(카드 아이콘)을 점으로 강제하는 상태
-  // (피그마 18-2 ④ — 카드가 콘텐츠를 대신하므로 지도는 위치만 표시).
-  bool _textBubblesSuppressed = false;
-  // 말풍선 억제용 공유 점 아이콘 — 1회 생성 후 재사용 (점 그림은 글과 무관).
-  NOverlayImage? _textDotIcon;
-  // 카드 열림 동안 점으로 빌드된 텍스트 마커. 닫힐 때 메모리의 게시글·마커
-  // 참조로 카드 아이콘만 in-place 복원한다.
-  final Set<String> _textBubbleRestoreIds = {};
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -510,10 +495,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _cameraDebounce?.cancel();
     _freshnessTimer?.cancel();
     _fanAnimTimer?.cancel();
-    for (final t in _alphaTweens.values) {
-      t.cancel();
-    }
-    _alphaTweens.clear();
     for (final t in _bubbleFadeTimers.values) {
       t.cancel();
     }
@@ -848,8 +829,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerStackCount.remove(id);
         _markerIsHot.remove(id);
         _markerTitle.remove(id);
-        _textMarkerCardMode.remove(id);
-        _textBubbleRestoreIds.remove(id);
         // 부스트되어 있던 마커가 사라지면 하이라이트 상태도 해제
         if (_highlightedMarkerId == id) {
           _highlightedMarkerId = null;
@@ -931,7 +910,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _markerStackCount.remove(topPost.id);
         _markerIsHot.remove(topPost.id);
         _markerTitle.remove(topPost.id);
-        _textBubbleRestoreIds.remove(topPost.id);
       }
 
       // 신규(또는 재생성) 마커 생성 — payload 는 항상 점/썸네일 (2-레이어)
@@ -1118,10 +1096,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     } else {
       _applySelectionHighlight(null);
     }
-    // 재조회 중 카드가 닫혔으면(선택 소실 포함) 말풍선 복구 경로 재평가.
-    // (카드 열림 중 재조회는 위 suppressBubble 빌드 분기가 점으로 처리)
-    await _restoreTextBubblesAfterClose();
-
     // 펼침 중 재조회 최종 방어 — 어떤 경로의 재조회든 끝나는 시점에
     // 펼침 그룹의 원본 마커는 반드시 숨김이어야 한다. 생성 가드가 놓치는
     // 타이밍(재사용 분기 등)까지 커버하는 이중 안전장치.
@@ -1171,8 +1145,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _markerStackCount.clear();
     _markerIsHot.clear();
     _markerTitle.clear();
-    _textMarkerCardMode.clear();
-    _textBubbleRestoreIds.clear();
     _markerIconCache.clear();
     _markerBytesCache.clear();
     _clusterIconCache.clear();
@@ -1202,7 +1174,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedGroupIndex = null;
     });
     _applySelectionHighlight(null);
-    unawaited(_restoreTextBubblesAfterClose());
     _searchController.text = result.title;
 
     final position = NLatLng(result.lat, result.lng);
@@ -1263,7 +1234,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _isLoadingPlace = true;
     });
     _applySelectionHighlight(null);
-    unawaited(_restoreTextBubblesAfterClose());
 
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
@@ -1659,6 +1629,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     );
     // 점 레이어(200000+score)보다 항상 위.
     marker.setGlobalZIndex(300000 + post.score.toInt());
+    // 클러스터링 구간(≤16)과의 공존 금지 — 줌아웃 제스처 중 idle 전에
+    // 클러스터러가 재편성되면 충돌 숨김이 켜진 말풍선이 새 클러스터를
+    // 숨김 고착시킨다 (2026-07-19 마커 소실). 네이티브 minZoom 으로
+    // Dart sync 타이밍과 무관하게 원천 차단한다.
+    marker.setMinZoom(kBubbleMinZoom);
+    marker.setIsMinZoomInclusive(true);
     // 밑의 점 마커(+제목 캡션) 충돌 숨김(설계 Q1)은 여기서 켜지 않는다 —
     // 페이드 인 완료 후 _setBubbleCollisionHiding 이 켠다. 먼저 켜면 점이
     // 즉시 사라져 페이드 동안 빈 자리가 보인다.
@@ -1690,29 +1666,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _cardDragOffset = 0.0;
     });
     _applySelectionHighlight(null);
-    unawaited(_resumeAutomaticReloadsAfterInteractionClose(
-      restoreTextBubbles: true,
-    ));
+    unawaited(_resumeAutomaticReloadsAfterInteractionClose());
   }
 
-  Future<void> _resumeAutomaticReloadsAfterInteractionClose({
-    bool restoreTextBubbles = false,
-  }) async {
-    if (restoreTextBubbles) {
-      await _restoreTextBubblesAfterClose();
-      if (!mounted) return;
-    }
+  /// 상호작용(카드/검색/펼침) 종료 후 자동 재조회 재개.
+  /// 카드 닫힘의 말풍선 복원은 내부 _onCameraIdle 의 말풍선 레이어 sync 가
+  /// 담당한다 (2-레이어: 열림 중 목표 공집합 → 닫힘 시 현재 줌 기준 복원).
+  Future<void> _resumeAutomaticReloadsAfterInteractionClose() async {
     await _onCameraIdle();
     if (!mounted) return;
     await _consumePendingFreshness();
   }
-
-  /// 마커가 현재 "말풍선 카드"로 그려져 있는지 — 카드는 크기(가변)와
-  /// 캡션(카드에 제목 포함 → 캡션 비움)을 건드리지 않는다.
-  /// 억제 중(_textBubblesSuppressed)이면 카드 모드 텍스트 마커도 점으로
-  /// 그려져 있으므로 점과 동일하게 취급한다.
-  bool _isDisplayedAsCard(String id) =>
-      (_textMarkerCardMode[id] ?? false) && !_textBubblesSuppressed;
 
   /// 기본(비선택) 캡션 — 8자 말줄임. 제목이 비면 캡션 없음.
   NOverlayCaption _defaultCaption(String title, AppColors colors) =>
@@ -1750,22 +1714,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             prevMarker.setGlobalZIndex(baseZ);
           } catch (_) {/* overlay가 이미 네이티브에서 제거된 경우 무시 */}
         }
-        // 점/사진 마커만 크기·캡션 복원 (말풍선 카드는 크기 가변 + 캡션 없음)
+        // 크기·캡션 복원 (2-레이어: 점 레이어는 항상 점이라 무조건 복원).
         // 크기는 score 위계(42/50/58/66) 기준값으로 — 고정 50 아님.
-        if (!_isDisplayedAsCard(prevId)) {
-          final baseSize = _markerBaseSize[prevId] ?? _normalMarkerSize;
+        final baseSize = _markerBaseSize[prevId] ?? _normalMarkerSize;
+        try {
+          prevMarker.setSize(Size(baseSize, baseSize));
+        } catch (_) {/* same */}
+        // 캡션 복원 — 8자 말줄임, 강제 노출은 핫플만.
+        final title = _markerTitle[prevId];
+        if (title != null) {
           try {
-            prevMarker.setSize(Size(baseSize, baseSize));
+            prevMarker.setCaption(_defaultCaption(title, colors));
+            prevMarker
+                .setIsForceShowCaption(_markerIsHot[prevId] ?? false);
           } catch (_) {/* same */}
-          // 캡션 복원 — 8자 말줄임, 강제 노출은 핫플만.
-          final title = _markerTitle[prevId];
-          if (title != null) {
-            try {
-              prevMarker.setCaption(_defaultCaption(title, colors));
-              prevMarker
-                  .setIsForceShowCaption(_markerIsHot[prevId] ?? false);
-            } catch (_) {/* same */}
-          }
         }
       }
     }
@@ -1776,218 +1738,24 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         try {
           marker.setGlobalZIndex(_selectedMarkerZIndex);
         } catch (_) {/* same */}
-        // 선택 강조: 점/사진 마커는 살짝 확대 (아이콘 재합성 없이 setSize만 —
+        // 선택 강조: 살짝 확대 (아이콘 재합성 없이 setSize만 —
         // iOS 마커 이미지 캐시 경합 리스크 없음. marker_constants 참고)
         // 확대 기준도 위계 크기 — 핫플은 66 x 1.18 까지 커진다.
-        if (!_isDisplayedAsCard(markerId)) {
-          final baseSize = _markerBaseSize[markerId] ?? _normalMarkerSize;
+        final baseSize = _markerBaseSize[markerId] ?? _normalMarkerSize;
+        try {
+          marker.setSize(Size(
+              baseSize * kSelectedMarkerScale,
+              baseSize * kSelectedMarkerScale));
+        } catch (_) {/* same */}
+        // 선택 마커는 전체 타이틀 노출 + 줌/충돌 숨김 보호.
+        final title = _markerTitle[markerId];
+        if (title != null && title.isNotEmpty) {
           try {
-            marker.setSize(Size(
-                baseSize * kSelectedMarkerScale,
-                baseSize * kSelectedMarkerScale));
+            marker.setCaption(_selectedCaption(title, colors));
+            marker.setIsForceShowCaption(true);
           } catch (_) {/* same */}
-          // 선택 마커는 전체 타이틀 노출 + 줌/충돌 숨김 보호.
-          final title = _markerTitle[markerId];
-          if (title != null && title.isNotEmpty) {
-            try {
-              marker.setCaption(_selectedCaption(title, colors));
-              marker.setIsForceShowCaption(true);
-            } catch (_) {/* same */}
-          }
         }
       }
-    }
-  }
-
-  /// 바텀 카드 열림/닫힘에 맞춰 말풍선(텍스트 카드 아이콘) 마커를 점으로
-  /// 강제/복원한다 (피그마 18-2 ④ — 카드 열림: 모든 말풍선 숨김, 점만 표시).
-  /// 재조회 없이 setIcon/setSize/setCaption 만 갈아끼우는 경량 경로 —
-  /// **이미 네이티브에 등록된(오래 전 add 된) 마커에만 신뢰할 수 있다.**
-  /// add 직후 마커는 클러스터 파이프라인의 비동기 등록과 경합하므로
-  /// 그 케이스는 updateMarkers 의 suppressBubble 빌드 분기가 처리한다.
-  Future<void> _syncTextBubbleSuppression() async {
-    final bool suppress = _selectedGroupIndex != null;
-    if (suppress == _textBubblesSuppressed) return;
-    _textBubblesSuppressed = suppress;
-
-    // 대상: 카드 모드로 그려진(그려질) 텍스트 마커 전부.
-    final cardIds = _textMarkerCardMode.entries
-        .where((e) => e.value)
-        .map((e) => e.key)
-        .toList();
-    if (cardIds.isEmpty) return;
-
-    if (suppress && _textDotIcon == null) {
-      try {
-        final bytes = await _markerImageFactory.createTextDotImage();
-        _textDotIcon = await overlayImageFromBytes(bytes);
-      } catch (e) {
-        debugPrint('[map] 말풍선 억제용 점 아이콘 생성 실패: $e');
-        return;
-      }
-      if (!mounted) return;
-    }
-
-    final colors = AppColors.of(context);
-    for (final id in cardIds) {
-      final marker = _markerRefs[id];
-      if (marker == null) continue;
-      // 지도에서 이미 제거된 마커는 스킵 — native "overlay can't found"
-      // 로그 소음 감소 (등록 진행 중 race 는 여전히 가능, 무해).
-      if (!marker.isAdded) continue;
-      final String title = _markerTitle[id] ?? '';
-      final bool selected = id == _highlightedMarkerId;
-      try {
-        if (suppress) {
-          final double base = _markerBaseSize[id] ?? _normalMarkerSize;
-          marker.setIcon(_textDotIcon!);
-          // 선택 마커는 점 상태에서도 1.18x + 전체 캡션 유지.
-          marker.setSize(selected
-              ? Size(base * kSelectedMarkerScale, base * kSelectedMarkerScale)
-              : Size(base, base));
-          marker.setCaption(selected
-              ? _selectedCaption(title, colors)
-              : _defaultCaption(title, colors));
-          marker.setIsForceShowCaption(
-              selected || (_markerIsHot[id] ?? false));
-        } else {
-          // 복원 — 재조회 없이 캐시된 말풍선 아이콘으로 되돌린다.
-          // 캐시가 없으면(그 사이 제거됨) 다음 재조회가 다시 만든다.
-          final icon = _markerIconCache[id];
-          if (icon != null) marker.setIcon(icon);
-          marker.setSize(kTextCardSize);
-          marker.setCaption(_defaultCaption('', colors)); // 카드가 제목 포함
-          marker.setIsForceShowCaption(_markerIsHot[id] ?? false);
-        }
-      } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
-    }
-  }
-
-  /// 카드 닫힘 시 말풍선 상태를 로컬 마커만 갱신해 복구한다.
-  Future<void> _restoreTextBubblesAfterClose() async {
-    if (_selectedGroupIndex != null) return; // 아직 열림 — 복구 대상 아님
-    await _syncTextBubbleSuppression();
-    if (_textBubbleRestoreIds.isEmpty || !mounted) return;
-    final restoreIds = Set<String>.from(_textBubbleRestoreIds);
-    _textBubbleRestoreIds.clear();
-    await _restoreTextBubbleMarkersInPlace(restoreIds);
-  }
-
-  Future<void> _restoreTextBubbleMarkersInPlace(Set<String> restoreIds) async {
-    final postsById = {
-      for (final group in _postGroups)
-        if (group.isNotEmpty) group.first.id: group.first,
-    };
-    final colors = AppColors.of(context);
-    for (final id in restoreIds) {
-      final post = postsById[id];
-      final marker = _markerRefs[id];
-      if (post == null ||
-          post.fileInfoList.isNotEmpty ||
-          marker == null ||
-          !marker.isAdded) {
-        continue;
-      }
-      await _flipTextMarkerModeInPlace(
-        post,
-        toCard: true,
-        tierSize: _markerBaseSize[id] ?? _normalMarkerSize,
-        isHot: _markerIsHot[id] ?? false,
-        colors: colors,
-      );
-    }
-  }
-
-  /// 마커 페이드인 (33ms 스텝, easeOut) — 점↔말풍선 전환의 프레임 단위
-  /// 교체 "뚝" 을 부드럽게. 스왑 자체는 동기라 상태 계약 불변, alpha 만
-  /// 비동기 트윈. 같은 id 재전환 시 이전 트윈 취소 후 재시작.
-  void _fadeInMarker(
-    String id,
-    NMarker marker, {
-    Duration duration = const Duration(milliseconds: 165),
-  }) {
-    _alphaTweens.remove(id)?.cancel();
-    final int steps = max(3, duration.inMilliseconds ~/ 33);
-    int step = 0;
-    _alphaTweens[id] = Timer.periodic(const Duration(milliseconds: 33), (t) {
-      step++;
-      final double p = step / steps;
-      final double eased = 1 - pow(1 - p, 2).toDouble(); // easeOutQuad
-      bool done = step >= steps;
-      try {
-        marker.setAlpha(done ? 1.0 : eased);
-      } catch (_) {
-        done = true; // 네이티브에서 제거됨 — 트윈 중단
-      }
-      if (done) {
-        t.cancel();
-        _alphaTweens.remove(id);
-      }
-    });
-  }
-
-  /// 텍스트 마커의 점↔카드 표현을 **마커 재생성 없이** 전환한다.
-  /// delete+add 재생성은 Dart 오버레이 핸들러 등록에 공백을 만들어 그 사이
-  /// 탭이 무시된다(플러그인 overlay_controller_impl 널 체크로 삼켜짐).
-  /// 이미 네이티브에 등록된 마커의 setIcon/setSize/setCaption 은 안전하다
-  /// (내지도 _applyTextCardMode 와 동일 패턴).
-  /// 성공 시 관련 캐시·상태를 갱신하고 true, 실패 시 false(호출부가 재생성 폴백).
-  Future<bool> _flipTextMarkerModeInPlace(
-    MapPost post, {
-    required bool toCard,
-    required double tierSize,
-    required bool isHot,
-    required AppColors colors,
-  }) async {
-    final marker = _markerRefs[post.id];
-    if (marker == null) return false;
-    try {
-      final NOverlayImage icon;
-      Uint8List? bytes;
-      if (toCard) {
-        icon = await _buildTextCardIcon(post);
-      } else {
-        bytes = await _markerImageFactory.createTextDotImage();
-        icon = await overlayImageFromBytes(bytes);
-      }
-      if (!mounted ||
-          !identical(_markerRefs[post.id], marker) ||
-          !_mapMarkerIds.contains(post.id) ||
-          !marker.isAdded) {
-        return false;
-      }
-      // 전환 페이드인 — alpha 0 으로 내리고 스왑 후 트윈으로 복귀.
-      // 스왑(아이콘/크기/캡션/상태)은 기존과 동일하게 동기 처리라
-      // 억제·선택·재조회와의 타이밍 계약은 그대로다.
-      // ⚠️ 크로스페이드(고스트 마커) 시도는 롤백 (2026-07-16): 재조회 중
-      // 고스트 addOverlay 가 네이티브 클러스터러의 dispatch_sync 와 겹쳐
-      // 앱 프리즈 재현. 별도 오버레이 추가 없이 페이드인만 유지.
-      marker.setAlpha(0);
-      marker.setIcon(icon);
-      marker.setSize(toCard ? _textCardSize : Size(tierSize, tierSize));
-      // 카드는 제목/본문 포함 → 캡션 비움. 점은 8자 캡션.
-      marker.setCaption(toCard
-          ? _defaultCaption('', colors)
-          : _defaultCaption(_markerTitle[post.id] ?? '', colors));
-      marker.setIsForceShowCaption(isHot);
-      _fadeInMarker(post.id, marker);
-
-      _textMarkerCardMode[post.id] = toCard;
-      _markerIconCache[post.id] = icon;
-      if (bytes != null) {
-        _markerBytesCache[post.id] = bytes; // 클러스터/스택 뱃지 합성 호환
-      } else {
-        // 카드 아이콘은 bytes 캐시 없음 (기존 재생성 경로와 동일 동작)
-        _markerBytesCache.remove(post.id);
-      }
-      // 이전 표현으로 합성된 클러스터 아이콘 무효화 (stale 아이콘 방지)
-      _clusterIconCache.removeWhere((k, _) => k.startsWith('${post.id}_'));
-      _markerBaseSize[post.id] = tierSize;
-      _markerIsHot[post.id] = isHot;
-      return true;
-    } catch (e) {
-      debugPrint('[map] 텍스트 마커 in-place 전환 실패 ${post.id}: $e');
-      return false;
     }
   }
 
@@ -2264,9 +2032,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedGroupIndex = idx;
       _selectedPostIndex = postIndex;
     });
-    // 카드 열림 → 말풍선 억제 (피그마 18-2 ④). 카메라 이동과 독립적으로 적용.
-    unawaited(_syncTextBubbleSuppression());
-    // 카드 열림 → 말풍선 레이어 제거 (sync 가 선택 중엔 목표 공집합).
+    // 카드 열림 → 말풍선 레이어 제거 (피그마 18-2 ④ — sync 가 선택 중엔
+    // 목표 공집합). 카메라 이동과 독립적으로 적용.
     unawaited(_syncBubbleLayerWithCurrentCamera());
     if (!moveCamera) return;
 
@@ -3095,9 +2862,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                         });
                         _applySelectionHighlight(null);
                         unawaited(
-                          _resumeAutomaticReloadsAfterInteractionClose(
-                            restoreTextBubbles: true,
-                          ),
+                          _resumeAutomaticReloadsAfterInteractionClose(),
                         );
                       },
                       onGroupChanged: (newIdx) {

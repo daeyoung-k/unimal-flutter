@@ -30,22 +30,20 @@ void main() {
     expect(method, isNot(contains('dLat > 0.0005')));
   });
 
-  test('카드 닫힘 말풍선 복원은 로컬 마커만 갱신한다', () {
+  test('레거시 in-place 전환·억제 경로가 존재하지 않는다', () {
     final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
-    final start = source.indexOf(
-      'Future<void> _restoreTextBubblesAfterClose()',
-    );
-    final end = source.indexOf('/// 마커 페이드인', start);
-    final method = source.substring(start, end);
 
-    expect(method, contains('_syncTextBubbleSuppression'));
-    expect(method, contains('_restoreTextBubbleMarkersInPlace'));
-    expect(method, isNot(contains('_loadMapMarkers')));
-    expect(method, isNot(contains('addOverlay')));
-    expect(method, isNot(contains('getCameraPosition')));
-    expect(method, contains('_postGroups'));
-    expect(method, contains('_markerRefs'));
-    expect(method, contains('_flipTextMarkerModeInPlace'));
+    // 2-레이어 설계(docs/specs/2026-07-19)로 대체 — 클러스터러블 마커의
+    // in-place 표현 변경은 리클러스터링 되돌림(C1) 때문에 성립하지 않는다.
+    expect(source, isNot(contains('_flipTextMarkerModeInPlace')));
+    expect(source, isNot(contains('_fadeInMarker')));
+    expect(source, isNot(contains('_alphaTweens')));
+    expect(source, isNot(contains('_syncTextBubbleSuppression')));
+    expect(source, isNot(contains('_restoreTextBubblesAfterClose')));
+    expect(source, isNot(contains('_textBubbleRestoreIds')));
+    expect(source, isNot(contains('_textMarkerCardMode')));
+    expect(source, isNot(contains('_textBubblesSuppressed')));
+    expect(source, isNot(contains('_isDisplayedAsCard')));
   });
 
   test('지도는 성공 기준 one-shot freshness와 생명주기 게이트를 사용한다', () {
@@ -429,7 +427,7 @@ void main() {
     expect(helperStart, isNonNegative);
     if (helperStart < 0) return;
     final helperEnd = source.indexOf(
-      '/// 마커가 현재 "말풍선 카드"',
+      '/// 기본(비선택) 캡션',
       helperStart,
     );
     final helper = source.substring(helperStart, helperEnd);
@@ -489,6 +487,9 @@ void main() {
     // 페이드 인 시작값 — 충돌 숨김은 빌드 시점이 아니라 페이드 완료 후.
     expect(builder, contains('alpha: 0'));
     expect(builder, isNot(contains('setIsHideCollidedMarkers')));
+    // 클러스터링 구간(≤16)과 공존 금지 — 네이티브 minZoom 하드 가드
+    // (충돌 숨김 켜진 말풍선이 새 클러스터를 숨김 고착시키는 사고 방지).
+    expect(builder, contains('setMinZoom(kBubbleMinZoom)'));
   });
 
   test('말풍선 전환은 페이드 트윈이고 충돌 숨김은 페이드와 교차된다', () {
@@ -564,7 +565,7 @@ void main() {
     expect(source, contains('await _onCameraIdle()'));
   });
 
-  test('카드 close는 말풍선 복원 후 재조회하고 stale marker 전환을 버린다', () {
+  test('카드 close는 idle 재평가로 말풍선을 복원하고 pending을 소비한다', () {
     final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
     final helperStart = source.indexOf(
       'Future<void> _resumeAutomaticReloadsAfterInteractionClose(',
@@ -572,40 +573,16 @@ void main() {
     expect(helperStart, isNonNegative);
     if (helperStart < 0) return;
     final helperEnd = source.indexOf(
-      '/// 마커가 현재 "말풍선 카드"',
+      '/// 기본(비선택) 캡션',
       helperStart,
     );
     final helper = source.substring(helperStart, helperEnd);
-    final restore = helper.indexOf('await _restoreTextBubblesAfterClose()');
     final idle = helper.indexOf('await _onCameraIdle()');
     final pending = helper.indexOf('await _consumePendingFreshness()');
 
-    expect(restore, isNonNegative);
-    expect(idle, greaterThan(restore));
+    // 말풍선 복원은 별도 경로가 아니라 idle 내부의 말풍선 레이어 sync 가
+    // 담당한다 (2-레이어: 선택 해제 후 현재 줌 기준 재구성).
+    expect(idle, isNonNegative);
     expect(pending, greaterThan(idle));
-    expect(
-      RegExp('restoreTextBubbles: true').allMatches(source).length,
-      greaterThanOrEqualTo(2),
-    );
-
-    final flipStart = source.indexOf(
-      'Future<bool> _flipTextMarkerModeInPlace(',
-    );
-    final flipEnd = source.indexOf('Future<NOverlayImage> _buildTextCardIcon(', flipStart);
-    final flip = source.substring(flipStart, flipEnd);
-    final iconReady = flip.indexOf('if (!mounted');
-    final identity = flip.indexOf(
-      'identical(_markerRefs[post.id], marker)',
-      iconReady,
-    );
-    final apply = flip.indexOf('marker.setAlpha(0)', iconReady);
-
-    expect(identity, greaterThan(iconReady));
-    expect(apply, greaterThan(identity));
-    expect(
-      flip.substring(iconReady, apply),
-      contains('_mapMarkerIds.contains(post.id)'),
-    );
-    expect(flip.substring(iconReady, apply), contains('marker.isAdded'));
   });
 }
