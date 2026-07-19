@@ -337,8 +337,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     } else {
       _composeClusterBubble(info.size, clusterMarker);
     }
-    // 클러스터 탭 → 클러스터 중심으로 fly 줌인(16+). 줌 16부터 클러스터링이 풀리며
-    // jitter된 동일 좌표 글들이 개별 마커로 펼쳐진다. (메인 지도와 동일 동선)
+    // 클러스터 탭 → 실제 마커 위치로 fly 줌인. 좌표 평균(centroid)으로 이동하면
+    // 글이 흩어진 클러스터에선 마커가 하나도 없는 허공 중앙에 카메라가 도착한다.
+    // 메인 지도(size>1 탭 = 대표 마커 위치 + kClusterTapZoom)와 동일하게,
+    // centroid에서 가장 가까운 자식 마커 위치를 목적지로 삼는다.
     final children = info.children;
     if (children.isNotEmpty) {
       double sumLat = 0, sumLng = 0;
@@ -348,17 +350,27 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       }
       final center =
           NLatLng(sumLat / children.length, sumLng / children.length);
+      NLatLng target = children.first.position;
+      double bestDist = double.infinity;
+      for (final c in children) {
+        final dLat = c.position.latitude - center.latitude;
+        final dLng = c.position.longitude - center.longitude;
+        final dist = dLat * dLat + dLng * dLng;
+        if (dist < bestDist) {
+          bestDist = dist;
+          target = c.position;
+        }
+      }
       clusterMarker.setOnTapListener((_) async {
         final controller = _mapController;
         if (controller == null) return;
         final cam = await controller.getCameraPosition();
-        // 메인 지도(_clusterExpandZoom)와 동일 — 16은 클러스터가 겨우 풀리는
-        // 수준이라 jitter 마커가 겹쳐 보임. 17로 당겨 개별 구분되게 한다.
-        final nextZoom = cam.zoom < _clusterExpandZoom
-            ? _clusterExpandZoom
-            : cam.zoom;
+        // 메인 지도와 동일한 kClusterTapZoom(18) — 클러스터링(≤16)이 확실히
+        // 풀리고 jitter/스택 마커도 개별로 구분되는 깊이.
+        final nextZoom =
+            cam.zoom < kClusterTapZoom ? kClusterTapZoom : cam.zoom;
         final update = NCameraUpdate.scrollAndZoomTo(
-          target: center,
+          target: target,
           zoom: nextZoom,
         )..setAnimation(
             animation: NCameraAnimation.fly,
