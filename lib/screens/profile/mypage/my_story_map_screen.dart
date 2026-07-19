@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/profile/mypage/post_detail_sheet.dart';
@@ -50,7 +51,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   bool _textCardMode = false;
   final Map<String, NClusterableMarker> _textMarkerRefs = {};
   final Map<String, BoardPost> _textMarkerPosts = {};
-  final Map<String, NOverlayImage> _textCardIconCache = {};
+  // 말풍선 레이어 — 메인 지도와 공용 구현 (2-레이어 설계 docs/specs/2026-07-19).
+  // 점 마커 payload 는 항상 점, 말풍선은 별도 일반 NMarker 로 페이드 인/아웃.
+  final BubbleMarkerLayer _bubbleLayer =
+      BubbleMarkerLayer(debugLabel: 'myStoryMap bubble');
 
   // 선택(탭)된 마커 z-index 부스트 — 메인 지도와 동일 동작.
   static const int _selectedMarkerZIndex = 999999999;
@@ -75,6 +79,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _bubbleLayer.cancelTimers();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -487,48 +497,91 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     if (controller == null || _textMarkerRefs.isEmpty) return;
     final cam = await controller.getCameraPosition();
     if (!mounted) return;
-    final bool next = _textCardMode
+    _textCardMode = _textCardMode
         ? cam.zoom >= kTextCardExitZoom
         : cam.zoom >= kTextCardEnterZoom;
-    if (next == _textCardMode) return;
-    _textCardMode = next;
-    await _applyTextCardMode(next);
+    await _syncBubbleLayer(
+      controller,
+      rawZoom: cam.zoom,
+      latitude: cam.target.latitude,
+    );
   }
 
-  /// 텍스트 마커 아이콘을 점↔카드로 일괄 교체.
-  /// 마커 재생성 없이 setIcon/setSize/setCaption만 갱신 — 깜빡임 최소화.
-  Future<void> _applyTextCardMode(bool cardMode) async {
-    if (!mounted) return;
-    final colors = AppColors.of(context);
-    for (final entry in _textMarkerRefs.entries) {
-      final id = entry.key;
-      final marker = entry.value;
-      final post = _textMarkerPosts[id];
-      if (post == null) continue;
-      try {
-        if (cardMode) {
-          final icon = _textCardIconCache[id] ?? await _buildTextCardIcon(post);
-          _textCardIconCache[id] = icon;
-          if (!mounted) return;
-          marker.setIcon(icon);
-          marker.setSize(kTextCardSize);
-          // 카드에 제목/본문 포함 → 하단 캡션 중복 방지.
-          marker.setCaption(const NOverlayCaption(text: ''));
-        } else {
-          final dot = _markerIcons[id];
-          if (dot != null) marker.setIcon(dot);
-          marker.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
-          marker.setCaption(NOverlayCaption(
-            text: _markerCaption(displayTitle(post.title, post.content)),
-            textSize: _markerCaptionTextSize,
-            color: colors.textPrimary,
-            haloColor: colors.background,
-          ));
+  /// 말풍선이 뜰 수 있는 텍스트 글 집합 — 메인 지도와 동일한 밀집 필터.
+  /// 반경(화면 dp)에 다른 마커가 kTextCardDenseNeighbors 개 이상이면 점 유지.
+  /// jitter 로 ~17m 간격으로 뭉친 내 글들에 카드가 겹겹이 뜨면서 충돌 숨김이
+  /// 주변 마커를 전부 가리는 문제 방지 (2026-07-19).
+  Set<String> _bubbleEligibleIds({
+    required double latitude,
+    required double rawZoom,
+  }) {
+    final controller = _mapController;
+    if (controller == null) return const <String>{};
+    final meterPerDp = controller.getMeterPerDpAtLatitude(
+      latitude: latitude,
+      zoom: rawZoom,
+    );
+    final radiusDeg = kTextCardDenseRadiusDp * meterPerDp / 111320.0;
+    final eligible = <String>{};
+    for (final id in _textMarkerRefs.keys) {
+      final pos = _textMarkerRefs[id]!.position;
+      var neighbors = 0;
+      for (final entry in _markerRefs.entries) {
+        if (entry.key == id) continue;
+        final other = entry.value.position;
+        if ((other.latitude - pos.latitude).abs() < radiusDeg &&
+            (other.longitude - pos.longitude).abs() < radiusDeg) {
+          neighbors++;
+          if (neighbors >= kTextCardDenseNeighbors) break;
         }
-      } catch (_) {
-        // 오버레이가 네이티브에서 제거된 경우 등 — 개별 마커 실패는 무시.
+      }
+      if (neighbors < kTextCardDenseNeighbors) eligible.add(id);
+    }
+    return eligible;
+  }
+
+  /// 말풍선 레이어 동기화 — 메인 지도와 공용 BubbleMarkerLayer 사용
+  /// (2-레이어 설계 docs/specs/2026-07-19). 점 마커는 항상 점 payload 를
+  /// 유지하고, 카드 모드에서 말풍선이 위에 페이드 인 된다.
+  /// (과거 in-place setIcon 일괄 교체는 iOS 리클러스터링이 최초 add payload
+  /// 로 되돌리는 문제(C1)가 있어 메인 지도와 함께 폐기 — 2026-07-19)
+  Future<void> _syncBubbleLayer(
+    NaverMapController controller, {
+    required double rawZoom,
+    required double latitude,
+  }) async {
+    final targets = <BubbleMarkerTarget>[];
+    if (_textCardMode) {
+      final eligibleIds = _bubbleEligibleIds(
+        latitude: latitude,
+        rawZoom: rawZoom,
+      );
+      for (final entry in _textMarkerRefs.entries) {
+        final id = entry.key;
+        final post = _textMarkerPosts[id];
+        if (post == null) continue;
+        if (!eligibleIds.contains(id)) continue;
+        final position = entry.value.position; // jitter 반영 좌표
+        targets.add(BubbleMarkerTarget(
+          id: id,
+          position: position,
+          buildIcon: () => _buildTextCardIcon(post),
+          onTap: () {
+            if (!mounted) return;
+            _applySelectionHighlight(id);
+            unawaited(_moveCameraToMarker(position));
+            unawaited(showPostDetailSheet(context, post.boardId).then((_) {
+              if (mounted) _applySelectionHighlight(null);
+            }));
+          },
+        ));
       }
     }
+    await _bubbleLayer.sync(
+      controller: controller,
+      targets: targets,
+      canApply: () => mounted && _mapController != null,
+    );
   }
 
   /// 텍스트 글 줌인 카드 아이콘 — 꼬리 끝이 하단 중앙(anchor 0.5,1.0)에 오도록

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
@@ -110,19 +111,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   bool _textCardMode = false;
   // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ──
   // 점(클러스터러블)의 payload 는 영원히 점이고, 말풍선은 별도 id 의 일반
-  // NMarker 다. 일반 마커는 네이티브 클러스터러가 관여하지 않아 리클러스터링
-  // 되돌림(C1)이 없고, 같은 id 재생성이 없어 탭 핸들러 경합(C2)도 없다.
-  final Map<String, NMarker> _bubbleMarkerRefs = {};
-  final Set<String> _bubbleMarkerIds = {};
-  // 말풍선 sync latest-wins 세대 — 비동기 아이콘 생성 중 새 sync 가 시작되면
-  // 이전 결과는 폐기된다.
-  int _bubbleSyncGeneration = 0;
-  // 페이드 트윈 (Phase 2) — id 별 진행 중 타이머와 현재 alpha.
-  // 일반 NMarker 는 클러스터러 되돌림(C1)이 없어 alpha 트윈이 안전하다.
-  final Map<String, Timer> _bubbleFadeTimers = {};
-  final Map<String, double> _bubbleAlpha = {};
-  // 페이드 아웃 진행 중(삭제 예정)인 말풍선 — 다시 목표가 되면 취소 후 복귀.
-  final Set<String> _bubbleRemovingIds = {};
+  // NMarker 다. 수명주기·페이드·충돌 숨김은 내지도와 공용인
+  // BubbleMarkerLayer 가 담당한다.
+  final BubbleMarkerLayer _bubbleLayer =
+      BubbleMarkerLayer(debugLabel: 'map bubble');
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -495,10 +487,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _cameraDebounce?.cancel();
     _freshnessTimer?.cancel();
     _fanAnimTimer?.cancel();
-    for (final t in _bubbleFadeTimers.values) {
-      t.cancel();
-    }
-    _bubbleFadeTimers.clear();
+    _bubbleLayer.cancelTimers();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -1118,26 +1107,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   Future<void> _clearStoryMarkerOverlaysAndCaches() async {
     final controller = _mapController;
+    // 말풍선 레이어는 일반 NMarker 라 clusterableMarker clear 에 안 걸린다.
+    // 검색 핀 등 다른 일반 마커를 지우지 않도록 레이어가 개별 삭제한다.
+    await _bubbleLayer.clear(controller);
     if (controller != null) {
-      // 말풍선 레이어는 일반 NMarker 라 clusterableMarker clear 에 안 걸린다.
-      // 검색 핀 등 다른 일반 마커를 지우지 않도록 개별 삭제.
-      for (final id in _bubbleMarkerIds.toList()) {
-        try {
-          controller.deleteOverlay(
-            NOverlayInfo(type: NOverlayType.marker, id: _bubbleOverlayId(id)),
-          );
-        } catch (_) {}
-      }
       await controller.clearOverlays(type: NOverlayType.clusterableMarker);
     }
-    for (final t in _bubbleFadeTimers.values) {
-      t.cancel();
-    }
-    _bubbleFadeTimers.clear();
-    _bubbleAlpha.clear();
-    _bubbleRemovingIds.clear();
-    _bubbleMarkerIds.clear();
-    _bubbleMarkerRefs.clear();
     _mapMarkerIds.clear();
     _markerRefs.clear();
     _markerBaseZIndex.clear();
@@ -1430,8 +1405,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   // ── 말풍선 레이어 (2-레이어 설계 docs/specs/2026-07-19) ─────────────────
 
-  String _bubbleOverlayId(String postId) => 'bubble_$postId';
-
   /// 현재 카메라를 읽어 말풍선 레이어를 동기화한다 — 재조회 완료·카드
   /// 열림/닫힘 등 "지금 화면 기준 수렴"이 필요한 지점의 공용 진입점.
   Future<void> _syncBubbleLayerWithCurrentCamera() async {
@@ -1445,9 +1418,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   /// 말풍선 레이어를 현재 줌 기준 목표 집합으로 수렴시킨다.
-  /// - 전역 모드(히스테리시스 17.3/16.8)가 카드이고 바텀 카드가 닫혀 있을 때만
-  ///   대상 글의 말풍선을 표시한다.
-  /// - 점 레이어는 건드리지 않는다. 추가/제거 대상이 없으면 no-op.
+  /// - 전역 모드(히스테리시스)가 카드이고 바텀 카드가 닫혀 있을 때만
+  ///   대상 글의 말풍선을 표시한다. 아니면 목표 공집합(전부 제거).
+  /// - 점 레이어는 건드리지 않는다. 수명주기·페이드는 BubbleMarkerLayer 가
+  ///   담당한다.
   /// - 재조회 중에는 조작하지 않는다(C3) — 재조회 완료 수렴 패스가 재호출.
   Future<void> _syncBubbleLayer({
     required double rawZoom,
@@ -1456,10 +1430,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (!mounted || _mapController == null) return;
     final cardMode = _resolveTextCardMode(rawZoom);
     if (_isLoadingMarkers) return;
-    final generation = ++_bubbleSyncGeneration;
 
     // 목표 집합 계산
-    final targetPosts = <String, MapPost>{};
+    final targets = <BubbleMarkerTarget>[];
     if (cardMode && _selectedGroupIndex == null) {
       final markerGroups = List<List<MapPost>>.from(_postGroups);
       final eligibleIds = _textBubbleEligibleIds(
@@ -1474,180 +1447,32 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         if (!eligibleIds.contains(post.id)) continue;
         // 점 마커가 화면에 있는 글만 — 재조회 집합과 어긋난 말풍선 방지.
         if (!_mapMarkerIds.contains(post.id)) continue;
-        targetPosts[post.id] = post;
+        final postId = post.id;
+        targets.add(BubbleMarkerTarget(
+          id: postId,
+          position: NLatLng(post.latitude, post.longitude),
+          score: post.score.toInt(),
+          buildIcon: () => _buildTextCardIcon(post),
+          onTap: () {
+            _focusNode.unfocus();
+            final idx = _postGroups
+                .indexWhere((g) => g.isNotEmpty && g.first.id == postId);
+            if (idx < 0) return;
+            unawaited(_selectMarker(idx, minZoom: _textCardCameraZoom));
+          },
+        ));
       }
     }
 
-    // 제거분 — 페이드 아웃 후 삭제. 페이드 중 다시 목표가 되면 취소하고 복귀.
-    final targetIds = targetPosts.keys.toSet();
-    var removeStarted = 0;
-    for (final id in _bubbleMarkerIds.toList()) {
-      final marker = _bubbleMarkerRefs[id];
-      if (marker == null) continue;
-      if (targetIds.contains(id)) {
-        if (_bubbleRemovingIds.remove(id)) {
-          // 삭제 예정이었지만 다시 목표 — 현재 alpha 에서 복귀.
-          _fadeBubble(id, marker, to: 1.0, onDone: () {
-            _setBubbleCollisionHiding(marker, true);
-          });
-        }
-        continue;
-      }
-      if (_bubbleRemovingIds.contains(id)) continue; // 이미 페이드 아웃 중
-      _bubbleRemovingIds.add(id);
-      removeStarted++;
-      // 점이 먼저 자연스럽게 돌아오도록 충돌 숨김을 풀고 페이드 아웃.
-      _setBubbleCollisionHiding(marker, false);
-      _fadeBubble(id, marker, to: 0.0, onDone: () {
-        if (!identical(_bubbleMarkerRefs[id], marker)) return;
-        try {
-          _mapController?.deleteOverlay(
-            NOverlayInfo(type: NOverlayType.marker, id: _bubbleOverlayId(id)),
-          );
-        } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
-        _bubbleMarkerIds.remove(id);
-        _bubbleMarkerRefs.remove(id);
-        _bubbleRemovingIds.remove(id);
-        _bubbleAlpha.remove(id);
-      });
-    }
-
-    // 추가분 — 아이콘을 전부 준비한 뒤 일괄 add (리클러스터링/프레임 최소화).
-    final addIds = targetIds
-        .where((id) => !_bubbleMarkerIds.contains(id))
-        .toList();
-    if (addIds.isEmpty) {
-      if (removeStarted > 0 && kDebugMode) {
-        debugPrint('[map] bubble sync z=${rawZoom.toStringAsFixed(2)} '
-            '-$removeStarted');
-      }
-      return;
-    }
-    final built = <String, NMarker>{};
-    for (final id in addIds) {
-      final post = targetPosts[id]!;
-      final NOverlayImage icon;
-      try {
-        icon = await _buildTextCardIcon(post);
-      } catch (e) {
-        debugPrint('[map] 말풍선 아이콘 생성 실패 $id: $e');
-        continue; // 이 글만 생략 — 점은 그대로 보인다.
-      }
-      if (!mounted || generation != _bubbleSyncGeneration) {
-        return; // 더 최신 sync 시작됨 — 이번 결과 폐기.
-      }
-      built[id] = _buildBubbleMarker(post, icon);
-    }
-    if (built.isEmpty) return;
-    if (!mounted ||
-        _mapController == null ||
-        _isLoadingMarkers ||
-        _selectedGroupIndex != null ||
-        generation != _bubbleSyncGeneration) {
-      return;
-    }
-    try {
-      await _mapController!.addOverlayAll(built.values.toSet());
-    } catch (e) {
-      debugPrint('[map] 말풍선 add 실패: $e'); // 다음 sync 가 재시도
-      return;
-    }
-    if (!mounted) return;
-    for (final entry in built.entries) {
-      final id = entry.key;
-      final marker = entry.value;
-      _bubbleMarkerIds.add(id);
-      _bubbleMarkerRefs[id] = marker;
-      // alpha 0 payload 로 추가됐다 — 페이드 인 후 충돌 숨김을 켠다.
-      // (숨김을 먼저 켜면 점이 즉시 사라져 페이드 동안 빈 자리가 보인다)
-      _bubbleAlpha[id] = 0.0;
-      _fadeBubble(id, marker, to: 1.0, onDone: () {
-        _setBubbleCollisionHiding(marker, true);
-      });
-    }
-    if (kDebugMode) {
-      debugPrint('[map] bubble sync z=${rawZoom.toStringAsFixed(2)} '
-          '+${built.length} -$removeStarted');
-    }
-  }
-
-  /// 말풍선 alpha 트윈 (33ms 스텝, easeOutQuad). 같은 id 재호출 시 이전
-  /// 트윈을 취소하고 현재 alpha 에서 이어간다. 일반 NMarker 전용 —
-  /// 클러스터러블에는 되돌림(C1) 때문에 절대 사용하지 않는다.
-  void _fadeBubble(
-    String id,
-    NMarker marker, {
-    required double to,
-    VoidCallback? onDone,
-  }) {
-    _bubbleFadeTimers.remove(id)?.cancel();
-    final double from = _bubbleAlpha[id] ?? (to >= 1.0 ? 0.0 : 1.0);
-    if (from == to) {
-      onDone?.call();
-      return;
-    }
-    final int steps = max(3, kBubbleFadeDuration.inMilliseconds ~/ 33);
-    int step = 0;
-    _bubbleFadeTimers[id] = Timer.periodic(const Duration(milliseconds: 33), (t) {
-      step++;
-      final double p = step / steps;
-      final double eased = 1 - pow(1 - p, 2).toDouble(); // easeOutQuad
-      final double value = from + (to - from) * eased;
-      bool done = step >= steps;
-      try {
-        marker.setAlpha(done ? to : value);
-        _bubbleAlpha[id] = done ? to : value;
-      } catch (_) {
-        done = true; // 네이티브에서 제거됨 — 트윈 중단
-      }
-      if (done) {
-        t.cancel();
-        _bubbleFadeTimers.remove(id);
-        onDone?.call();
-      }
-    });
-  }
-
-  /// 밑의 점 마커(+캡션) 충돌 숨김 토글 — 페이드 인 완료 후 켜고,
-  /// 페이드 아웃 시작 전에 끈다 (점↔말풍선이 겹쳐서 교차되도록).
-  void _setBubbleCollisionHiding(NMarker marker, bool hide) {
-    try {
-      marker.setIsHideCollidedMarkers(hide);
-      marker.setIsHideCollidedCaptions(hide);
-    } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
-  }
-
-  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드+아래 점 합성이라 기본 앵커
-  /// (0.5, 1.0) 기준으로 밑의 점 마커 위에 정확히 겹친다.
-  NMarker _buildBubbleMarker(MapPost post, NOverlayImage icon) {
-    final marker = NMarker(
-      id: _bubbleOverlayId(post.id),
-      position: NLatLng(post.latitude, post.longitude),
-      icon: icon,
-      size: _textCardSize,
-      // 페이드 인 시작값 — add 직후 _fadeBubble 이 1.0 으로 올린다.
-      alpha: 0,
+    await _bubbleLayer.sync(
+      controller: _mapController!,
+      targets: targets,
+      canApply: () =>
+          mounted &&
+          _mapController != null &&
+          !_isLoadingMarkers &&
+          _selectedGroupIndex == null,
     );
-    // 점 레이어(200000+score)보다 항상 위.
-    marker.setGlobalZIndex(300000 + post.score.toInt());
-    // 클러스터링 구간(≤16)과의 공존 금지 — 줌아웃 제스처 중 idle 전에
-    // 클러스터러가 재편성되면 충돌 숨김이 켜진 말풍선이 새 클러스터를
-    // 숨김 고착시킨다 (2026-07-19 마커 소실). 네이티브 minZoom 으로
-    // Dart sync 타이밍과 무관하게 원천 차단한다.
-    marker.setMinZoom(kBubbleMinZoom);
-    marker.setIsMinZoomInclusive(true);
-    // 밑의 점 마커(+제목 캡션) 충돌 숨김(설계 Q1)은 여기서 켜지 않는다 —
-    // 페이드 인 완료 후 _setBubbleCollisionHiding 이 켠다. 먼저 켜면 점이
-    // 즉시 사라져 페이드 동안 빈 자리가 보인다.
-    final postId = post.id;
-    marker.setOnTapListener((_) async {
-      _focusNode.unfocus();
-      final idx = _postGroups
-          .indexWhere((g) => g.isNotEmpty && g.first.id == postId);
-      if (idx < 0) return;
-      await _selectMarker(idx, minZoom: _textCardCameraZoom);
-    });
-    return marker;
   }
 
   void _closeAllCards() {

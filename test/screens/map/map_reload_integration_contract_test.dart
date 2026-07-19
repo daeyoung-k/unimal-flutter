@@ -460,60 +460,70 @@ void main() {
     expect(method, contains("'canCard': canBecomeCard ? '1' : '0'"));
   });
 
-  test('말풍선 레이어는 일반 NMarker 이고 클러스터러블을 만들지 않는다', () {
+  test('공용 말풍선 레이어는 일반 NMarker 이고 클러스터러블을 만들지 않는다', () {
+    final layer = File('lib/screens/map/marker/bubble_marker_layer.dart')
+        .readAsStringSync();
     final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
     final start = source.indexOf('Future<void> _syncBubbleLayer(');
     expect(start, isNonNegative);
     if (start < 0) return;
-    final end = source.indexOf('/// 말풍선 일반 NMarker 생성', start);
+    final end = source.indexOf('void _closeAllCards()', start);
     final method = source.substring(start, end);
-    final builderStart = source.indexOf('NMarker _buildBubbleMarker(');
-    final builderEnd = source.indexOf('void _closeAllCards()', builderStart);
-    final builder = source.substring(builderStart, builderEnd);
 
-    // sync 는 재조회를 트리거하지 않고, 클러스터러블 레이어를 건드리지 않는다.
+    // 화면 sync 는 재조회를 트리거하지 않고 목표 집합만 계산해 레이어에 위임.
     expect(method, isNot(contains('_loadMapMarkers(')));
-    expect(method, isNot(contains('NOverlayType.clusterableMarker')));
-    expect(method, contains('NOverlayType.marker'));
-    // 재조회 중 조작 금지 (C3) + latest-wins 세대.
     expect(method, contains('if (_isLoadingMarkers) return'));
-    expect(method, contains('generation != _bubbleSyncGeneration'));
-    // 히스테리시스는 공용 상태 하나로 판정.
     expect(method, contains('_resolveTextCardMode(rawZoom)'));
-    // 말풍선은 일반 NMarker + 점 레이어보다 위 zIndex.
-    expect(builder, contains('NMarker('));
-    expect(builder, isNot(contains('NClusterableMarker')));
-    expect(builder, contains('300000 + post.score.toInt()'));
+    expect(method, contains('_bubbleLayer.sync('));
+    // 레이어는 클러스터러블을 만들지도 건드리지도 않는다.
+    expect(layer, isNot(contains('NClusterableMarker')));
+    expect(layer, contains('NOverlayType.marker'));
+    // latest-wins 세대 + 일반 NMarker + 점 레이어보다 위 zIndex.
+    expect(layer, contains('generation != _syncGeneration'));
+    expect(layer, contains('300000 + target.score'));
     // 페이드 인 시작값 — 충돌 숨김은 빌드 시점이 아니라 페이드 완료 후.
-    expect(builder, contains('alpha: 0'));
-    expect(builder, isNot(contains('setIsHideCollidedMarkers')));
+    expect(layer, contains('alpha: 0'));
     // 클러스터링 구간(≤16)과 공존 금지 — 네이티브 minZoom 하드 가드
     // (충돌 숨김 켜진 말풍선이 새 클러스터를 숨김 고착시키는 사고 방지).
-    expect(builder, contains('setMinZoom(kBubbleMinZoom)'));
+    expect(layer, contains('setMinZoom(kBubbleMinZoom)'));
   });
 
   test('말풍선 전환은 페이드 트윈이고 충돌 숨김은 페이드와 교차된다', () {
-    final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
-    final syncStart = source.indexOf('Future<void> _syncBubbleLayer(');
-    final regionEnd = source.indexOf('void _closeAllCards()', syncStart);
-    final region = source.substring(syncStart, regionEnd);
+    final layer = File('lib/screens/map/marker/bubble_marker_layer.dart')
+        .readAsStringSync();
 
     // 추가: alpha 0 add → 페이드 인 → 완료 후 충돌 숨김 on.
-    final addFade = region.indexOf("_fadeBubble(id, marker, to: 1.0");
+    final addFade = layer.indexOf("_fade(id, marker, to: 1.0");
     expect(addFade, isNonNegative);
-    expect(region, contains('_setBubbleCollisionHiding(marker, true)'));
+    expect(layer, contains('_setCollisionHiding(marker, true)'));
     // 제거: 충돌 숨김 off → 페이드 아웃 → 완료 후 delete.
-    final unhide = region.indexOf('_setBubbleCollisionHiding(marker, false)');
-    final fadeOut = region.indexOf("_fadeBubble(id, marker, to: 0.0", unhide);
-    final delete = region.indexOf('deleteOverlay', fadeOut);
+    final unhide = layer.indexOf('_setCollisionHiding(marker, false)');
+    final fadeOut = layer.indexOf("_fade(id, marker, to: 0.0", unhide);
+    final delete = layer.indexOf('deleteOverlay', fadeOut);
     expect(unhide, isNonNegative);
     expect(fadeOut, greaterThan(unhide));
     expect(delete, greaterThan(fadeOut));
     // 페이드 아웃 중 재목표 시 취소 후 복귀.
-    expect(region, contains('_bubbleRemovingIds.remove(id)'));
-    // 트윈은 말풍선 레이어(일반 NMarker) 전용 — 재전환 시 이전 트윈 취소.
-    expect(region, contains('_bubbleFadeTimers.remove(id)?.cancel()'));
-    expect(region, contains('kBubbleFadeDuration'));
+    expect(layer, contains('_removingIds.remove(id)'));
+    // 재전환 시 이전 트윈 취소 후 현재 alpha 에서 이어감.
+    expect(layer, contains('_fadeTimers.remove(id)?.cancel()'));
+    expect(layer, contains('kBubbleFadeDuration'));
+  });
+
+  test('메인 지도와 내지도가 같은 말풍선 레이어를 쓴다', () {
+    final main = File('lib/screens/map/map_naver.dart').readAsStringSync();
+    final myMap = File('lib/screens/profile/mypage/my_story_map_screen.dart')
+        .readAsStringSync();
+
+    expect(main, contains('_bubbleLayer.sync('));
+    expect(myMap, contains('_bubbleLayer.sync('));
+    // 내지도의 구 in-place 일괄 교체는 폐기 — C1 되돌림 때문에 재도입 금지.
+    expect(myMap, isNot(contains('_applyTextCardMode')));
+    expect(myMap, isNot(contains('_textCardIconCache')));
+    // 밀집 필터도 양쪽 공통 — 없으면 뭉친 글의 카드 충돌 숨김이 주변
+    // 마커를 전부 가린다 (2026-07-19 내지도 마커 소실).
+    expect(main, contains('kTextCardDenseNeighbors'));
+    expect(myMap, contains('kTextCardDenseNeighbors'));
   });
 
   test('idle 은 공간 재조회 판단 전에 말풍선 레이어를 동기화한다', () {
@@ -555,7 +565,7 @@ void main() {
     final selectEnd = source.indexOf('// ── 스택 원형 펼침', selectStart);
     final select = source.substring(selectStart, selectEnd);
     final syncStart = source.indexOf('Future<void> _syncBubbleLayer(');
-    final syncEnd = source.indexOf('/// 말풍선 일반 NMarker 생성', syncStart);
+    final syncEnd = source.indexOf('void _closeAllCards()', syncStart);
     final sync = source.substring(syncStart, syncEnd);
 
     // 열림: sync 호출 (선택 중엔 목표 공집합 → 전부 제거).
