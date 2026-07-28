@@ -799,6 +799,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     debugPrint('[map] markerGroups built: ${markerGroups.length} markers '
         '(grouped from ${posts.length} posts, tiers=${tiers.enabled})');
 
+    // 스택 그룹 구성 추적 — 점/썸네일은 오직 **대표(최고 score) 글**이 사진을
+    // 가졌는지로 갈린다. 같은 자리(11m) 안에 score 가 더 높은 텍스트 글이
+    // 있으면 방금 올린 사진 글이 있어도 대표가 뒤바뀌어 점으로 그려진다.
+    // "이미지 글 올렸는데 점 마커" 조사용.
+    if (kDebugMode) {
+      for (final g in markerGroups.where((g) => g.length > 1)) {
+        debugPrint('[map] stack group: ${g.map((p) => '${p.id}'
+            '(score=${p.score} files=${p.fileInfoList.length})').join(' | ')}');
+      }
+    }
+
     // 1) 기존에 있고 새에 없는 마커만 제거
     int deletedCount = 0;
     for (final id in _mapMarkerIds.toList()) {
@@ -1111,7 +1122,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 검색 핀 등 다른 일반 마커를 지우지 않도록 레이어가 개별 삭제한다.
     await _bubbleLayer.clear(controller);
     if (controller != null) {
-      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
+      // ⚠️ `controller.clearOverlays(type: clusterableMarker)` 를 쓰지 말 것.
+      //    반드시 id 별 deleteOverlay 로 지운다 (2026-07-28).
+      //
+      // clearOverlays 는 iOS 에서 `ClusteringController.clearClusterableMarker()`
+      // → `clusterer.clear()` + mapView 재부착을 타는데, 이 이후 네이티브
+      // 클러스터러가 `clusterMarkerBuilder` 이벤트를 **영구히 보내지 않는다.**
+      // iOS 는 클러스터 마커를 `marker.hidden = true` 로 만들고 그 Dart 왕복
+      // (clusterMarkerBuilder → NClusterMarker._apply → setIsVisible(true))
+      // 으로만 보이게 하므로, 이벤트가 끊기면 클러스터링 구간(≤16)의 마커가
+      // 전부 숨김 상태로 남는다 = "글 등록/삭제 후 줌아웃하면 마커가 다 사라짐".
+      //
+      // 재현 로그 근거:
+      //   clearOverlays 사용 시 — 삭제 전 z16.50 에서 clusterBuilder 정상 발생,
+      //     삭제(forceRebuild) 후 z15.64 / z14.39 에서 0회. 마커 전멸.
+      //   id 별 deleteOverlay 로 교체 — 등록·삭제 후에도 z12~16 전 구간에서
+      //     clusterBuilder / composeCluster 정상 발생. 마커 유지.
+      //
+      // deleteOverlay 는 `deleteClusterableMarker()`(clusterer.remove + 재부착)
+      // 를 타며 클러스터러가 살아 있다. 삭제 대상은 _mapMarkerIds 가 전부이고
+      // (말풍선·검색핀·펼침 마커는 일반 NMarker 라 애초에 이 타입이 아니다),
+      // 이 루프가 clearOverlays 와 동일한 범위를 지운다.
+      for (final id in _mapMarkerIds) {
+        try {
+          controller.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
+          );
+        } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+      }
     }
     _mapMarkerIds.clear();
     _markerRefs.clear();
@@ -1642,6 +1680,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // 현재 빌드 시점의 총 글 수 기록 → 비동기 합성 결과의 stale 적용 방지
       _clusterCurrentSize[topId] = totalCount;
 
+      // 대표/좌표 추적 — 클러스터 마커는 대표 마커 좌표가 아니라 네이티브가
+      // 계산한 위치에 그려진다. 줌 조작마다 찍히므로 디버그 빌드 한정.
+      if (kDebugMode) {
+        debugPrint('[map] clusterBuilder top=$topId score=$topScore '
+            'count=$totalCount '
+            'clusterPos=(${clusterMarker.position.latitude.toStringAsFixed(5)}, '
+            '${clusterMarker.position.longitude.toStringAsFixed(5)}) '
+            'topPos=(${topPosition?.latitude.toStringAsFixed(5)}, '
+            '${topPosition?.longitude.toStringAsFixed(5)})');
+      }
+
       if (info.size == 1) {
         // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시.
         // 아이콘 캐시에 스택 합성본이 들어 있으므로 뱃지 추가 합성 불필요.
@@ -1651,6 +1700,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           final baseSize = _markerBaseSize[topId] ?? _normalMarkerSize;
           clusterMarker.setIcon(base);
           clusterMarker.setSize(Size(baseSize, baseSize));
+        } else {
+          // 아이콘 미설정 → 네이티브 기본 마커로 그려진다. 지금까지 무계측
+          // 구간이라 "줌아웃 시 마커 소실" 조사에서 관측이 불가능했다.
+          debugPrint('[map] clusterBuilder NO ICON (size=1) topId=$topId '
+              'inMapMarkerIds=${_mapMarkerIds.contains(topId)}');
         }
       } else {
         final cacheKey = '${topId}_$totalCount';
@@ -1665,6 +1719,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           if (base != null) {
             clusterMarker.setIcon(base);
             clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+          } else {
+            debugPrint('[map] clusterBuilder NO ICON (size=${info.size}) '
+                'topId=$topId count=$totalCount '
+                'inMapMarkerIds=${_mapMarkerIds.contains(topId)}');
           }
           _composeClusterIconAsync(topId, totalCount, clusterMarker);
         }
