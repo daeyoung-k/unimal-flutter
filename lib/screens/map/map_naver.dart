@@ -1004,6 +1004,24 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           textSize: _markerCaptionTextSize,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
+          // 텍스트 글은 이 줌 이상에서 말풍선 카드가 제목을 보여주므로 캡션을
+          // 네이티브 줌 범위로 끈다 — 제목 중복 방지. 충돌 숨김에 의존하지
+          // 않는 확정적 방식이다(말풍선 박스는 좌표 위쪽, 캡션은 아래쪽이라
+          // 애초에 충돌 판정이 걸리지 않는다).
+          //
+          // 단일 임계값이라 말풍선의 히스테리시스(enter 16.8 / exit 16.3)를
+          // 정확히 따라가지 못한다. enter 를 쓰는 이유: exit(16.3)로 잡으면
+          // 기본 진입 줌(16.5)에서 캡션이 사라져 기본 화면이 망가진다.
+          // 대가는 줌아웃 하강 중 16.3~16.8 구간에서 말풍선과 캡션이 함께
+          // 보이는 것 — 그 0.5 구간까지 없애려면 setCaption 직접 제어(=
+          // 클러스터러블 in-place 변경, C1 위험)가 필요해 값어치가 없다고 판단.
+          //
+          // 사진 글에는 걸지 않는다(말풍선이 뜨지 않음). 선택 마커의 전체
+          // 타이틀 캡션(_selectedCaption)에도 걸면 안 된다 — 줌 19에서 선택 시
+          // 타이틀이 사라진다.
+          maxZoom: isTextPost
+              ? _textCardEnterZoom
+              : NaverMapViewOptions.maximumZoom,
         ),
       );
 

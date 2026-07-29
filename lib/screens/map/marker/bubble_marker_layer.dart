@@ -40,11 +40,13 @@ class BubbleMarkerTarget {
 ///   리클러스터링 payload 되돌림(C1)이 없고 alpha 트윈이 안전하다.
 /// - 같은 id 재생성이 없어 delete/add 탭 핸들러 경합(C2)도 없다.
 /// - 클러스터러블 마커에는 이 레이어의 어떤 기법도 적용 금지.
-/// - 말풍선은 **점 마커를 가리지 않는다** (2026-07-29) — 아이콘 하단이 투명해
-///   그 자리에 실제 점이 보인다. 숨기는 것은 점의 제목 캡션뿐이다.
+/// - 말풍선은 **점 마커를 건드리지 않는다** (2026-07-29) — 아이콘 하단이 투명해
+///   그 자리에 실제 점이 보이고, 점의 제목 캡션은 `NOverlayCaption.maxZoom` 이
+///   네이티브에서 끈다. 이 레이어가 켜는 충돌 숨김은 "카드와 겹치는 **다른**
+///   마커의 캡션" 정리 용도뿐이다.
 /// - `minZoom(kBubbleMinZoom)` 하드 가드 — 클러스터링 구간(≤16)과 공존하면
 ///   충돌 숨김이 새 클러스터 마커를 숨김 고착시킨다 (2026-07-19 사고).
-///   마커 숨김 자체는 이제 끄지만(위), 캡션 숨김 경로가 남아 있고 사고 이력이
+///   마커 숨김은 이제 끄지만 캡션 충돌 숨김 경로가 남아 있고, 사고 이력이
 ///   있는 구간이라 이 가드는 그대로 유지한다.
 class BubbleMarkerLayer {
   BubbleMarkerLayer({this.debugLabel = 'bubble'});
@@ -64,10 +66,11 @@ class BubbleMarkerLayer {
   String _overlayId(String id) => 'bubble_$id';
 
   /// 말풍선 집합을 [targets]로 수렴시킨다. 불일치가 없으면 no-op.
-  /// - 제거분: 캡션 숨김 해제 → 페이드 아웃 → 삭제 (점 캡션이 먼저 복귀).
-  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인 → 캡션 숨김.
+  /// - 제거분: 페이드 아웃 → 삭제.
+  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인.
   ///
-  /// 점 마커는 이 레이어가 건드리지 않는다 — 항상 보인다.
+  /// 점 마커는 이 레이어가 전혀 건드리지 않는다 — 아이콘도 캡션도 그대로다.
+  /// (점의 제목 캡션은 `NOverlayCaption.maxZoom` 이 네이티브에서 끈다)
   /// - [canApply]: 비동기 아이콘 생성 뒤 add 직전에 재검증되는 화면 가드
   ///   (mounted, 재조회 중 아님, 바텀 카드 닫힘 등). 제거분에는 적용하지
   ///   않는다 — 카드 열림 등으로 목표가 비어도 제거는 진행돼야 한다.
@@ -86,17 +89,13 @@ class BubbleMarkerLayer {
       if (marker == null) continue;
       if (targetById.containsKey(id)) {
         if (_removingIds.remove(id)) {
-          _fade(id, marker, to: 1.0, onDone: () {
-            _setCaptionHiding(marker, true);
-          });
+          _fade(id, marker, to: 1.0);
         }
         continue;
       }
       if (_removingIds.contains(id)) continue; // 이미 페이드 아웃 중
       _removingIds.add(id);
       removeStarted++;
-      // 점의 제목 캡션이 먼저 자연스럽게 돌아오도록 숨김을 풀고 페이드 아웃.
-      _setCaptionHiding(marker, false);
       _fade(id, marker, to: 0.0, onDone: () {
         if (!identical(_refs[id], marker)) return;
         try {
@@ -148,12 +147,10 @@ class BubbleMarkerLayer {
       final marker = entry.value;
       _ids.add(id);
       _refs[id] = marker;
-      // alpha 0 payload 로 추가됐다 — 페이드 인 후 점의 제목 캡션을 숨긴다.
-      // (먼저 숨기면 카드가 아직 투명한 동안 제목이 사라져 깜빡인다)
+      // alpha 0 payload 로 추가됐다 — 페이드 인만 하면 끝.
+      // 점의 제목 캡션은 이 레이어가 손대지 않는다 (NOverlayCaption.maxZoom).
       _alpha[id] = 0.0;
-      _fade(id, marker, to: 1.0, onDone: () {
-        _setCaptionHiding(marker, true);
-      });
+      _fade(id, marker, to: 1.0);
     }
     if (kDebugMode) {
       debugPrint('[$debugLabel] sync +${built.length} -$removeStarted');
@@ -187,8 +184,15 @@ class BubbleMarkerLayer {
     // 말풍선 대상이 "단일 + 비밀집(120dp 내 이웃 2개 미만)"으로 제한돼 있어
     // 겹침 빈도는 낮다는 판단 — 거슬리면 kTextCardDenseNeighbors 를 조인다.
     marker.setIsHideCollidedMarkers(false);
-    // 제목 캡션 충돌 숨김은 여기서 켜지 않는다 — 페이드 인 완료 후
-    // _setCaptionHiding 이 켠다.
+    // 카드(204dp)와 겹치는 **다른** 마커의 캡션은 정리한다 — 카드 본문 위에
+    // 남의 제목이 겹쳐 읽히는 것만 막는 용도다.
+    //
+    // 밑의 점 마커 자신의 제목 캡션은 여기 책임이 아니다: 그건
+    // `NOverlayCaption.maxZoom`(= kTextCardEnterZoom)으로 네이티브가 끈다.
+    // 예전엔 이 플래그를 페이드에 맞춰 토글해 그걸 처리하려 했지만,
+    // 말풍선 박스는 좌표 위쪽 / 캡션은 좌표 아래쪽이라 애초에 충돌 판정이
+    // 걸리지 않는다 — 그래서 줌 범위 방식으로 바꿨다 (2026-07-29).
+    marker.setIsHideCollidedCaptions(true);
     marker.setOnTapListener((_) => target.onTap());
     return marker;
   }
@@ -227,18 +231,6 @@ class BubbleMarkerLayer {
         onDone?.call();
       }
     });
-  }
-
-  /// 밑의 점 마커 **캡션** 충돌 숨김 토글 — 페이드 인 완료 후 켜고,
-  /// 페이드 아웃 시작 전에 끈다.
-  ///
-  /// 카드가 제목을 이미 보여주므로 점의 타이틀 캡션은 중복이라 숨긴다.
-  /// 반면 **점 마커 자체는 가리지 않는다** — `setIsHideCollidedMarkers` 는
-  /// [_buildMarker] 에서 false 로 고정한다(이유는 그쪽 주석 참고).
-  void _setCaptionHiding(NMarker marker, bool hide) {
-    try {
-      marker.setIsHideCollidedCaptions(hide);
-    } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
   }
 
   /// 모든 말풍선 즉시 삭제 + 타이머 정리 (전체 재렌더/화면 정리용).

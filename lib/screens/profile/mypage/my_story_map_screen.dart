@@ -206,6 +206,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
           textSize: _markerCaptionTextSize,
           color: colors.textPrimary,
           haloColor: colors.background,
+          // 텍스트 글은 말풍선 카드가 제목을 보여주는 줌부터 캡션을 끈다 —
+          // 제목 중복 방지. 값 선택 근거는 메인 지도(map_naver) 같은 자리의
+          // 주석 참고 (히스테리시스 vs 단일 임계값 트레이드오프).
+          maxZoom:
+              isText ? kTextCardEnterZoom : NaverMapViewOptions.maximumZoom,
         ),
       );
       _markerRefs[id] = marker;
