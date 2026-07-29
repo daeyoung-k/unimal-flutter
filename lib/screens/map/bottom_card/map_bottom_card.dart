@@ -1,4 +1,6 @@
 // lib/screens/map/bottom_card/map_bottom_card.dart
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,6 +56,17 @@ class MapBottomCard extends StatefulWidget {
   /// parent는 카드를 닫고 지도 마커를 새로고침한다.
   final VoidCallback? onPostEdited;
 
+  /// true 면 확장 상태로 바로 열린다 (피드 카드 탭 진입용).
+  /// 기존 마커 탭 경로는 기본값 false 로 동작이 바뀌지 않는다.
+  final bool initialExpanded;
+
+  /// 미리 받아둔 상세. 주면 [initialExpanded] 진입 시 `getBoardDetail` 을
+  /// 다시 호출하지 않는다 (피드 카드 탭은 이미 상세를 받아 MapPost 를 만든다).
+  final BoardPost? initialDetail;
+
+  /// 주소 탭 핸들러. null 이면 주소는 탭할 수 없다(기존 마커 탭 경로).
+  final VoidCallback? onLocationTap;
+
   const MapBottomCard({
     super.key,
     required this.groups,
@@ -65,6 +78,9 @@ class MapBottomCard extends StatefulWidget {
     this.onPostChanged,
     this.onExpandedChanged,
     this.onPostEdited,
+    this.initialExpanded = false,
+    this.initialDetail,
+    this.onLocationTap,
   });
 
   @override
@@ -129,6 +145,17 @@ class _MapBottomCardState extends State<MapBottomCard> {
       initialPage: _currentPageIndex,
       viewportFraction: _pageViewportFraction,
     );
+    if (widget.initialExpanded) {
+      _cardState = _CardState.expanded;
+      _loadedDetail = widget.initialDetail;
+      // setState 를 initState 에서 부를 수 없으므로 다음 프레임에 처리한다.
+      // initialDetail 이 있으면 _loadDetail 은 가드로 즉시 리턴한다.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.onExpandedChanged?.call(true);
+        unawaited(_loadDetail());
+      });
+    }
   }
 
   /// 그룹 범위를 벗어나는 postIndex 방어 (그룹 구성이 바뀐 직후 등).
@@ -834,6 +861,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
             onLikeTap: _toggleLike,
             onRefreshDetail: () => _loadDetail(force: true),
             onEditTap: post.isOwner ? _navigateToEdit : null,
+            onLocationTap: widget.onLocationTap,
           ),
         ),
       ],

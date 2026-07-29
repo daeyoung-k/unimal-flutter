@@ -25,6 +25,10 @@ class MapCardExpandedContent extends StatefulWidget {
   /// 수정 버튼 탭 핸들러. null이면 수정 버튼 숨김.
   final VoidCallback? onEditTap;
 
+  /// 주소 탭 핸들러. null 이면 주소는 그냥 텍스트다.
+  /// 피드 카드로 열린 경우에만 주어진다 — 탭하면 그 좌표로 카메라가 이동한다.
+  final VoidCallback? onLocationTap;
+
   const MapCardExpandedContent({
     super.key,
     required this.post,
@@ -35,6 +39,7 @@ class MapCardExpandedContent extends StatefulWidget {
     this.onLikeTap,
     this.onRefreshDetail,
     this.onEditTap,
+    this.onLocationTap,
   });
 
   @override
@@ -215,29 +220,43 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   ),
                   if (post.streetName.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1),
-                          child: Icon(Icons.location_on_outlined,
-                              size: 13, color: colors.textTertiary),
-                        ),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(
-                            post.streetName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              color: colors.textTertiary,
-                              height: 1.3,
+                    // onLocationTap 이 있으면 주소 전체가 탭 영역이 되고 우측에
+                    // 이동 아이콘이 붙는다(탭 가능함을 알리는 신호).
+                    GestureDetector(
+                      onTap: widget.onLocationTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(Icons.location_on_outlined,
+                                size: 13, color: colors.textTertiary),
+                          ),
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              post.streetName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                color: widget.onLocationTap != null
+                                    ? colors.primaryStrong
+                                    : colors.textTertiary,
+                                height: 1.3,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                          if (widget.onLocationTap != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 2, top: 1),
+                              child: Icon(Icons.my_location,
+                                  size: 13, color: colors.primaryStrong),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ],

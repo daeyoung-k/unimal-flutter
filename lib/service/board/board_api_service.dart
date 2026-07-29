@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
+import 'package:unimal/service/map/map_feed_mock.dart';
+import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/api_client.dart';
@@ -387,5 +390,52 @@ class BoardApiService {
     _logger.e('좋아요 요청 실패: ${response.statusCode}');
     _customAlert.showTextAlert('좋아요 요청 실패', '잠시 후 다시 시도해주세요.');
     return null;
+  }
+
+  // ── 지도 바텀카드 피드 ──────────────────────────────────────────────
+  /// 섹션 피드 조회. 실패/파싱불가면 null (호출자가 시트를 숨긴다).
+  ///
+  /// 서버가 3건 미만 섹션 제외·섹션 간 중복 제제까지 해서 내려주므로 앱은
+  /// 받은 섹션을 그대로 그린다.
+  ///
+  /// 주소(`siDo`/`guGun`/`dong`)는 넘기지 않는다 — 지도 화면이 현재 동을 모르고,
+  /// 앱이 역지오코딩을 먼저 하면 순차 2 RTT 가 되어 이 API 의 존재 이유(1 RTT)가
+  /// 깨진다. 서버가 gRPC 역지오코딩 폴백 + 캐시를 갖고 있다.
+  Future<MapFeedResponse?> getMapFeed({
+    required double latitude,
+    required double longitude,
+    required int zoom,
+  }) async {
+    // 서버 미구현 기간 UI 확인용 (map_feed_mock.dart 참고).
+    // 서버가 붙으면 이 분기와 목 파일을 삭제한다.
+    //
+    // `http.Response(문자열, 200)` 을 쓰면 안 된다 — headers 가 없으면
+    // package:http 가 body 를 **latin1** 으로 인코딩하고(`utils.dart`
+    // `_encodingForHeaders` 의 fallback), 목 JSON 의 한글이 인코딩 불가라
+    // FormatException 을 던진다. 이 분기는 아래 try 밖이라 잡히지도 않는다.
+    // 반드시 `Response.bytes(utf8.encode(...))` 로 바이트를 직접 넣는다.
+    if (dotenv.env['MAP_FEED_MOCK']?.toLowerCase() == 'true') {
+      return decodeMapFeedResponse(
+        http.Response.bytes(utf8.encode(kMapFeedMockJson), 200),
+      );
+    }
+
+    try {
+      final url = ApiUri.resolve('board/map/feed', {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'zoom': zoom.toString(),
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+      final feed = decodeMapFeedResponse(response);
+      if (feed == null) {
+        _logger.e('지도 피드 조회 실패: ${response.statusCode}');
+      }
+      return feed;
+    } catch (e, st) {
+      _logger.e('지도 피드 조회 예외', error: e, stackTrace: st);
+      return null;
+    }
   }
 }

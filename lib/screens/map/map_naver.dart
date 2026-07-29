@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/feed/map_feed_sheet.dart';
 import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
 import 'package:unimal/screens/map/marker/marker_group.dart';
@@ -16,7 +17,9 @@ import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/map/map_reload_policy.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/map/marker/marker_image_factory.dart';
+import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
@@ -116,6 +119,25 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // BubbleMarkerLayer 가 담당한다.
   final BubbleMarkerLayer _bubbleLayer =
       BubbleMarkerLayer(debugLabel: 'map bubble');
+
+  // ── 바텀카드 피드 (설계 docs/specs/2026-07-29-지도-바텀카드-피드.md) ──
+  // 시트가 자기 데이터를 소유한다. 여기서는 조회 좌표만 알려주고 컨트롤러를
+  // 보유한다(마커 탭 시 접어야 하므로).
+  final ValueNotifier<MapFeedQuery?> _feedQuery =
+      ValueNotifier<MapFeedQuery?>(null);
+  final DraggableScrollableController _feedSheetController =
+      DraggableScrollableController();
+
+  /// 피드 카드로 열린 확장카드의 글. 마커 탭 경로(`_selectedGroupIndex`)와
+  /// 별도다 — 피드 글은 `_postGroups` 에 없을 수 있다.
+  MapPost? _feedSelectedPost;
+
+  /// 위 글의 상세. `MapBottomCard` 가 `getBoardDetail` 을 다시 호출하지 않도록
+  /// 씨딩한다.
+  BoardPost? _feedSelectedDetail;
+
+  bool _isOpeningFeedPost = false;
+
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -209,7 +231,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 조합해 "가까운 것만 묶임"이 되도록 한다.
   static const double _defaultEntryZoom = 16.5;
 
-  bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
+  // 피드 확장카드도 포함 — 열린 동안 검색바·하단 버튼·피드 시트가 함께
+  // 페이드아웃되어 기존 마커 카드와 동일하게 동작한다.
+  bool get _isAnyCardOpen =>
+      _selectedSymbol != null ||
+      _selectedPosts.isNotEmpty ||
+      _feedSelectedPost != null;
   bool get _isMapTabActive =>
       Get.find<NavController>().selectedIndex.value == 0;
   bool get _isMapInteractionOpen =>
@@ -489,6 +516,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _freshnessTimer?.cancel();
     _fanAnimTimer?.cancel();
     _bubbleLayer.cancelTimers();
+    _feedQuery.dispose();
+    _feedSheetController.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -660,6 +689,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _lastQueriedZoom = rawZoom ?? zoom.toDouble();
         _lastQueriedApiZoom = zoom;
         _lastSuccessfulMapRefreshAt = DateTime.now();
+        // 피드 시트에 현재 조회 지점을 알린다. 실제 조회 여부(시트가 펼쳐졌는지)는
+        // 시트가 판단한다 (설계 §3).
+        _feedQuery.value = MapFeedQuery(
+          latitude: latitude,
+          longitude: longitude,
+          zoom: zoom,
+        );
         _successfulMapRefreshGeneration++;
         final hasNewerPending =
             pendingGenerationAtStart != _pendingAutoRefreshGeneration;
@@ -1539,6 +1575,84 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     );
   }
 
+  /// 피드 시트를 peek 으로 접는다. 컨트롤러가 아직 시트에 붙지 않았으면
+  /// (섹션 0개로 시트가 렌더되지 않은 경우) 조용히 넘어간다.
+  void _collapseFeedSheet() {
+    if (!_feedSheetController.isAttached) return;
+    unawaited(_feedSheetController.animateTo(
+      kMapFeedPeekSize,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    ));
+  }
+
+  /// 피드 카드 탭 → 확장카드를 연다. **카메라는 움직이지 않는다.**
+  ///
+  /// 피드 응답은 서버에서 캐시되고 `isLike`/`isOwner`/전체 이미지 목록이 빠져
+  /// 있으므로 상세를 받아야 확장카드를 제대로 채울 수 있다(설계 §5).
+  Future<void> _openFeedPost(MapFeedItem item) async {
+    if (_isOpeningFeedPost) return;
+    _isOpeningFeedPost = true;
+    _focusNode.unfocus();
+    try {
+      final detail = await BoardApiService().getBoardDetail(item.boardId);
+      if (!mounted) return;
+      setState(() {
+        _feedSelectedDetail = detail;
+        _feedSelectedPost = MapPost(
+          id: detail.boardId,
+          nickname: detail.nickname,
+          profileImage: detail.profileImage,
+          title: detail.title,
+          content: detail.content,
+          streetName: detail.streetName,
+          // 상세에 좌표가 없으면 피드 아이템 좌표로 폴백 — 주소 탭 이동에 쓰인다.
+          latitude: detail.latitude ?? item.latitude,
+          longitude: detail.longitude ?? item.longitude,
+          createdAt: detail.createdAt,
+          fileInfoList: detail.fileInfoList,
+          likeCount: detail.likeCount,
+          replyCount: detail.replyCount,
+          // score 는 마커 globalZIndex 전용이라 카드에서 쓰이지 않는다.
+          score: 0,
+          isOwner: detail.isOwner,
+          isLike: detail.isLike,
+        );
+      });
+    } catch (e) {
+      debugPrint('[map] 피드 글 상세 조회 실패 ${item.boardId}: $e');
+      // getBoardDetail 이 이미 사용자 알럿을 띄운다 — 여기선 카드를 열지 않는다.
+    } finally {
+      _isOpeningFeedPost = false;
+    }
+  }
+
+  /// 피드 확장카드 닫기.
+  ///
+  /// 마커 탭 경로의 `_applySelectionHighlight(null)` /
+  /// `_resumeAutomaticReloadsAfterInteractionClose()` 는 부르지 않는다 —
+  /// 피드 카드는 마커를 선택한 적이 없고 자동 재조회를 멈춘 적도 없다.
+  void _closeFeedPost() {
+    if (_feedSelectedPost == null) return;
+    setState(() {
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
+    });
+  }
+
+  /// 주소 탭 → 카드를 닫고 그 좌표로 카메라 이동.
+  void _moveCameraToFeedPost() {
+    final post = _feedSelectedPost;
+    if (post == null) return;
+    _closeFeedPost();
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(post.latitude, post.longitude),
+        zoom: kClusterExpandZoom,
+      ),
+    );
+  }
+
   void _closeAllCards() {
     if (_searchMarkerAdded && _mapController != null) {
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
@@ -1941,6 +2055,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     bool moveCamera = true,
     double? minZoom,
   }) async {
+    // 마커 탭과 피드 시트는 배타적 — 시트를 peek 으로 접는다.
+    _collapseFeedSheet();
     if (idx < 0 || idx >= _postGroups.length) return;
     if (_mapController == null) return;
     final post = _postGroups[idx].first;
@@ -2719,6 +2835,20 @@ class _MapNaverScreensState extends State<MapNaverScreens>
               ),
             ),
           ),
+          // 바텀카드 피드 — 상시 peek. 카드가 열리면 페이드아웃(배타적).
+          // 검색바와 같은 IgnorePointer + AnimatedOpacity 패턴.
+          IgnorePointer(
+            ignoring: _isAnyCardOpen,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _isAnyCardOpen ? 0 : 1,
+              child: MapFeedSheet(
+                query: _feedQuery,
+                controller: _feedSheetController,
+                onItemTap: (item) => unawaited(_openFeedPost(item)),
+              ),
+            ),
+          ),
           // POI 심볼 탭 시 하단 장소 카드
           AnimatedPositioned(
             duration: _cardDragOffset > 0
@@ -2827,6 +2957,27 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                   : const SizedBox.shrink(key: ValueKey('empty')),
             ),
           ),
+          // 피드 카드로 열린 확장카드 — 마커 카드와 별도 경로.
+          if (_feedSelectedPost != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: MapBottomCard(
+                key: ValueKey('feed-${_feedSelectedPost!.id}'),
+                groups: [
+                  [_feedSelectedPost!]
+                ],
+                initialGroupIndex: 0,
+                initialExpanded: true,
+                initialDetail: _feedSelectedDetail,
+                minTopMargin: MediaQuery.sizeOf(context).height * 0.15 +
+                    64 +
+                    MediaQuery.paddingOf(context).bottom,
+                onClose: _closeFeedPost,
+                onLocationTap: _moveCameraToFeedPost,
+              ),
+            ),
         ],
       ),
     );
