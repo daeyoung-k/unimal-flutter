@@ -55,3 +55,41 @@ List<MarkerGroup> buildMarkerGroups(Iterable<MapPost> posts) {
     return MarkerGroup(posts: list, rankScore: rankScore);
   }).toList();
 }
+
+/// [pickClusterRepIndex] 입력 — 클러스터 자식 마커에서 선정에 필요한 값만 추린 것.
+/// 플러그인 타입(`NClusterableMarkerInfo`)에 의존하지 않아 단위 테스트가 가능하다.
+class ClusterChildRank {
+  /// 이 자식 마커가 사진 썸네일을 갖고 있는가 (`tags['hasPhoto'] == '1'`).
+  final bool hasPhoto;
+
+  /// 이 자식 마커의 랭킹 score (`tags['score']`).
+  final double score;
+
+  const ClusterChildRank({required this.hasPhoto, required this.score});
+}
+
+/// 클러스터 표시 대표를 고른다 — **사진 자식 우선, 없으면 최고 score 자식.**
+///
+/// 스택 마커와 같은 규칙([buildMarkerGroups])을 클러스터에도 적용해, 사진 글을
+/// 품은 클러스터가 점으로 그려지지 않게 한다. 동점이면 먼저 오는 자식을 쓴다.
+///
+/// 반환값은 [children] 의 인덱스. 빈 리스트면 `-1`.
+int pickClusterRepIndex(List<ClusterChildRank> children) {
+  var bestIdx = -1;
+  var photoIdx = -1;
+  var bestScore = double.negativeInfinity;
+  var photoScore = double.negativeInfinity;
+
+  for (var i = 0; i < children.length; i++) {
+    final child = children[i];
+    if (child.score > bestScore) {
+      bestScore = child.score;
+      bestIdx = i;
+    }
+    if (child.hasPhoto && child.score > photoScore) {
+      photoScore = child.score;
+      photoIdx = i;
+    }
+  }
+  return photoIdx >= 0 ? photoIdx : bestIdx;
+}

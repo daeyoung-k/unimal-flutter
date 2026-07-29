@@ -116,4 +116,44 @@ void main() {
           isNot(stackGroupKey(37.5001, 127.0)));
     });
   });
+
+  group('pickClusterRepIndex', () {
+    test('사진 자식이 최고 score 가 아니어도 선정된다', () {
+      final idx = pickClusterRepIndex(const [
+        ClusterChildRank(hasPhoto: false, score: 10001),
+        ClusterChildRank(hasPhoto: true, score: 20.1),
+        ClusterChildRank(hasPhoto: true, score: 8.1),
+      ]);
+      expect(idx, 1); // 사진 자식 중 최고 score
+    });
+
+    test('사진 자식이 없으면 최고 score 자식', () {
+      final idx = pickClusterRepIndex(const [
+        ClusterChildRank(hasPhoto: false, score: 3),
+        ClusterChildRank(hasPhoto: false, score: 9),
+        ClusterChildRank(hasPhoto: false, score: 5),
+      ]);
+      expect(idx, 1);
+    });
+
+    test('동점이면 먼저 오는 자식', () {
+      final idx = pickClusterRepIndex(const [
+        ClusterChildRank(hasPhoto: true, score: 7),
+        ClusterChildRank(hasPhoto: true, score: 7),
+      ]);
+      expect(idx, 0);
+    });
+
+    test('음수 score 도 정상 비교된다', () {
+      final idx = pickClusterRepIndex(const [
+        ClusterChildRank(hasPhoto: false, score: -5),
+        ClusterChildRank(hasPhoto: false, score: -1),
+      ]);
+      expect(idx, 1);
+    });
+
+    test('빈 리스트면 -1', () {
+      expect(pickClusterRepIndex(const []), -1);
+    });
+  });
 }
