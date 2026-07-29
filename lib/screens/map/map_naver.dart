@@ -987,6 +987,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           'canCard': canBecomeCard ? '1' : '0',
           // 스택 글 수 — 클러스터 +N 뱃지가 마커 수가 아닌 글 수 합계를 표시.
           'count': stackCount.toString(),
+          // 클러스터 대표 선정용 — 이 그룹에 사진이 하나라도 있는가.
+          // 표시 대표는 사진 우선이므로 대표만 보면 판정된다.
+          'hasPhoto': topPost.fileInfoList.isEmpty ? '0' : '1',
         },
         caption: NOverlayCaption(
           text: _truncateMarkerTitle(derivedTitle),
@@ -1644,32 +1647,42 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   /// 클러스터 마커 빌더.
-  /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
+  ///
+  /// 표시 대표 = **사진 자식 우선**, 없으면 최고 score 자식
+  /// ([pickClusterRepIndex]). 아이콘·캡션·탭 위치·스택 판정이 모두 그 자식을
+  /// 따르고, 우상단 +N 뱃지 숫자만 전체 자식 count 합계를 쓴다.
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
     debugPrint('[map] clusterBuilder called size=${info.size}');
     try {
-    // children 중 score 최대 마커 식별 + 스택 글 수 합산
+    // 표시 대표는 **사진 자식 우선**, 없으면 최고 score 자식
+    // (스택 마커와 같은 규칙 — docs/specs/2026-07-28).
+    // 클러스터가 품은 총 글 수는 마커 수(info.size)가 아니라 count 태그 합계다.
+    final children = info.children;
+    final ranks = <ClusterChildRank>[];
+    int totalCount = 0;
+    for (final child in children) {
+      totalCount += int.tryParse(child.tags['count'] ?? '1') ?? 1;
+      ranks.add(ClusterChildRank(
+        hasPhoto: child.tags['hasPhoto'] == '1',
+        score: double.tryParse(child.tags['score'] ?? '0') ?? 0,
+      ));
+    }
+
+    final repIdx = pickClusterRepIndex(ranks);
     String? topId;
     String? topTitle;
     NLatLng? topPosition;
     bool topCanCard = false;
     int topOwnCount = 1;
     double topScore = -1;
-    // 클러스터가 품은 총 글 수 — 스택 마커(count 2+)를 포함하므로
-    // 마커 수(info.size)가 아니라 count 태그 합계를 뱃지에 표시.
-    int totalCount = 0;
-    for (final child in info.children) {
-      final childCount = int.tryParse(child.tags['count'] ?? '1') ?? 1;
-      totalCount += childCount;
-      final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
-      if (s > topScore) {
-        topScore = s;
-        topId = child.id;
-        topTitle = child.tags['title'];
-        topPosition = child.position;
-        topCanCard = child.tags['canCard'] == '1';
-        topOwnCount = childCount;
-      }
+    if (repIdx >= 0) {
+      final rep = children[repIdx];
+      topId = rep.id;
+      topTitle = rep.tags['title'];
+      topPosition = rep.position;
+      topCanCard = rep.tags['canCard'] == '1';
+      topOwnCount = int.tryParse(rep.tags['count'] ?? '1') ?? 1;
+      topScore = ranks[repIdx].score;
     }
 
     if (topId != null) {
