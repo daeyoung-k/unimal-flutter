@@ -40,6 +40,16 @@ class _ShareCardSheetState extends State<ShareCardSheet>
 
   static const int _maxImages = 10;
 
+  /// 업로드 이미지 축소/압축 기준 — **모든** picker 호출에 동일하게 적용할 것.
+  ///
+  /// 예전에는 다중 선택(`pickMultipleMedia`)에만 붙어 있고 단일 선택/카메라
+  /// (`pickImage`)에는 빠져 있었다. 그래서 단일 경로로 올라온 사진이 원본
+  /// 그대로 S3/CDN 에 저장돼(측정값 500KB~3.3MB) 지도 마커가 200px 원을
+  /// 그리려고 수 MB 를 받는 상태였다 — 콜드 스타트 마커 지연의 주원인.
+  /// 새 picker 호출을 추가할 때도 반드시 이 상수를 넘길 것.
+  static const int _pickMaxSide = 1920;
+  static const int _pickImageQuality = 85;
+
   final List<File> _images = [];
   // 수정 모드: 남아있는 기존(서버) 이미지와 삭제 대상 fileId.
   final List<FileInfo> _existingFiles = [];
@@ -241,7 +251,12 @@ class _ShareCardSheetState extends State<ShareCardSheet>
       final granted = await _requestPhotoPermission();
       if (!granted) return;
     }
-    final XFile? image = await _picker.pickImage(source: source);
+    final XFile? image = await _picker.pickImage(
+      source: source,
+      maxWidth: _pickMaxSide.toDouble(),
+      maxHeight: _pickMaxSide.toDouble(),
+      imageQuality: _pickImageQuality,
+    );
     if (image != null && mounted) {
       setState(() => _images.add(File(image.path)));
     }
@@ -259,9 +274,9 @@ class _ShareCardSheetState extends State<ShareCardSheet>
     if (!granted) return;
 
     final List<XFile> images = await _picker.pickMultipleMedia(
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+      maxWidth: _pickMaxSide.toDouble(),
+      maxHeight: _pickMaxSide.toDouble(),
+      imageQuality: _pickImageQuality,
     );
 
     if (images.isNotEmpty && mounted) {

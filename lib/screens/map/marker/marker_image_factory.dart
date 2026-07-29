@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
@@ -110,8 +111,36 @@ Color markerRingColor({required bool isOwner, required String createdAt}) {
 /// 캐시되어 테마 전환에 실시간 반응하지 않으므로(기존 동작과 동일),
 /// 지도 라이트/다크 스타일 모두에서 잘 보이는 라이트 팔레트를 기본으로 쓴다.
 class MarkerImageFactory {
+  /// 마커 썸네일 이미지 스트림.
+  ///
+  /// 두 겹으로 비용을 줄인다:
+  ///
+  /// 1. **[CachedNetworkImageProvider] — 디스크 캐시.** 생 [NetworkImage] 는
+  ///    Flutter `ImageCache`(메모리 전용)만 타서 프로세스가 죽으면 캐시도
+  ///    사라진다. 즉 콜드 스타트마다 마커 사진을 전량 재다운로드했다.
+  ///    실측(2026-07-29, iOS 시뮬레이터): 사진 마커 1장에 1326ms 가 들었고
+  ///    그중 대부분이 바이트 전송이었다. 같은 코드 경로에서 30KB 이미지는
+  ///    83ms — 파이프라인이 아니라 전송량이 원인이었다. 디스크 캐시가 붙으면
+  ///    2회차 이후 콜드 스타트에서 이 구간의 네트워크가 사라진다.
+  /// 2. **[ResizeImage] — 디코드 축소.** 200x200 캔버스에만 쓰는 이미지를
+  ///    원본 해상도로 디코드하던 낭비를 없앤다. 크기 선정 이유는
+  ///    [kMarkerThumbDecodeSize] 참고.
+  ///
+  /// 주의:
+  /// - 정책은 반드시 `fit` — `exact` 는 종횡비를 무시해 사진이 찌그러진다.
+  /// - [CachedNetworkImageProvider] 의 `maxWidth`/`maxHeight` 는 쓰지 않는다.
+  ///   그 경로는 `CacheManager` 가 `ImageCacheManager` 여야 하고, 축소는
+  ///   이미 [ResizeImage] 가 담당한다. (둘을 같이 쓰면 중복 축소)
+  /// - 근본 해결은 서버가 마커용 썸네일 파생을 내려주는 것이다. CloudFront
+  ///   에는 리사이즈 기능이 없어(`?w=`, `?width=`, `Accept: image/webp` 모두
+  ///   원본 반환 — 2026-07-29 확인) 클라이언트에서 할 수 있는 최선이 여기까지다.
   Future<ImageStream> getImageStream(String url) async {
-    final NetworkImage assetImage = NetworkImage(url);
+    final ResizeImage assetImage = ResizeImage(
+      CachedNetworkImageProvider(url),
+      width: kMarkerThumbDecodeSize,
+      height: kMarkerThumbDecodeSize,
+      policy: ResizeImagePolicy.fit,
+    );
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
     return stream;
   }

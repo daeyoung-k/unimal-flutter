@@ -36,6 +36,24 @@ const int kMarkerTierMinSample = 8;
 /// 비트맵 캔버스(200px)에는 `4 * 200 / kNormalMarkerSize` 로 환산해 그린다.
 const double kMarkerRingWidthDp = 4.0;
 
+/// 마커 썸네일 **디코드** 목표 크기 — 원본 풀해상도 디코드 방지용.
+///
+/// 마커 비트맵은 200x200 캔버스(`createMarkerImage`)에만 쓰이므로 원본
+/// 해상도로 디코드할 이유가 없다. 폰 사진 원본(예: 4032x3024 ≈ 1,220만 픽셀)을
+/// 그대로 디코드하면 마커 하나당 수십 MB 비트맵을 만들고 버리며, 아이콘
+/// 생성 루프가 직렬이라 이 비용이 마커 수만큼 누적된다.
+///
+/// 200 이 아니라 **2배 여유(400)** 인 이유: `createMarkerImage` 가 원본의
+/// **중앙 정사각형을 크롭**해 200px 원에 그린다. fit 정책으로 200x200 에
+/// 맞추면 4:3 가로 사진은 200x150 이 되어 중앙 정사각(150px)이 200px 보다
+/// 작아져 확대 흐림이 생긴다. 400 이면 400x300 → 중앙 정사각 300px ≥ 200px
+/// 이라 어떤 종횡비에서도 확대가 일어나지 않는다.
+///
+/// **주의**: `ResizeImagePolicy.exact` + width/height 동시 지정은 종횡비를
+/// 무시하고 늘려버린다(`BoxFit.fill` 동일 — image_provider.dart 문서).
+/// 반드시 `ResizeImagePolicy.fit` 과 함께 쓸 것.
+const int kMarkerThumbDecodeSize = 400;
+
 /// "새 글" 링(accent) 유지 시간 — 작성 후 24시간 (피그마 §1).
 const Duration kNewPostRingDuration = Duration(hours: 24);
 
