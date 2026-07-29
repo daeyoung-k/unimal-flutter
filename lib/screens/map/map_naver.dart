@@ -929,7 +929,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (!isTextPost) {
         // ── 사진 글: 원형 썸네일 + 링 (내 글=primary, 새 글 24h=accent) ──
         try {
-          final firstUrl = topPost.fileInfoList.first.fileUrl;
+          // 원본이 아니라 서버 썸네일(400px) 우선 — 없으면 원본 폴백.
+          final firstUrl = topPost.fileInfoList.first.markerImageUrl;
           final stream = await _markerImageFactory.getImageStream(firstUrl);
           baseBytes = await _markerImageFactory.createMarkerImage(
             stream,
@@ -1980,8 +1981,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (cached != null) return await overlayImageFromBytes(cached);
       final Uint8List bytes;
       if (post.fileInfoList.isNotEmpty) {
+        // 서버 썸네일(400px) 우선 — 없으면 원본 폴백.
         final stream = await _markerImageFactory
-            .getImageStream(post.fileInfoList.first.fileUrl);
+            .getImageStream(post.fileInfoList.first.markerImageUrl);
         bytes = await _markerImageFactory.createMarkerImage(
           stream,
           ringColor: markerRingColor(

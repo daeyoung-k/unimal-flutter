@@ -173,8 +173,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       NOverlayImage icon;
       try {
         if (p.fileInfoList.isNotEmpty) {
-          final stream =
-              await _markerImageFactory.getImageStream(p.fileInfoList.first.fileUrl);
+          // 서버 썸네일(400px) 우선 — 없으면 원본 폴백 (메인 지도와 동일 규칙).
+          final stream = await _markerImageFactory
+              .getImageStream(p.fileInfoList.first.markerImageUrl);
           final bytes = await _markerImageFactory.createMarkerImage(stream);
           icon = await overlayImageFromBytes(bytes);
         } else {

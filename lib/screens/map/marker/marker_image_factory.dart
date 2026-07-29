@@ -126,14 +126,23 @@ class MarkerImageFactory {
   ///    원본 해상도로 디코드하던 낭비를 없앤다. 크기 선정 이유는
   ///    [kMarkerThumbDecodeSize] 참고.
   ///
+  /// [url] 은 호출자가 `FileInfo.markerImageUrl` 로 결정한다 — 서버 썸네일
+  /// (긴 변 400px JPEG)이 있으면 그것, 없으면 원본이다. 서버 파생이 들어온 뒤
+  /// (2026-07-29)에도 아래 두 겹을 유지하는 이유는 **폴백 경로 방어**다:
+  /// 백필이 안 돼 기존 파일은 여전히 원본(500KB~3.3MB)으로 내려오고, 썸네일
+  /// 생성이 실패한 파일도 원본으로 온다.
+  ///
   /// 주의:
   /// - 정책은 반드시 `fit` — `exact` 는 종횡비를 무시해 사진이 찌그러진다.
   /// - [CachedNetworkImageProvider] 의 `maxWidth`/`maxHeight` 는 쓰지 않는다.
   ///   그 경로는 `CacheManager` 가 `ImageCacheManager` 여야 하고, 축소는
   ///   이미 [ResizeImage] 가 담당한다. (둘을 같이 쓰면 중복 축소)
-  /// - 근본 해결은 서버가 마커용 썸네일 파생을 내려주는 것이다. CloudFront
-  ///   에는 리사이즈 기능이 없어(`?w=`, `?width=`, `Accept: image/webp` 모두
-  ///   원본 반환 — 2026-07-29 확인) 클라이언트에서 할 수 있는 최선이 여기까지다.
+  /// - 서버 썸네일이 이미 400px 이면 [ResizeImage] 는 실질 no-op 이다
+  ///   (`allowUpscaling` 기본 false + `fit` 이라 확대하지 않는다). 비용이 아니라
+  ///   원본 폴백 때만 일하는 안전망으로 남겨 둔다.
+  /// - CloudFront 에는 URL 리사이즈 기능이 없다 (`?w=`, `?width=`,
+  ///   `Accept: image/webp` 모두 원본 반환 — 2026-07-29 확인). 그래서 크기를
+  ///   줄이는 유일한 방법이 서버가 미리 만든 파생을 받는 것이다.
   Future<ImageStream> getImageStream(String url) async {
     final ResizeImage assetImage = ResizeImage(
       CachedNetworkImageProvider(url),
