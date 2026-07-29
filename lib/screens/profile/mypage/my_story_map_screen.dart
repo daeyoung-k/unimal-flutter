@@ -194,7 +194,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         id: id,
         position: position,
         icon: icon,
-        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+        // 텍스트 글은 위계·기본 크기가 아니라 [kTextDotMarkerSize] 고정 —
+        // 줌인 시 말풍선 안 점(32dp)으로 넘어갈 때 원 지름이 튀지 않게
+        // 한다(메인 지도와 동일 규칙, 2026-07-29 결정).
+        size: isText
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize),
         tags: {'title': title, 'boardId': p.boardId, 'isText': isText ? '1' : '0'},
         caption: NOverlayCaption(
           text: _markerCaption(title),
@@ -286,7 +291,13 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       final icon = child != null ? _markerIcons[child.id] : null;
       if (icon != null) {
         clusterMarker.setIcon(icon);
-        clusterMarker.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
+        // 크기도 원래 규칙으로 복원 — 텍스트 점은 kTextDotMarkerSize 고정.
+        // 여기서 기본 크기로 되돌리면 줌아웃→줌인 왕복 때 텍스트 점만
+        // 50dp 로 커져 말풍선 전환에서 다시 튄다 (2026-07-29).
+        final bool childIsText = child?.tags['isText'] == '1';
+        clusterMarker.setSize(childIsText
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize));
       }
       clusterMarker.setCaption(NOverlayCaption(
         text: _markerCaption((child?.tags['title'] ?? '').trim()),
@@ -596,8 +607,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     );
   }
 
-  /// 텍스트 글 줌인 카드 아이콘 — 꼬리 끝이 하단 중앙(anchor 0.5,1.0)에 오도록
-  /// bottomCenter 정렬. 제목 없으면 본문만 카드. (메인 지도와 동일 위젯)
+  /// 텍스트 글 줌인 카드 아이콘 — 카드 + 하단 투명 여백(점은 그리지 않고 실제
+  /// 점 마커가 그 자리에 보인다, 2026-07-29). 하단 중앙이 지도 좌표
+  /// (anchor 0.5,1.0)이므로 bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// (메인 지도와 동일 위젯)
   Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;

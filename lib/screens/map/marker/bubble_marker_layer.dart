@@ -8,7 +8,9 @@ import 'package:unimal/screens/map/marker/marker_constants.dart';
 
 /// 말풍선 레이어 목표 1건 — 화면이 글 모델(MapPost/BoardPost)에 관계없이
 /// 필요한 값만 넘긴다. [position]은 화면이 실제 마커를 그린 좌표
-/// (jitter 적용 포함)와 같아야 말풍선 꼬리가 점 위에 정확히 겹친다.
+/// (jitter 적용 포함)와 같아야 카드가 점 바로 위에 뜬다 — 말풍선 아이콘은
+/// 하단이 투명해 그 자리에 실제 점 마커가 보이므로 좌표가 어긋나면
+/// 카드와 점이 따로 떨어져 보인다.
 class BubbleMarkerTarget {
   const BubbleMarkerTarget({
     required this.id,
@@ -38,8 +40,12 @@ class BubbleMarkerTarget {
 ///   리클러스터링 payload 되돌림(C1)이 없고 alpha 트윈이 안전하다.
 /// - 같은 id 재생성이 없어 delete/add 탭 핸들러 경합(C2)도 없다.
 /// - 클러스터러블 마커에는 이 레이어의 어떤 기법도 적용 금지.
+/// - 말풍선은 **점 마커를 가리지 않는다** (2026-07-29) — 아이콘 하단이 투명해
+///   그 자리에 실제 점이 보인다. 숨기는 것은 점의 제목 캡션뿐이다.
 /// - `minZoom(kBubbleMinZoom)` 하드 가드 — 클러스터링 구간(≤16)과 공존하면
 ///   충돌 숨김이 새 클러스터 마커를 숨김 고착시킨다 (2026-07-19 사고).
+///   마커 숨김 자체는 이제 끄지만(위), 캡션 숨김 경로가 남아 있고 사고 이력이
+///   있는 구간이라 이 가드는 그대로 유지한다.
 class BubbleMarkerLayer {
   BubbleMarkerLayer({this.debugLabel = 'bubble'});
 
@@ -58,8 +64,10 @@ class BubbleMarkerLayer {
   String _overlayId(String id) => 'bubble_$id';
 
   /// 말풍선 집합을 [targets]로 수렴시킨다. 불일치가 없으면 no-op.
-  /// - 제거분: 충돌 숨김 해제 → 페이드 아웃 → 삭제 (점이 밑에서 먼저 복귀).
-  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인 → 충돌 숨김.
+  /// - 제거분: 캡션 숨김 해제 → 페이드 아웃 → 삭제 (점 캡션이 먼저 복귀).
+  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인 → 캡션 숨김.
+  ///
+  /// 점 마커는 이 레이어가 건드리지 않는다 — 항상 보인다.
   /// - [canApply]: 비동기 아이콘 생성 뒤 add 직전에 재검증되는 화면 가드
   ///   (mounted, 재조회 중 아님, 바텀 카드 닫힘 등). 제거분에는 적용하지
   ///   않는다 — 카드 열림 등으로 목표가 비어도 제거는 진행돼야 한다.
@@ -79,7 +87,7 @@ class BubbleMarkerLayer {
       if (targetById.containsKey(id)) {
         if (_removingIds.remove(id)) {
           _fade(id, marker, to: 1.0, onDone: () {
-            _setCollisionHiding(marker, true);
+            _setCaptionHiding(marker, true);
           });
         }
         continue;
@@ -87,8 +95,8 @@ class BubbleMarkerLayer {
       if (_removingIds.contains(id)) continue; // 이미 페이드 아웃 중
       _removingIds.add(id);
       removeStarted++;
-      // 점이 먼저 자연스럽게 돌아오도록 충돌 숨김을 풀고 페이드 아웃.
-      _setCollisionHiding(marker, false);
+      // 점의 제목 캡션이 먼저 자연스럽게 돌아오도록 숨김을 풀고 페이드 아웃.
+      _setCaptionHiding(marker, false);
       _fade(id, marker, to: 0.0, onDone: () {
         if (!identical(_refs[id], marker)) return;
         try {
@@ -140,11 +148,11 @@ class BubbleMarkerLayer {
       final marker = entry.value;
       _ids.add(id);
       _refs[id] = marker;
-      // alpha 0 payload 로 추가됐다 — 페이드 인 후 충돌 숨김을 켠다.
-      // (숨김을 먼저 켜면 점이 즉시 사라져 페이드 동안 빈 자리가 보인다)
+      // alpha 0 payload 로 추가됐다 — 페이드 인 후 점의 제목 캡션을 숨긴다.
+      // (먼저 숨기면 카드가 아직 투명한 동안 제목이 사라져 깜빡인다)
       _alpha[id] = 0.0;
       _fade(id, marker, to: 1.0, onDone: () {
-        _setCollisionHiding(marker, true);
+        _setCaptionHiding(marker, true);
       });
     }
     if (kDebugMode) {
@@ -152,8 +160,8 @@ class BubbleMarkerLayer {
     }
   }
 
-  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드+아래 점 합성이라 기본 앵커
-  /// (0.5, 1.0) 기준으로 밑의 점 마커 위에 정확히 겹친다.
+  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드 + 하단 투명 여백이고, 기본 앵커
+  /// (0.5, 1.0)가 지도 좌표라 그 투명 여백 자리에 실제 점 마커가 보인다.
   NMarker _buildMarker(BubbleMarkerTarget target, NOverlayImage icon) {
     final marker = NMarker(
       id: _overlayId(target.id),
@@ -171,8 +179,16 @@ class BubbleMarkerLayer {
     // Dart sync 타이밍과 무관하게 원천 차단한다.
     marker.setMinZoom(kBubbleMinZoom);
     marker.setIsMinZoomInclusive(true);
-    // 밑의 점 마커(+제목 캡션) 충돌 숨김은 여기서 켜지 않는다 —
-    // 페이드 인 완료 후 _setCollisionHiding 이 켠다.
+    // 점 마커를 가리지 않는다 (2026-07-29). 말풍선 아이콘은 하단을 투명하게
+    // 비워 두고 그 자리에 실제 점이 보이도록 하므로, 여기서 점을 가리면
+    // 점이 아예 사라진다. 기본값도 false 지만 의도를 명시해 둔다.
+    //
+    // 대가: 204dp 카드와 겹치는 다른 마커도 정리되지 않아 그대로 보인다.
+    // 말풍선 대상이 "단일 + 비밀집(120dp 내 이웃 2개 미만)"으로 제한돼 있어
+    // 겹침 빈도는 낮다는 판단 — 거슬리면 kTextCardDenseNeighbors 를 조인다.
+    marker.setIsHideCollidedMarkers(false);
+    // 제목 캡션 충돌 숨김은 여기서 켜지 않는다 — 페이드 인 완료 후
+    // _setCaptionHiding 이 켠다.
     marker.setOnTapListener((_) => target.onTap());
     return marker;
   }
@@ -213,11 +229,14 @@ class BubbleMarkerLayer {
     });
   }
 
-  /// 밑의 점 마커(+캡션) 충돌 숨김 토글 — 페이드 인 완료 후 켜고,
-  /// 페이드 아웃 시작 전에 끈다 (점↔말풍선이 겹쳐서 교차되도록).
-  void _setCollisionHiding(NMarker marker, bool hide) {
+  /// 밑의 점 마커 **캡션** 충돌 숨김 토글 — 페이드 인 완료 후 켜고,
+  /// 페이드 아웃 시작 전에 끈다.
+  ///
+  /// 카드가 제목을 이미 보여주므로 점의 타이틀 캡션은 중복이라 숨긴다.
+  /// 반면 **점 마커 자체는 가리지 않는다** — `setIsHideCollidedMarkers` 는
+  /// [_buildMarker] 에서 false 로 고정한다(이유는 그쪽 주석 참고).
+  void _setCaptionHiding(NMarker marker, bool hide) {
     try {
-      marker.setIsHideCollidedMarkers(hide);
       marker.setIsHideCollidedCaptions(hide);
     } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
   }

@@ -23,6 +23,34 @@ const double kMarkerSizeLower = 42.0; // 하위 score
 const double kMarkerSizeUpper = 58.0; // 상위 score
 const double kMarkerSizeHot = 66.0; // 핫플 (상위 5%) + 캡션 우선권
 
+/// 텍스트 점 마커 비트맵 캔버스 규격 — `createTextDotImage` 가 이 값으로 그린다.
+/// 캔버스 200px 고정: 클러스터/스택 +N 뱃지 합성(`addClusterBadge`)이 200x200 을
+/// 가정한다. 패딩 16px 은 테두리 안티앨리어싱 + 드롭섀도 여유.
+const double kTextDotCanvasSize = 200.0;
+const double kTextDotCanvasPadding = 16.0;
+
+/// 텍스트 점 마커 표시 크기 — **score 위계 비적용** (2026-07-29 결정).
+///
+/// 텍스트 마커는 사진 마커와 달리 score 크기 위계(42/50/58/66)를 타지 않고
+/// 항상 이 크기다 — 피그마 18 "텍스트 마커 변형 시트"의 점 지름 32dp 확정안을
+/// 어느 줌에서나 그대로 따른다.
+///
+/// (연혁: 처음 이 값을 도입한 이유는 "줌인 시 말풍선 아이콘 안에 그려지는
+/// 점 32dp 와 크기를 맞춘다"였다. 이후 말풍선에서 점을 아예 빼고 실제 점
+/// 마커가 그대로 보이게 바꿨으므로(2026-07-29) 맞출 상대는 사라졌고, 남은
+/// 근거는 위의 피그마 스펙 + 위계 비적용 결정이다.)
+///
+/// **값이 32 가 아니라 34.78 인 이유**: `createTextDotImage` 는 캔버스
+/// [kTextDotCanvasSize]px 안에 32dp 프레임을 `unit=(200-16)/32` 로 그려
+/// 원이 캔버스의 92%(184/200)만 차지한다. 따라서 화면상 원 지름을 32dp 로
+/// 만들려면 표시 크기를 그 비율로 되돌려야 한다. 테두리도 이때 정확히 1dp 다.
+///
+/// 아래 `32.0` 은 `text_marker_widgets.dart` 의 `kTextDotFrameW` 와 같은 값이다
+/// (그 파일은 위젯 계층이라 여기서 import 하지 않는다 — 한쪽을 바꾸면 반드시
+/// 다른 쪽도 바꿀 것).
+const double kTextDotMarkerSize =
+    32.0 * kTextDotCanvasSize / (kTextDotCanvasSize - kTextDotCanvasPadding);
+
 /// score 위계 백분위 경계.
 const double kMarkerTierHotPercentile = 0.95;
 const double kMarkerTierUpperPercentile = 0.75;

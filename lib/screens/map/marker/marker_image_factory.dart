@@ -391,7 +391,7 @@ class MarkerImageFactory {
   /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 (튀어나온 꼬리 없음 —
   /// 피그마 "18 텍스트 마커 변형 시트" 확정안, 카드/점 같은 패밀리).
   /// 원 바닥이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
-  /// 위젯([TextDotGlyph])과 [paintTextDot] 로 같은 그림을 공유한다.
+  /// 모양은 [paintTextDot] 이 단일 소유한다 (피그마 기하 원본).
   Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
     if (bubbleColor == null && _textDotBytesCache != null) {
       return _textDotBytesCache!;
@@ -399,10 +399,13 @@ class MarkerImageFactory {
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const double size = 200.0;
+    // 규격은 marker_constants 에서 관리 — 표시 크기([kTextDotMarkerSize])가
+    // 이 두 값으로부터 역산되므로 여기서 직접 숫자를 쓰면 둘이 어긋난다.
+    const double size = kTextDotCanvasSize;
     // 좌우 8px·상단 16px 여유(테두리 안티앨리어싱 + 그림자), 원 바닥 = 캔버스
-    // 하단(200). 표시 크기(위계 42~66dp 정사각) 기준 원 지름 = 0.92x.
-    const double unit = (size - 16) / kTextDotFrameH;
+    // 하단(200). 즉 캔버스 대비 원 지름 = 0.92x — 표시 크기는 이 비율을
+    // 되돌려 원이 말풍선 안 점(32dp)과 같아지도록 정해져 있다.
+    const double unit = (size - kTextDotCanvasPadding) / kTextDotFrameH;
 
     paintTextDot(
       canvas,

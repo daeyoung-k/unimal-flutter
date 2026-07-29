@@ -863,8 +863,14 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // (사진 우선 대표 선정 — docs/specs/2026-07-28).
       final double rankScore = rankScoreById[topPost.id] ?? topPost.score;
 
-      // score 크기 위계 (42/50/58/66) — 그룹 랭킹 score 의 화면 내 백분위.
-      final double tierSize = tiers.sizeFor(rankScore);
+      // 표시 크기.
+      // - 사진 글: score 크기 위계 (42/50/58/66) — 그룹 랭킹 score 의 화면 내 백분위.
+      // - 텍스트 글: **위계 비적용, 항상 [kTextDotMarkerSize]** (2026-07-29 결정).
+      //   줌인하면 말풍선 아이콘 안의 점(32dp 고정)으로 표현이 넘어가는데,
+      //   위계 크기였으면 전환 순간 원 지름이 46→32dp(기본) / 60.7→32dp(핫플)로
+      //   튀었다. 이유와 34.78 값의 근거는 상수 주석 참고.
+      final double displaySize =
+          isTextPost ? kTextDotMarkerSize : tiers.sizeFor(rankScore);
       final bool isHot = tiers.isHot(rankScore);
 
       // 이미 화면에 있는 마커 → 재사용. 스택 글 수가 바뀌면 재생성.
@@ -877,11 +883,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // 위계 변화(뷰포트 이동으로 백분위가 바뀜)는 재합성 없이 반영:
           // 크기는 setSize, 캡션 우선권은 setIsForceShowCaption.
           // 선택 중 마커의 크기는 제외.
-          if (_markerBaseSize[topPost.id] != tierSize) {
-            _markerBaseSize[topPost.id] = tierSize;
+          // 텍스트 마커는 displaySize 가 상수라 이 비교가 항상 거짓 — 위계
+          // 변화로 크기가 바뀌지 않는다.
+          if (_markerBaseSize[topPost.id] != displaySize) {
+            _markerBaseSize[topPost.id] = displaySize;
             if (_highlightedMarkerId != topPost.id) {
               try {
-                _markerRefs[topPost.id]?.setSize(Size(tierSize, tierSize));
+                _markerRefs[topPost.id]?.setSize(Size(displaySize, displaySize));
               } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
             }
           }
@@ -975,7 +983,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         id: topPost.id,
         position: pos,
         icon: icon,
-        size: Size(tierSize, tierSize),
+        size: Size(displaySize, displaySize),
         tags: {
           'score': rankScore.toString(),
           // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
@@ -1002,7 +1010,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       final baseZIndex = 200000 + rankScore.toInt();
       _markerRefs[topPost.id] = marker;
       _markerBaseZIndex[topPost.id] = baseZIndex;
-      _markerBaseSize[topPost.id] = tierSize;
+      _markerBaseSize[topPost.id] = displaySize;
       _markerStackCount[topPost.id] = stackCount;
       _markerIsHot[topPost.id] = isHot;
       _markerTitle[topPost.id] = derivedTitle;
@@ -1622,8 +1630,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
-  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 아래 점 앵커 합성). 점 꼬리 끝이 박스
-  /// 하단 중앙(anchor 기본 0.5,1.0)에 오도록 bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 하단 투명 여백). 점은 그리지 않는다 —
+  /// 그 투명 여백 자리에 **항상 켜져 있는 실제 점 마커가 보인다**(2026-07-29).
+  /// 박스 하단 중앙이 지도 좌표(anchor 기본 0.5,1.0)이므로 bottomCenter 정렬.
+  /// 제목 없으면 본문만 카드.
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
@@ -1703,7 +1713,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (info.size == 1) {
         // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시.
         // 아이콘 캐시에 스택 합성본이 들어 있으므로 뱃지 추가 합성 불필요.
-        // 크기는 score 위계 기준값(42/50/58/66).
+        // 크기는 _markerBaseSize 에 저장된 표시 크기 그대로 — 사진은 score
+        // 위계(42/50/58/66), 텍스트는 kTextDotMarkerSize 고정이 자동 반영된다.
         final base = _markerIconCache[topId];
         if (base != null) {
           final baseSize = _markerBaseSize[topId] ?? _normalMarkerSize;
@@ -2194,7 +2205,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         position: center, // 팬아웃 시작점 — 애니메이션이 pos 로 이동
         alpha: 0, // 페이드인 시작값
         icon: icon,
-        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+        // 텍스트 점은 지도 어디서나 같은 크기 — 펼침 마커도 위계/기본 크기가
+        // 아니라 kTextDotMarkerSize 를 쓴다 (2026-07-29 결정).
+        size: post.fileInfoList.isEmpty
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize),
       );
       fanMarker.setGlobalZIndex(_stackFanZIndex + i);
       final int postIdx = i;
