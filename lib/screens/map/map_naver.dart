@@ -11,6 +11,7 @@ import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/marker_group.dart';
 import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/map/map_reload_policy.dart';
@@ -769,21 +770,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // jitter 로 흩뿌리던 방식을 폐기하고 그룹당 마커 하나(대표 + 뒷장 + +N 뱃지)로
     // 쌓는다. 줌인해도 유지되며, 탭하면 하단 카드 스트립에서 그룹 내 글을 넘겨본다.
     // 정밀도 주의: kStackGroupPrecision(4자리 ≈ 11m) — 진짜 같은 지점만 묶는다.
-    final Map<String, List<MapPost>> grouped = {};
-    for (final post in posts) {
-      final key = _stackGroupKey(post.latitude, post.longitude);
-      grouped.putIfAbsent(key, () => []).add(post);
-    }
-    // 그룹 내 score 내림차순 — 첫 글이 대표(마커 아이콘·캡션·zIndex 기준)
-    for (final list in grouped.values) {
-      list.sort((a, b) => b.score.compareTo(a.score));
-    }
+    // 11m 타일 그룹핑 + 대표 선정은 marker_group.dart 의 순수 규칙에 위임한다.
+    // 랭킹 score(그룹 최댓값)와 표시 대표(사진 우선)가 분리돼 나온다
+    // (설계: docs/specs/2026-07-28-마커-사진-우선-대표-선정.md).
+    final groups = buildMarkerGroups(posts);
+    final List<List<MapPost>> markerGroups = [for (final g in groups) g.posts];
+    // 표시 대표 id → 그룹 랭킹 score. 아래 빌드 루프가 크기·zIndex·태그에 쓴다.
+    final Map<String, double> rankScoreById = {
+      for (final g in groups) g.representative.id: g.rankScore,
+    };
 
-    final List<List<MapPost>> markerGroups = grouped.values.toList();
-
-    // score 크기 위계 — 화면에 로드된 마커(그룹 대표 score)의 상대 백분위.
-    final tiers =
-        MarkerScoreTiers.fromScores(markerGroups.map((g) => g.first.score));
+    // score 크기 위계 — 화면에 로드된 그룹들의 **랭킹 score** 상대 백분위.
+    // 표시 대표 score 를 쓰면 사진 우선 이동 때문에 위계가 뒤틀린다.
+    final tiers = MarkerScoreTiers.fromScores(groups.map((g) => g.rankScore));
 
     // 말풍선 대상 판정 — 밀집 계산은 말풍선 레이어 sync 와 같은 헬퍼를 쓴다.
     // 여기서는 canCard 태그(탭 줌 유도)에만 사용하며, 점↔말풍선 표현 자체는
@@ -799,13 +798,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     debugPrint('[map] markerGroups built: ${markerGroups.length} markers '
         '(grouped from ${posts.length} posts, tiers=${tiers.enabled})');
 
-    // 스택 그룹 구성 추적 — 점/썸네일은 오직 **대표(최고 score) 글**이 사진을
-    // 가졌는지로 갈린다. 같은 자리(11m) 안에 score 가 더 높은 텍스트 글이
-    // 있으면 방금 올린 사진 글이 있어도 대표가 뒤바뀌어 점으로 그려진다.
-    // "이미지 글 올렸는데 점 마커" 조사용.
+    // 스택 그룹 구성 추적 — 표시 대표(첫 글, 사진 우선)와 랭킹 score(그룹
+    // 최댓값)가 다를 수 있으므로 둘 다 남긴다. "사진 글인데 점 마커" 추적용.
     if (kDebugMode) {
-      for (final g in markerGroups.where((g) => g.length > 1)) {
-        debugPrint('[map] stack group: ${g.map((p) => '${p.id}'
+      for (final g in groups.where((g) => g.posts.length > 1)) {
+        debugPrint('[map] stack group rank=${g.rankScore} '
+            'rep=${g.representative.id} → ${g.posts.map((p) => '${p.id}'
             '(score=${p.score} files=${p.fileInfoList.length})').join(' | ')}');
       }
     }
@@ -861,9 +859,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // 탭 줌 유도에만 사용. 점 마커의 payload 는 항상 점이다 (2-레이어).
       final bool canBecomeCard = textBubbleEligibleIds.contains(topPost.id);
 
-      // score 크기 위계 (42/50/58/66) — 그룹 대표 score 의 화면 내 백분위.
-      final double tierSize = tiers.sizeFor(topPost.score);
-      final bool isHot = tiers.isHot(topPost.score);
+      // 랭킹 score — 그룹 최댓값. 표시 대표(topPost)의 score 와 다를 수 있다
+      // (사진 우선 대표 선정 — docs/specs/2026-07-28).
+      final double rankScore = rankScoreById[topPost.id] ?? topPost.score;
+
+      // score 크기 위계 (42/50/58/66) — 그룹 랭킹 score 의 화면 내 백분위.
+      final double tierSize = tiers.sizeFor(rankScore);
+      final bool isHot = tiers.isHot(rankScore);
 
       // 이미 화면에 있는 마커 → 재사용. 스택 글 수가 바뀌면 재생성.
       // 점↔말풍선 표현은 별도 말풍선 레이어가 담당하므로 여기에는
@@ -975,7 +977,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         icon: icon,
         size: Size(tierSize, tierSize),
         tags: {
-          'score': topPost.score.toString(),
+          'score': rankScore.toString(),
           // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
           // 여기서 계산해 담는다.
           'title': derivedTitle,
@@ -994,7 +996,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         ),
       );
 
-      final baseZIndex = 200000 + topPost.score.toInt();
+      final baseZIndex = 200000 + rankScore.toInt();
       _markerRefs[topPost.id] = marker;
       _markerBaseZIndex[topPost.id] = baseZIndex;
       _markerBaseSize[topPost.id] = tierSize;
@@ -1019,7 +1021,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // (2026-07-14 로그: 재생성 1건 add, 이후 숨김 무효). 숨김은
       // addOverlayAll 이후 실제 네이티브 호출로 일괄 수행한다.
       if (_expandedStackId != null &&
-          _stackGroupKey(topPost.latitude, topPost.longitude) ==
+          stackGroupKey(topPost.latitude, topPost.longitude) ==
               _expandedStackGroupKey) {
         // 접을 때 복원할 대상만 새 대표로 갱신 — 숨김은 add 후.
         _expandedStackId = topPost.id;
@@ -1102,7 +1104,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (_expandedStackGroupKey != null) {
       final fanIdx = _postGroups.indexWhere((g) =>
           g.isNotEmpty &&
-          _stackGroupKey(g.first.latitude, g.first.longitude) ==
+          stackGroupKey(g.first.latitude, g.first.longitude) ==
               _expandedStackGroupKey);
       if (fanIdx >= 0) {
         final repId = _postGroups[fanIdx].first.id;
@@ -1384,12 +1386,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
   String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
-
-  /// 같은 자리 스택 그룹핑 좌표 키 (kStackGroupPrecision, ≈11m 타일).
-  /// 그룹핑과 펼침 숨김 가드가 반드시 같은 키를 쓰도록 한 곳에서 관리.
-  String _stackGroupKey(double lat, double lng) =>
-      '${lat.toStringAsFixed(kStackGroupPrecision)},'
-      '${lng.toStringAsFixed(kStackGroupPrecision)}';
 
   /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
   /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
@@ -2074,7 +2070,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 재숨김 방어가 이 값을 보고 동작한다. (기존엔 펼침 완료 시점 설정이라
     // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
     _expandedStackId = stackId;
-    _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
+    _expandedStackGroupKey = stackGroupKey(top.latitude, top.longitude);
     _stackFanCenter = center;
     debugPrint('[map] expandStackFan start id=$stackId seq=$seq');
 
