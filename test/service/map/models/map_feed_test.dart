@@ -125,4 +125,30 @@ void main() {
     // 제목 없는 카드도 1건 (본문 폴백 확인용).
     expect(allItems.any((i) => i.title.isEmpty), isTrue);
   });
+
+  test('board_id 없는 아이템은 버린다 (키 표기 계약 위반 조기 경보)', () {
+    // 서버가 camelCase 로 내려준 상황을 모사 — type/title/content 는 한 단어라
+    // 그대로 매칭되므로 섹션은 살아남고 아이템만 board_id 를 잃는다.
+    const json = '''
+    {"data":{"sections":[
+      {"type":"LATEST","title":"방금 올라온 소식","has_more":false,"items":[
+        {"boardId":"camel1","title":"제목","content":"본문",
+         "latitude":37.5,"longitude":127.0,"nickname":"닉",
+         "likeCount":9,"createdAt":"2026-07-30T10:00:00"},
+        {"board_id":"ok1","title":"정상","content":"본문",
+         "latitude":37.5,"longitude":127.0,"nickname":"닉",
+         "like_count":3,"created_at":"2026-07-30T10:00:00"}
+      ]}
+    ]}}
+    ''';
+
+    final result = decodeMapFeedResponse(
+      http.Response.bytes(utf8.encode(json), 200),
+    );
+
+    expect(result, isNotNull);
+    final items = result!.sections.single.items;
+    expect(items.length, 1, reason: 'camelCase 아이템은 버려져야 한다');
+    expect(items.single.boardId, 'ok1');
+  });
 }

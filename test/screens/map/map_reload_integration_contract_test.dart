@@ -615,4 +615,35 @@ void main() {
     expect(idle, isNonNegative);
     expect(pending, greaterThan(idle));
   });
+
+  test('마커 선택과 지도 탭은 피드 카드를 함께 닫는다', () {
+    final map = File('lib/screens/map/map_naver.dart').readAsStringSync();
+
+    // 피드 카드는 화면 하단만 덮고 상단 지도는 여전히 탭 가능하다. 두 경로에서
+    // _feedSelectedPost 를 지우지 않으면 MapBottomCard 두 개가 동시에 마운트되고,
+    // 지도 탭으로 피드 카드가 닫히지 않는다 (2026-07-30 최종 리뷰).
+    final closeAll = map.indexOf('void _closeAllCards()');
+    expect(closeAll, isNonNegative);
+    final selectMarker = map.indexOf('Future<void> _selectMarker(');
+    expect(selectMarker, isNonNegative);
+
+    // 각 함수 본문 안에서 피드 카드 상태가 초기화되는지 확인한다.
+    // (함수 시작 위치 이후 가장 가까운 초기화 지점이 그 함수 안에 있는지)
+    for (final entry in {
+      '_closeAllCards': closeAll,
+      '_selectMarker': selectMarker,
+    }.entries) {
+      final clearIdx = map.indexOf('_feedSelectedPost = null', entry.value);
+      expect(clearIdx, isNonNegative,
+          reason: '${entry.key} 가 _feedSelectedPost 를 지우지 않는다');
+      // 다음 최상위 메서드 선언보다 앞에 있어야 그 함수 안이다.
+      final nextMethod = map.indexOf('\n  Future<', entry.value + 1);
+      final nextVoid = map.indexOf('\n  void ', entry.value + 1);
+      final bound = [nextMethod, nextVoid]
+          .where((i) => i >= 0)
+          .fold<int>(map.length, (a, b) => a < b ? a : b);
+      expect(clearIdx, lessThan(bound),
+          reason: '${entry.key} 본문 밖에서 초기화되고 있다');
+    }
+  });
 }

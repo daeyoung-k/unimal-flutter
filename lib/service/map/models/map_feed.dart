@@ -118,6 +118,13 @@ class MapFeedSection {
           ? rawItems
               .whereType<Map<String, dynamic>>()
               .map(MapFeedItem.fromJson)
+              // boardId 없는 아이템은 버린다. 카드 탭이 상세 조회로 이어지므로
+              // id 가 없으면 아무것도 할 수 없고, 무엇보다 이게 **키 표기 계약
+              // 위반의 조기 경보**다: 서버가 snake_case 대신 camelCase 로 내려주면
+              // board_id 만 비고 type/title/content 는 그대로 매칭돼, 섹션이 정상
+              // 렌더되면서 "좋아요 0 · 방금 전" 쓰레기 카드가 뜬다. 버리면 피드가
+              // 아예 안 떠서 원인이 즉시 드러난다 (2026-07-30 최종 리뷰).
+              .where((item) => item.boardId.isNotEmpty)
               .toList()
           : const <MapFeedItem>[],
     );

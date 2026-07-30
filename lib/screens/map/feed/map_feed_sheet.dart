@@ -57,6 +57,7 @@ class MapFeedSheet extends StatefulWidget {
     required this.controller,
     required this.onItemTap,
     this.fetcher,
+    this.onContentChanged,
   });
 
   final ValueListenable<MapFeedQuery?> query;
@@ -71,6 +72,14 @@ class MapFeedSheet extends StatefulWidget {
   /// 테스트가 게이팅 로직(내용 없을 때 우회 / 펼쳤을 때만 갱신 / 같은 쿼리 스킵)을
   /// dotenv 초기화 없이 검증할 수 있도록 이음새를 둔다.
   final Future<MapFeedResponse?> Function(MapFeedQuery query)? fetcher;
+
+  /// 시트가 보여줄 내용을 갖게 되었는지 부모에게 알린다.
+  ///
+  /// 섹션이 없으면 시트는 아예 렌더되지 않는데(`build` 가 `SizedBox.shrink`),
+  /// 부모는 그 사실을 알 수 없어 시트가 있다고 가정한 레이아웃(하단 버튼 위치)을
+  /// 그대로 유지한다. 서버 미구현 기간에는 영구히 내용이 없으므로, 부모가 이를
+  /// 알아야 버튼이 허공에 뜨지 않는다.
+  final ValueChanged<bool>? onContentChanged;
 
   @override
   State<MapFeedSheet> createState() => _MapFeedSheetState();
@@ -140,6 +149,7 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
           );
     if (!mounted) return;
 
+    final hadContent = _hasContent;
     setState(() {
       _isLoading = false;
       // 실패 시 기존 내용을 유지한다 — 깜빡임보다 묵은 데이터가 낫다.
@@ -148,6 +158,9 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
         _loadedQuery = query;
       }
     });
+    if (_hasContent != hadContent) {
+      widget.onContentChanged?.call(_hasContent);
+    }
   }
 
   @override

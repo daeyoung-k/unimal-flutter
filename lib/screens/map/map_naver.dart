@@ -138,6 +138,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
   bool _isOpeningFeedPost = false;
 
+  /// 피드 시트가 실제로 렌더되고 있는지. 하단 버튼 위치를 이 값으로 정한다.
+  /// 서버 미구현 기간에는 영구히 false 다.
+  bool _hasFeedContent = false;
+
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -1679,6 +1683,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPostIndex = null;
       _isCardExpanded = false;
       _cardDragOffset = 0.0;
+      // 피드 카드도 함께 닫는다 — 지도 탭은 "열린 것 전부 닫기"다. 이게 없으면
+      // 마커 카드만 닫히고 피드 카드가 남아 "지도 탭 = 닫기" 규칙이 깨진다.
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
     });
     _applySelectionHighlight(null);
     unawaited(_resumeAutomaticReloadsAfterInteractionClose());
@@ -2081,6 +2089,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _isLoadingPlace = false;
       _selectedGroupIndex = idx;
       _selectedPostIndex = postIndex;
+      // 마커 탭 → 피드 카드는 닫는다. 피드 카드가 화면 하단만 덮고 상단 지도는
+      // 여전히 탭 가능하므로, 지우지 않으면 MapBottomCard 두 개가 동시에 마운트된다.
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
     });
     // 카드 열림 → 말풍선 레이어 제거 (피그마 18-2 ④ — sync 가 선택 중엔
     // 목표 공집합). 카메라 이동과 독립적으로 적용.
@@ -2646,22 +2658,24 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     const seoulCityHall = NLatLng(37.5666, 126.979);
     final safeAreaPadding = MediaQuery.paddingOf(context);
     final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    // 하단 버튼(내 위치·내 지도)은 피드 시트 peek 위에 둔다.
+    // 하단 버튼(내 위치·내 지도)은 피드 시트 peek 위에 둔다. **단 시트가 실제로
+    // 렌더될 때만** — 섹션이 없으면 시트가 그려지지 않으므로(서버 미구현 기간에는
+    // 영구히) 그때 올리면 버튼이 허공에 뜬다.
     //
     // 시트는 불투명(colors.surface)하고 내부 ListView 가 포인터를 받으므로, peek
     // 아래에 두면 버튼이 시각적으로도 탭으로도 죽는다. peek = 0.15 × Stack 높이는
-    // iPhone SE 90pt / iPhone 14 112pt 로 기존 bottom:45 + 높이 36 = 81pt 를 항상
-    // 넘는다.
+    // iPhone SE 90pt / iPhone 14 112pt 로 기본값 45 + 높이 36 = 81pt 를 항상 넘는다.
     //
-    // MediaQuery.sizeOf(context).height 는 화면 전체 높이이고, 시트의 peek 은
-    // Stack 높이(= 화면 − 네비바 − safe area) 기준이라 이 계산은 실제 peek 보다
-    // 약간 크게 나온다 — 버튼이 시트보다 조금 더 위로 올라간다. 그건 안전한
-    // 방향(가려지지 않음)이니 그대로 둔다. 정확히 맞추려면 LayoutBuilder 가
-    // 필요한데 이 Stack 구조에서는 과하다.
+    // MediaQuery.sizeOf(context).height 는 **화면 전체** 높이이고 시트 peek 은 Stack
+    // 높이(화면 − 네비바 64 − 하단 safe area) 기준이라 이 값이 실제 peek 보다 약간
+    // 크다 — 버튼이 조금 더 위로 가는 안전한 방향이다. 정확히 맞추려면 LayoutBuilder
+    // 가 필요한데 이 Stack 구조에는 과하다.
     //
     // 시트를 펼치면 여전히 가려지지만 그건 사용자가 의도한 조작이다.
-    final double bottomButtonOffset =
-        MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12;
+    const double bottomButtonBase = 45;
+    final double bottomButtonOffset = _hasFeedContent
+        ? MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12
+        : bottomButtonBase;
     return Scaffold(
       body: Stack(
         children: [
@@ -2873,6 +2887,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                 query: _feedQuery,
                 controller: _feedSheetController,
                 onItemTap: (item) => unawaited(_openFeedPost(item)),
+                onContentChanged: (hasContent) {
+                  if (!mounted || _hasFeedContent == hasContent) return;
+                  setState(() => _hasFeedContent = hasContent);
+                },
               ),
             ),
           ),
