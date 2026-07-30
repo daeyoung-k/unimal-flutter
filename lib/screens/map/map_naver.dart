@@ -1638,6 +1638,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _feedSelectedPost = null;
       _feedSelectedDetail = null;
     });
+    // 피드 카드도 _isAnyCardOpen 을 통해 자동 재조회를 멈춘다(_canAutoRefresh).
+    // 그 사이 신선도 타이머가 발화했다면 _onFreshnessDue 가 defer 후 타이머를
+    // 재설정하지 않으므로, 닫을 때 소비해주지 않으면 지도가 정지 상태로 남는다.
+    // 마커 카드·검색 해제와 같은 불변식이며 계약 테스트가 이를 못박고 있다.
+    //
+    // 단 _resumeAutomaticReloadsAfterInteractionClose() 는 부르지 않는다 —
+    // 그건 _onCameraIdle 로 말풍선까지 복원하는데, 피드 카드는 마커를 선택한 적이
+    // 없어 복원할 것이 없다.
+    unawaited(_consumePendingFreshness());
   }
 
   /// 주소 탭 → 카드를 닫고 그 좌표로 카메라 이동.
@@ -1645,6 +1654,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final post = _feedSelectedPost;
     if (post == null) return;
     _closeFeedPost();
+    // 이동한 지도를 펼쳐진 시트가 덮지 않게 접는다 (마커 선택 경로와 대칭).
+    _collapseFeedSheet();
     _mapController?.updateCamera(
       NCameraUpdate.scrollAndZoomTo(
         target: NLatLng(post.latitude, post.longitude),
@@ -2635,6 +2646,22 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     const seoulCityHall = NLatLng(37.5666, 126.979);
     final safeAreaPadding = MediaQuery.paddingOf(context);
     final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    // 하단 버튼(내 위치·내 지도)은 피드 시트 peek 위에 둔다.
+    //
+    // 시트는 불투명(colors.surface)하고 내부 ListView 가 포인터를 받으므로, peek
+    // 아래에 두면 버튼이 시각적으로도 탭으로도 죽는다. peek = 0.15 × Stack 높이는
+    // iPhone SE 90pt / iPhone 14 112pt 로 기존 bottom:45 + 높이 36 = 81pt 를 항상
+    // 넘는다.
+    //
+    // MediaQuery.sizeOf(context).height 는 화면 전체 높이이고, 시트의 peek 은
+    // Stack 높이(= 화면 − 네비바 − safe area) 기준이라 이 계산은 실제 peek 보다
+    // 약간 크게 나온다 — 버튼이 시트보다 조금 더 위로 올라간다. 그건 안전한
+    // 방향(가려지지 않음)이니 그대로 둔다. 정확히 맞추려면 LayoutBuilder 가
+    // 필요한데 이 Stack 구조에서는 과하다.
+    //
+    // 시트를 펼치면 여전히 가려지지만 그건 사용자가 의도한 조작이다.
+    final double bottomButtonOffset =
+        MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12;
     return Scaffold(
       body: Stack(
         children: [
@@ -2811,7 +2838,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // 내 위치 버튼 — 좌측 하단 고정
           Positioned(
             left: 16,
-            bottom: 45,
+            bottom: bottomButtonOffset,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
@@ -2825,7 +2852,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // '내 지도' 진입 버튼 — 우측 하단(네비게이션 바 위). 카드 열리면 페이드아웃.
           Positioned(
             right: 16,
-            bottom: 45,
+            bottom: bottomButtonOffset,
             child: IgnorePointer(
               ignoring: _isAnyCardOpen,
               child: AnimatedOpacity(
@@ -2976,6 +3003,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                     MediaQuery.paddingOf(context).bottom,
                 onClose: _closeFeedPost,
                 onLocationTap: _moveCameraToFeedPost,
+                // 수정/삭제 후: 카드를 닫고 마커를 다시 그린다. 삭제된 글의 카드가
+                // 남아 있으면 좋아요·댓글이 서버 오류를 낸다 (마커 카드 경로와 동일).
+                onPostEdited: () {
+                  _closeFeedPost();
+                  refreshMap();
+                },
               ),
             ),
         ],
