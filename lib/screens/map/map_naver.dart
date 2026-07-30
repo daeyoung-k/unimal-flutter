@@ -1670,6 +1670,23 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _restoreFeedSheetHeight();
   }
 
+  /// 피드 확장카드를 **아래로 드래그해서** 닫기 — 시트까지 peek 으로 접는다.
+  ///
+  /// [_closeFeedPost] 와 갈라놓은 이유는 **제스처 방향이 곧 의도**이기 때문이다.
+  /// 뒤로가기 버튼은 "돌아간다"라서 보던 높이를 복원하는 게 맞지만, 아래로 내리는
+  /// 동작은 "치운다"다. 손가락이 아래로 갔는데 피드가 열어둔 높이 그대로 올라온 채
+  /// 기다리고 있으면, 내린 만큼 도로 올라온 것처럼 보인다.
+  ///
+  /// 기억한 높이를 **먼저 버린다.** 안 버리면 [_closeFeedPost] 안의
+  /// [_restoreFeedSheetHeight] 가 복원 애니메이션을 걸고, 바로 뒤의
+  /// [_collapseFeedSheet] 와 두 애니메이션이 경합해 시트가 튄다.
+  /// (주소 탭 경로 [_moveCameraToFeedPost] 와 같은 패턴이다.)
+  void _dismissFeedPost() {
+    _feedSheetSizeBeforeCard = null;
+    _closeFeedPost();
+    _collapseFeedSheet();
+  }
+
   /// 피드 카드를 열기 전 높이로 시트를 되돌린다 — 피드를 보다 카드를 열었으면
   /// 돌아왔을 때도 그 자리여야 "뒤로 왔다"는 느낌이 된다.
   ///
@@ -3068,12 +3085,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                   [_feedSelectedPost!]
                 ],
                 initialGroupIndex: 0,
-                initialExpanded: true,
+                expandedOnly: true,
                 initialDetail: _feedSelectedDetail,
                 minTopMargin: MediaQuery.sizeOf(context).height * 0.15 +
                     64 +
                     MediaQuery.paddingOf(context).bottom,
                 onClose: _closeFeedPost,
+                onDragDismiss: _dismissFeedPost,
                 onLocationTap: _moveCameraToFeedPost,
                 // 수정/삭제 후: 카드를 닫고 마커를 다시 그린다. 삭제된 글의 카드가
                 // 남아 있으면 좋아요·댓글이 서버 오류를 낸다 (마커 카드 경로와 동일).

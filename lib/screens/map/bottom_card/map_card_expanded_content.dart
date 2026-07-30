@@ -220,8 +220,15 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   ),
                   if (post.streetName.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    // onLocationTap 이 있으면 주소 전체가 탭 영역이 되고 우측에
-                    // 이동 아이콘이 붙는다(탭 가능함을 알리는 신호).
+                    // onLocationTap 이 있으면 주소 줄 전체(마커 아이콘 + 주소 텍스트)가
+                    // 탭 영역이다. 탭 가능하다는 신호는 **색**으로 준다 —
+                    // 마커 아이콘과 주소 텍스트가 primaryStrong 으로 물든다.
+                    //
+                    // 2026-07-30: 예전엔 우측에 my_location 아이콘을 하나 더 붙여
+                    // 어포던스를 줬는데, 왼쪽 마커 아이콘과 겹쳐서 **위치 표시가 두 개로
+                    // 보였다.** 우측 아이콘을 제거하고 왼쪽 마커 아이콘이 그 역할을
+                    // 이어받는다. 탭 영역은 그대로 줄 전체다(아이콘만 누르게 하면
+                    // 13dp 타겟이라 누르기 어렵다).
                     GestureDetector(
                       onTap: widget.onLocationTap,
                       behavior: HitTestBehavior.opaque,
@@ -230,8 +237,13 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                         children: [
                           Padding(
                             padding: const EdgeInsets.only(top: 1),
-                            child: Icon(Icons.location_on_outlined,
-                                size: 13, color: colors.textTertiary),
+                            child: Icon(
+                              Icons.location_on_outlined,
+                              size: 13,
+                              color: widget.onLocationTap != null
+                                  ? colors.primaryStrong
+                                  : colors.textTertiary,
+                            ),
                           ),
                           const SizedBox(width: 2),
                           Expanded(
@@ -249,12 +261,6 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                               ),
                             ),
                           ),
-                          if (widget.onLocationTap != null)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 2, top: 1),
-                              child: Icon(Icons.my_location,
-                                  size: 13, color: colors.primaryStrong),
-                            ),
                         ],
                       ),
                     ),

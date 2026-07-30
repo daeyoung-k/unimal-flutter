@@ -9,8 +9,16 @@ const double kMapFeedRowHeight = 178;
 
 /// 섹션 1개 = 헤더(서버가 준 title) + 가로 카루셀.
 ///
-/// `hasMore` 면 헤더에 `>` 만 표시한다. **탭 동작은 없다** — 섹션별 더보기
-/// 페이지네이션은 서버 스펙에서도 범위 밖이다.
+/// ## 헤더에 `>` 를 그리지 않는다 (2026-07-30)
+///
+/// 예전엔 `section.hasMore` 일 때 헤더 우측에 `Icons.chevron_right` 를 띄웠는데,
+/// **탭 동작이 없는 장식이었다.** 이 앱의 다른 모든 `>`(마이페이지·공지·설정·비밀지도)는
+/// 전부 눌리는 버튼이라, 여기서만 반응이 없으면 사용자는 버그로 읽는다.
+/// **안 눌리는 어포던스는 없는 것보다 나쁘다.**
+///
+/// [MapFeedSection.hasMore] 는 계속 파싱한다 — 지우지 않는다. 섹션당 노출이
+/// 10장으로 줄어 "더보기"가 실제로 의미를 갖는 시점에, 이 헤더에 `GestureDetector` 와
+/// 함께 되살릴 자리다. 그때는 서버에 `section`/`offset` 파라미터가 먼저 생겨야 한다.
 class MapFeedSectionRow extends StatelessWidget {
   const MapFeedSectionRow({
     super.key,
@@ -30,25 +38,16 @@ class MapFeedSectionRow extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  section.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-              if (section.hasMore)
-                Icon(Icons.chevron_right,
-                    size: 20, color: colors.textMuted),
-            ],
+          child: Text(
+            section.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 15,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+              color: colors.textPrimary,
+            ),
           ),
         ),
         SizedBox(

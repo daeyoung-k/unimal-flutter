@@ -56,16 +56,44 @@ class MapBottomCard extends StatefulWidget {
   /// parent는 카드를 닫고 지도 마커를 새로고침한다.
   final VoidCallback? onPostEdited;
 
-  /// true 면 확장 상태로 바로 열린다 (피드 카드 탭 진입용).
+  /// **피드 카드 탭 진입 모드.** true 면 이 카드는 확장 상태로만 존재한다.
+  ///
+  /// 세 가지가 한꺼번에 달라진다. 셋을 별도 플래그로 쪼개지 않은 건, 셋 다
+  /// "출발점이 어디였나"라는 **하나의 사실**에서 따라 나오기 때문이다.
+  ///
+  /// 1. 확장 상태로 바로 열린다.
+  /// 2. 헤더에 뒤로가기 버튼이 붙는다 → 탭하면 [onClose] (= 피드로 복귀).
+  /// 3. **아래로 드래그해도 기본 카드로 축소되지 않고 곧장 닫힌다.**
+  ///
+  /// 3번이 핵심이다. 마커 탭 경로는 기본 카드에서 **출발해** 확장으로 올라온
+  /// 것이라 내리면 왔던 자리(기본 카드)로 돌아가는 게 맞다. 피드 경로는
+  /// 출발점이 **피드 시트**다. 여기서 내렸을 때 한 번도 본 적 없는 기본 카드가
+  /// 튀어나오면 "뒤로 간 게 아니라 다른 데로 갔다"고 읽힌다.
+  ///
+  /// 게다가 이 경로의 [groups] 는 항상 글 1개짜리라 기본 카드로 축소해도
+  /// 좌우로 넘길 것이 없다. 축소 상태 자체가 무의미하다.
+  ///
   /// 기존 마커 탭 경로는 기본값 false 로 동작이 바뀌지 않는다.
-  final bool initialExpanded;
+  final bool expandedOnly;
 
-  /// 미리 받아둔 상세. 주면 [initialExpanded] 진입 시 `getBoardDetail` 을
+  /// 미리 받아둔 상세. 주면 [expandedOnly] 진입 시 `getBoardDetail` 을
   /// 다시 호출하지 않는다 (피드 카드 탭은 이미 상세를 받아 MapPost 를 만든다).
   final BoardPost? initialDetail;
 
   /// 주소 탭 핸들러. null 이면 주소는 탭할 수 없다(기존 마커 탭 경로).
   final VoidCallback? onLocationTap;
+
+  /// **아래로 드래그해서 닫을 때만** 불린다. null 이면 [onClose] 로 폴백.
+  /// [expandedOnly] 카드에서만 의미가 있다.
+  ///
+  /// 뒤로가기 버튼과 드래그를 갈라놓은 이유 — **제스처 방향이 곧 의도다.**
+  ///
+  /// - 뒤로가기 = "돌아간다". 보던 피드 시트가 그 높이 그대로 다시 있어야 한다.
+  /// - 아래로 드래그 = "치운다". 손가락이 아래로 갔는데 피드가 올라온 채로
+  ///   기다리고 있으면 내린 만큼 다시 올라온 꼴이라 이질감이 생긴다.
+  ///
+  /// 그래서 부모는 이 콜백에서 시트를 peek 까지 접는다.
+  final VoidCallback? onDragDismiss;
 
   const MapBottomCard({
     super.key,
@@ -78,9 +106,10 @@ class MapBottomCard extends StatefulWidget {
     this.onPostChanged,
     this.onExpandedChanged,
     this.onPostEdited,
-    this.initialExpanded = false,
+    this.expandedOnly = false,
     this.initialDetail,
     this.onLocationTap,
+    this.onDragDismiss,
   });
 
   @override
@@ -97,6 +126,11 @@ class _MapBottomCardState extends State<MapBottomCard> {
   static const _pageViewportFraction = 0.88;
   // 페이지 아이템 내부 좌우 패딩 — 카드 사이 시각적 간격.
   static const _pageItemHPadding = 4.0;
+  // 핸들 영역 높이(기존 padding 10 + 바 4 + padding 22 = 36 과 동일).
+  static const _handleAreaHeight = 36.0;
+  // 뒤로가기 버튼이 붙을 때. 48 은 버튼 탭 타겟(48x48)을 담기 위한 최소값이다 —
+  // 36 에 그냥 얹으면 Container 가 clipBehavior: antiAlias 라 잘려 나간다.
+  static const _handleAreaHeightWithBack = 48.0;
 
   late PostGroupNavigator _nav;
   late PageController _pageController;
@@ -145,7 +179,7 @@ class _MapBottomCardState extends State<MapBottomCard> {
       initialPage: _currentPageIndex,
       viewportFraction: _pageViewportFraction,
     );
-    if (widget.initialExpanded) {
+    if (widget.expandedOnly) {
       _cardState = _CardState.expanded;
       _loadedDetail = widget.initialDetail;
       // setState 를 initState 에서 부를 수 없으므로 다음 프레임에 처리한다.
@@ -201,7 +235,11 @@ class _MapBottomCardState extends State<MapBottomCard> {
       );
       // 같은 글을 계속 보는 중이면 확장 상태·로드된 상세도 유지 —
       // 백그라운드 새로고침이 읽던 화면을 접지 않게 한다.
-      if (!samePostKept) {
+      //
+      // [expandedOnly] 카드는 여기서도 축소시키지 않는다. 이 경로의 groups 는
+      // 매 빌드마다 새 리스트라 groupsChanged 가 항상 true 인데, 만에 하나
+      // samePostKept 가 false 로 떨어지면 존재해선 안 될 기본 카드가 뜬다.
+      if (!samePostKept && !widget.expandedOnly) {
         _cardState = _CardState.default_;
         _loadedDetail = null;
         _isLoadingDetail = false;
@@ -332,8 +370,16 @@ class _MapBottomCardState extends State<MapBottomCard> {
         setState(() => _isHandleDragging = false);
       }
     } else {
-      // expanded → shrink to default
+      // expanded → (기본 카드로 축소) 또는 (피드 진입이면 곧장 닫기)
       if (drag > _handleDragThreshold || v > _handleVelocityThreshold) {
+        if (widget.expandedOnly) {
+          // 축소할 기본 카드가 없다 — 곧장 닫는다.
+          // [onDragDismiss] 가 있으면 그쪽으로 간다. 부모가 피드 시트까지
+          // 함께 접어서 "내린 만큼 내려가는" 그림을 만든다.
+          setState(() => _isHandleDragging = false);
+          (widget.onDragDismiss ?? widget.onClose)();
+          return;
+        }
         setState(() {
           _cardState = _CardState.default_;
           _loadedDetail = null;
@@ -555,6 +601,9 @@ class _MapBottomCardState extends State<MapBottomCard> {
     final enableContentDrag =
         isHandleInteractive && _cardState == _CardState.default_;
     final isExpanded = _cardState == _CardState.expanded;
+    // 뒤로가기는 "돌아갈 곳이 있을 때"만 그린다. 마커 탭 경로는 확장을 내리면
+    // 기본 카드로 돌아가므로 헤더 버튼이 하는 일을 핸들 드래그가 이미 한다.
+    final showBack = isExpanded && widget.expandedOnly;
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -577,17 +626,63 @@ class _MapBottomCardState extends State<MapBottomCard> {
                 isHandleInteractive ? _onHandleDragEnd : null,
             onVerticalDragCancel:
                 isHandleInteractive ? _onHandleDragCancel : null,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 22),
-              child: Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: AppColors.of(context).divider,
-                    borderRadius: BorderRadius.circular(2),
+            child: SizedBox(
+              height:
+                  showBack ? _handleAreaHeightWithBack : _handleAreaHeight,
+              child: Stack(
+                children: [
+                  // 핸들바 위치는 기존과 픽셀 단위로 같게 둔다(top 10).
+                  // 기본 카드는 사용자가 가장 많이 보는 면이라 여기서 6px 이
+                  // 밀리면 "왜 달라졌지" 싶어진다. 뒤로가기가 붙어 영역이 48 로
+                  // 커질 때만 그 안에서 가운데((48-4)/2 = 22)로 온다.
+                  Positioned(
+                    top: showBack ? 22 : 10,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppColors.of(context).divider,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                  // 핸들바와 같은 줄에 놓지만 제스처는 충돌하지 않는다 —
+                  // 부모는 onVerticalDrag, 이쪽은 onTap 이라 제스처 아레나가
+                  // 포인터 이동량으로 갈라준다(움직이면 드래그, 안 움직이면 탭).
+                  if (showBack)
+                    Positioned.fill(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: widget.onClose,
+                          child: SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: Center(
+                              child: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                // 다른 화면 헤더(상세글·설정)는 20 인데 여기만
+                                // 16 이다. 저긴 AppBar 의 주인공이지만 여기선
+                                // 옆에 놓인 핸들바가 이미 "내릴 수 있다"를
+                                // 말하고 있어서, 같은 크기면 헤더가 시끄러워진다.
+                                size: 16,
+                                // 핸들바와 같은 divider 색. 둘은 같은 줄에서
+                                // 같은 일(닫기)을 하므로 위계가 같아야 한다.
+                                // 색을 명시하지 않으면 ThemeData 를 안 깐 탓에
+                                // Material 기본색이 잡혀 다크모드에서 어긋난다.
+                                color: AppColors.of(context).divider,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
