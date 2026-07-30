@@ -9,7 +9,15 @@ import 'package:unimal/theme/app_colors.dart';
 
 /// 시트 peek 크기 — 화면 높이 대비 비율. **하한이자 초기값이다.**
 /// 사용자가 시트를 완전히 없앨 수는 없다(상시 노출이 이 기능의 전제).
-const double kMapFeedPeekSize = 0.15;
+///
+/// 2026-07-30: 0.15 → 0.11 로 낮춤(사용자 요청 — "좀 더 내려달라"). `map_naver.dart`
+/// 의 `bottomButtonOffset` 이 이 값으로 계산되는데, `bottomButtonBase = 45` 보다
+/// 작아지면 버튼이 오히려 더 내려가는 역전이 생긴다. 0.11 기준으로는
+/// iPhone SE(667) → 85.4pt, iPhone 14(844) → 104.8pt 로 둘 다 45 를 넘어 역전은
+/// 없지만, **이 상수를 더 낮출 경우 다시 계산해야 한다.** `bottomButtonOffset` 계산에
+/// `max(bottomButtonBase, ...)`(`dart:math`) 를 이미 씌워뒀으니 역전 자체는 코드로도
+/// 막혀 있다 — 그래도 값이 튀지 않는지는 이 주석에서 재확인할 것.
+const double kMapFeedPeekSize = 0.11;
 const double _kMaxSize = 0.9;
 
 /// "펼쳐져 있음" 판정 임계값. peek 보다 약간 크게 둬서 스냅 애니메이션 도중의

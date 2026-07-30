@@ -136,6 +136,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   /// 씨딩한다.
   BoardPost? _feedSelectedDetail;
 
+  /// 피드 카드를 열기 전의 시트 높이. 카드를 닫을 때 이 높이로 복원한다.
+  /// null 이면 복원하지 않는다(피드가 아닌 경로로 카드가 열린 경우).
+  double? _feedSheetSizeBeforeCard;
+
   bool _isOpeningFeedPost = false;
 
   /// 피드 시트가 실제로 렌더되고 있는지. 하단 버튼 위치를 이 값으로 정한다.
@@ -1598,6 +1602,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (_isOpeningFeedPost) return;
     _isOpeningFeedPost = true;
     _focusNode.unfocus();
+    // 카드를 닫을 때 돌아올 높이를 기억한다. 컨트롤러가 아직 붙지 않았으면
+    // (섹션 0개로 시트 미렌더) 기억할 것이 없다. 상세 조회가 실패해 카드가
+    // 안 열려도 이 값 자체는 무해하다 — 다음에 카드가 열릴 때 덮어써진다.
+    if (_feedSheetController.isAttached) {
+      _feedSheetSizeBeforeCard = _feedSheetController.size;
+    }
     try {
       final detail = await BoardApiService().getBoardDetail(item.boardId);
       if (!mounted) return;
@@ -1626,6 +1636,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     } catch (e) {
       debugPrint('[map] 피드 글 상세 조회 실패 ${item.boardId}: $e');
       // getBoardDetail 이 이미 사용자 알럿을 띄운다 — 여기선 카드를 열지 않는다.
+      // 캡처한 높이는 버린다. 카드가 열리지 못했으므로 복원할 "돌아갈 자리"가 없다.
+      // 남겨두면 사용자가 그 뒤 시트를 다른 높이로 옮겨 보다가 지도를 탭했을 때
+      // (_closeAllCards → _restoreFeedSheetHeight) 열린 카드도 없이 시트가 조회
+      // 실패 시점의 높이로 튄다.
+      _feedSheetSizeBeforeCard = null;
     } finally {
       _isOpeningFeedPost = false;
     }
@@ -1651,12 +1666,37 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 그건 _onCameraIdle 로 말풍선까지 복원하는데, 피드 카드는 마커를 선택한 적이
     // 없어 복원할 것이 없다.
     unawaited(_consumePendingFreshness());
+
+    _restoreFeedSheetHeight();
+  }
+
+  /// 피드 카드를 열기 전 높이로 시트를 되돌린다 — 피드를 보다 카드를 열었으면
+  /// 돌아왔을 때도 그 자리여야 "뒤로 왔다"는 느낌이 된다.
+  ///
+  /// **카드를 닫는 setState 뒤에 불러야 한다.** 카드가 열린 동안 시트는
+  /// `IgnorePointer` + `opacity: 0` 이라 애니메이션이 보이지 않는다.
+  ///
+  /// 기억한 높이는 한 번 쓰고 지운다 — 남겨두면 다음에 다른 경로로 카드가 열렸다
+  /// 닫힐 때 엉뚱한 높이로 튄다.
+  void _restoreFeedSheetHeight() {
+    final restore = _feedSheetSizeBeforeCard;
+    _feedSheetSizeBeforeCard = null;
+    if (restore == null || !_feedSheetController.isAttached) return;
+    unawaited(_feedSheetController.animateTo(
+      restore,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    ));
   }
 
   /// 주소 탭 → 카드를 닫고 그 좌표로 카메라 이동.
   void _moveCameraToFeedPost() {
     final post = _feedSelectedPost;
     if (post == null) return;
+    // 이 경로는 아래 _collapseFeedSheet() 로 시트를 의도적으로 접는다(방금
+    // 이동한 지도를 시트가 덮지 않게). _closeFeedPost() 의 높이 복원이 그
+    // 의도를 덮어쓰지 않도록 먼저 지운다.
+    _feedSheetSizeBeforeCard = null;
     _closeFeedPost();
     // 이동한 지도를 펼쳐진 시트가 덮지 않게 접는다 (마커 선택 경로와 대칭).
     _collapseFeedSheet();
@@ -1690,6 +1730,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
     _applySelectionHighlight(null);
     unawaited(_resumeAutomaticReloadsAfterInteractionClose());
+    // 이 경로는 _closeFeedPost 를 경유하지 않고 필드를 직접 비우므로(마커 카드와
+    // 함께 닫아야 해서) 높이 복원도 여기서 직접 해줘야 한다. 안 하면 지도 탭으로
+    // 닫을 때만 시트가 접힌 채 남고, 기억한 높이가 stale 하게 살아 있다.
+    _restoreFeedSheetHeight();
   }
 
   /// 상호작용(카드/검색/펼침) 종료 후 자동 재조회 재개.
@@ -2094,6 +2138,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _feedSelectedPost = null;
       _feedSelectedDetail = null;
     });
+    // 이 경로는 시트를 접는 것이 의도다(_collapseFeedSheet, 위). 기억한 높이를
+    // 복원하지 않고 **버린다** — 남겨두면 다음에 피드 카드를 닫을 때 마커를 탭하기
+    // 전 높이로 엉뚱하게 튄다.
+    _feedSheetSizeBeforeCard = null;
     // 카드 열림 → 말풍선 레이어 제거 (피그마 18-2 ④ — sync 가 선택 중엔
     // 목표 공집합). 카메라 이동과 독립적으로 적용.
     unawaited(_syncBubbleLayerWithCurrentCamera());
@@ -2672,9 +2720,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 가 필요한데 이 Stack 구조에는 과하다.
     //
     // 시트를 펼치면 여전히 가려지지만 그건 사용자가 의도한 조작이다.
+    //
+    // kMapFeedPeekSize 가 낮아질수록 이 값도 같이 작아진다. 언젠가
+    // (height * kMapFeedPeekSize + 12) 가 bottomButtonBase(45) 보다 작아지면
+    // 버튼이 오히려 더 내려가는 역전이 생긴다 — max 로 막아둔다
+    // (map_feed_sheet.dart 의 kMapFeedPeekSize 주석 참고, 2026-07-30).
     const double bottomButtonBase = 45;
     final double bottomButtonOffset = _hasFeedContent
-        ? MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12
+        ? max(bottomButtonBase,
+            MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12)
         : bottomButtonBase;
     return Scaffold(
       body: Stack(

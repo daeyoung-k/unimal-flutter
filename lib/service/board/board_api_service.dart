@@ -1,12 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
-import 'package:unimal/service/map/map_feed_mock.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/state/secure_storage.dart';
@@ -406,20 +404,6 @@ class BoardApiService {
     required double longitude,
     required int zoom,
   }) async {
-    // 서버 미구현 기간 UI 확인용 (map_feed_mock.dart 참고).
-    // 서버가 붙으면 이 분기와 목 파일을 삭제한다.
-    //
-    // `http.Response(문자열, 200)` 을 쓰면 안 된다 — headers 가 없으면
-    // package:http 가 body 를 **latin1** 으로 인코딩하고(`utils.dart`
-    // `_encodingForHeaders` 의 fallback), 목 JSON 의 한글이 인코딩 불가라
-    // FormatException 을 던진다. 이 분기는 아래 try 밖이라 잡히지도 않는다.
-    // 반드시 `Response.bytes(utf8.encode(...))` 로 바이트를 직접 넣는다.
-    if (dotenv.env['MAP_FEED_MOCK']?.toLowerCase() == 'true') {
-      return decodeMapFeedResponse(
-        http.Response.bytes(utf8.encode(kMapFeedMockJson), 200),
-      );
-    }
-
     try {
       final url = ApiUri.resolve('board/map/feed', {
         'latitude': latitude.toString(),

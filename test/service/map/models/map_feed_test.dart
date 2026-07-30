@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:unimal/service/map/map_feed_mock.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 
 const _fullJson = '''
@@ -102,28 +101,56 @@ void main() {
     expect(decodeMapFeedResponse(http.Response('{"code":200}', 200)), isNull);
   });
 
-  test('목 JSON은 실제 파서를 통과하고 3섹션을 준다', () {
-    // Response.bytes + utf8.encode — 한글 body 는 기본 latin1 인코딩으로
-    // 만들 수 없다 (Task 1 에서 확인된 제약, 같은 파일 다른 테스트와 동일 방식).
+  test('NEAR 섹션을 파싱한다 (서버 실제 응답 형태)', () {
+    // 2026-07-30 기준 서버가 실제로 내려주는 유일한 섹션 타입. 이게 안 되면
+    // 피드가 아예 안 뜬다 — 가장 중요한 회귀 테스트.
+    const json = '''
+    {"data":{"sections":[
+      {"type":"NEAR","title":"지금 여기 이야기","has_more":true,"items":[
+        {"board_id":"n1","thumbnail_url":"https://cdn.example/n1.jpg",
+         "image_url":"https://cdn.example/n1-full.jpg",
+         "title":"근처 이야기","content":"본문",
+         "street_name":"서울 강남구 역삼로 1","dong":"역삼동",
+         "latitude":37.5,"longitude":127.0,"distance_meters":120,
+         "nickname":"닉","profile_image":null,
+         "like_count":2,"reply_count":1,"created_at":"2026-07-30T10:00:00"}
+      ]}
+    ]}}
+    ''';
+
     final result = decodeMapFeedResponse(
-      http.Response.bytes(utf8.encode(kMapFeedMockJson), 200),
+      http.Response.bytes(utf8.encode(json), 200),
     );
 
     expect(result, isNotNull);
-    expect(result!.dong, '역삼동');
-    expect(
-      result.sections.map((s) => s.type).toList(),
-      [
-        MapFeedSectionType.latest,
-        MapFeedSectionType.hot,
-        MapFeedSectionType.nearby,
-      ],
+    expect(result!.sections.length, 1);
+    expect(result.sections.single.type, MapFeedSectionType.near);
+    final item = result.sections.single.items.single;
+    expect(item.boardId, 'n1');
+    expect(item.distanceMeters, 120);
+    expect(item.imageUrl, 'https://cdn.example/n1-full.jpg');
+  });
+
+  test('distance_meters 와 image_url 을 읽는다 (누락 시 기본값)', () {
+    const json = '''
+    {"data":{"sections":[
+      {"type":"NEAR","title":"지금 여기 이야기","has_more":false,"items":[
+        {"board_id":"n2","title":"제목","content":"본문",
+         "street_name":"","latitude":37.5,"longitude":127.0,
+         "nickname":"닉","like_count":0,"reply_count":0,
+         "created_at":"2026-07-30T10:00:00"}
+      ]}
+    ]}}
+    ''';
+
+    final result = decodeMapFeedResponse(
+      http.Response.bytes(utf8.encode(json), 200),
     );
-    // 썸네일 없는 카드가 렌더 확인용으로 최소 1건 있어야 한다.
-    final allItems = result.sections.expand((s) => s.items);
-    expect(allItems.any((i) => i.thumbnailUrl == null), isTrue);
-    // 제목 없는 카드도 1건 (본문 폴백 확인용).
-    expect(allItems.any((i) => i.title.isEmpty), isTrue);
+
+    expect(result, isNotNull);
+    final item = result!.sections.single.items.single;
+    expect(item.distanceMeters, 0);
+    expect(item.imageUrl, isNull);
   });
 
   test('board_id 없는 아이템은 버린다 (키 표기 계약 위반 조기 경보)', () {

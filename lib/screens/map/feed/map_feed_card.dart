@@ -11,6 +11,22 @@ const double kMapFeedCardWidth = 116;
 /// 썸네일 정사각 변 = 카드 폭. 그 아래 제목 2줄 + 메타 1줄.
 const double _thumbSize = kMapFeedCardWidth;
 
+/// [MapFeedItem.distanceMeters] → 표시용 문자열.
+///
+/// 1000m 미만은 정수 미터(`123m`), 이상은 킬로미터(`1.2km`). 딱 떨어지는 값은
+/// 소수점을 생략한다(`1km`, `2km`) — `1.0km` 는 정밀도가 있는 것처럼 보여 어색하다.
+///
+/// 거리를 보여주는 이유: 이 피드는 반경 제한이 없어(서버가 KNN 정렬만 한다)
+/// 수백 km 떨어진 글이 섞일 수 있다. 거리를 숨기면 카드를 탭했을 때 지도가 갑자기
+/// 먼 곳으로 튀어 혼란스럽다.
+String _formatDistance(int meters) {
+  if (meters < 1000) return '${meters}m';
+  final km = meters / 1000;
+  return km == km.roundToDouble()
+      ? '${km.toInt()}km'
+      : '${km.toStringAsFixed(1)}km';
+}
+
 class MapFeedCard extends StatelessWidget {
   const MapFeedCard({super.key, required this.item, required this.onTap});
 
@@ -62,9 +78,17 @@ class MapFeedCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
+                // 거리 + 상대시간을 한 줄에 합친다. 카드 폭(116)에 좋아요·거리·
+                // 시간 3개를 각자 자리로 나누면 어느 것도 제대로 못 읽을 만큼
+                // 좁아진다 — 좋아요 아이콘+숫자는 고정폭으로 두고 나머지를
+                // "거리 · 시간" 한 문자열로 묶어 Expanded + ellipsis 에 맡긴다.
+                // 거리를 시간보다 앞에 두는 이유: 서버 주석 그대로 — 반경 제한이
+                // 없어 카드가 수백 km 떨어진 글일 수 있고, 탭하면 지도가 그
+                // 위치로 튀므로 거리를 먼저 보여줘야 혼란이 적다.
                 Expanded(
                   child: Text(
-                    relativeTimeFromString(item.createdAt),
+                    '${_formatDistance(item.distanceMeters)} · '
+                    '${relativeTimeFromString(item.createdAt)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
