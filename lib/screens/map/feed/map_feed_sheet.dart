@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/map/feed/map_feed_section_row.dart';
+import 'package:unimal/service/ads/ad_banner.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/theme/app_colors.dart';
@@ -12,17 +13,35 @@ import 'package:unimal/theme/app_colors.dart';
 ///
 /// 2026-07-30: 0.15 → 0.11 로 낮춤(사용자 요청 — "좀 더 내려달라"). `map_naver.dart`
 /// 의 `bottomButtonOffset` 이 이 값으로 계산되는데, `bottomButtonBase = 45` 보다
-/// 작아지면 버튼이 오히려 더 내려가는 역전이 생긴다. 0.11 기준으로는
-/// iPhone SE(667) → 85.4pt, iPhone 14(844) → 104.8pt 로 둘 다 45 를 넘어 역전은
-/// 없지만, **이 상수를 더 낮출 경우 다시 계산해야 한다.** `bottomButtonOffset` 계산에
+/// 작아지면 버튼이 오히려 더 내려가는 역전이 생긴다. `bottomButtonOffset` 계산에
 /// `max(bottomButtonBase, ...)`(`dart:math`) 를 이미 씌워뒀으니 역전 자체는 코드로도
 /// 막혀 있다 — 그래도 값이 튀지 않는지는 이 주석에서 재확인할 것.
+///
+/// 2026-07-31: 광고를 붙이면서 0.12 로 올렸다가 0.11 로 되돌렸다. 접힌 상태에서는
+/// 광고를 아예 렌더하지 않기로 해서(아래 [_kExpandedThreshold] 참고) peek 높이에
+/// 광고가 들어갈 필요가 없어졌다.
 const double kMapFeedPeekSize = 0.11;
+
+/// 중간 스냅. 핸들(28pt) + 광고 + 섹션 1개(약 224pt) 가 들어가는 높이.
+///
+/// 어댑티브 배너 높이는 기기 화면 높이에 따라 32/50/90pt 로 달라져 한 값으로 딱
+/// 맞출 수는 없다. 시트는 어차피 스크롤되므로 "적당히 편한 중간"으로 잡는다.
+///   iPhone 14 (844) → 380pt
+///   iPhone SE (667) → 300pt
+const double _kMidSize = 0.45;
 const double _kMaxSize = 0.9;
 
 /// "펼쳐져 있음" 판정 임계값. peek 보다 약간 크게 둬서 스냅 애니메이션 도중의
 /// 중간값이 "펼쳐짐"으로 오판되지 않게 한다.
 const double _kExpandedThreshold = kMapFeedPeekSize + 0.05;
+
+/// 시트가 멎고 나서 광고를 붙이기까지의 여유.
+///
+/// `AdWidget` 은 네이티브 플랫폼 뷰라 생성 비용이 크다. 드래그·스냅이 진행되는
+/// 동안 붙이면 그 프레임이 통째로 떨어져 시트가 툭툭 끊긴다. 움직임이 멎은 뒤에
+/// 붙이면 사용자는 광고가 "뒤늦게 스르륵 나타나는" 것으로만 인지한다.
+/// `map_naver` 의 시트 애니메이션이 220ms 라 그보다 살짝 길게 잡았다.
+const Duration _kAdSettleDelay = Duration(milliseconds: 260);
 
 /// 피드 조회 좌표/줌. `map_naver` 가 마커 재조회 성공 시점에 갱신한다.
 ///
@@ -66,6 +85,7 @@ class MapFeedSheet extends StatefulWidget {
     required this.onItemTap,
     this.fetcher,
     this.onContentChanged,
+    this.adBuilder,
   });
 
   final ValueListenable<MapFeedQuery?> query;
@@ -89,6 +109,12 @@ class MapFeedSheet extends StatefulWidget {
   /// 알아야 버튼이 허공에 뜨지 않는다.
   final ValueChanged<bool>? onContentChanged;
 
+  /// 광고 슬롯 빌더. 기본값은 실제 애드몹 고정 배너.
+  ///
+  /// 위젯 테스트가 AdMob SDK 초기화 없이 클릭 게이팅을 검증할 수 있도록 이음새를 둔다.
+  /// ([fetcher] 와 같은 이유)
+  final WidgetBuilder? adBuilder;
+
   @override
   State<MapFeedSheet> createState() => _MapFeedSheetState();
 }
@@ -97,6 +123,15 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
   MapFeedResponse? _feed;
   MapFeedQuery? _loadedQuery;
   bool _isLoading = false;
+
+  /// 시트가 펼쳐져 있는지. 드래그 중 매 프레임 바뀌므로 setState 대신 notifier 로 둬서
+  /// 광고 슬롯만 다시 그린다 (시트 전체를 재빌드하면 스크롤이 버벅인다).
+  final ValueNotifier<bool> _expandedNotifier = ValueNotifier<bool>(false);
+
+  /// 광고를 실제로 트리에 붙일지. [_expandedNotifier] 와 분리한 이유는
+  /// **펼쳐진 직후가 아니라 시트가 멎은 뒤에** 붙이기 위해서다([_kAdSettleDelay]).
+  final ValueNotifier<bool> _adMountedNotifier = ValueNotifier<bool>(false);
+  Timer? _adSettleTimer;
 
   @override
   void initState() {
@@ -109,6 +144,9 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
   @override
   void dispose() {
     widget.query.removeListener(_onQueryChanged);
+    _adSettleTimer?.cancel();
+    _expandedNotifier.dispose();
+    _adMountedNotifier.dispose();
     super.dispose();
   }
 
@@ -171,6 +209,27 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
     }
   }
 
+  /// 드래그/스냅 중 매 프레임 들어온다. 값이 실제로 바뀔 때만 notifier 가 알리므로
+  /// 여기서 별도 비교는 하지 않는다.
+  void _onExtentChanged(double extent) {
+    final expanded = extent > _kExpandedThreshold;
+    _expandedNotifier.value = expanded;
+
+    if (!expanded) {
+      // 접히는 건 즉시 반영한다 — 광고가 남아 있을 이유가 없다.
+      _adSettleTimer?.cancel();
+      _adMountedNotifier.value = false;
+      return;
+    }
+    if (_adMountedNotifier.value) return; // 이미 붙어 있으면 유지
+
+    // 움직임이 멎을 때까지 타이머를 계속 미룬다.
+    _adSettleTimer?.cancel();
+    _adSettleTimer = Timer(_kAdSettleDelay, () {
+      if (mounted) _adMountedNotifier.value = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final sections = _feed?.sections ?? const <MapFeedSection>[];
@@ -179,59 +238,126 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
 
     final colors = AppColors.of(context);
 
-    return DraggableScrollableSheet(
-      controller: widget.controller,
-      initialChildSize: kMapFeedPeekSize,
-      minChildSize: kMapFeedPeekSize,
-      maxChildSize: _kMaxSize,
-      snap: true,
-      snapSizes: const [kMapFeedPeekSize, _kMaxSize],
-      builder: (context, scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(22)),
-            boxShadow: [
-              BoxShadow(
-                color: colors.shadow,
-                blurRadius: 16,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          clipBehavior: Clip.antiAlias,
-          // 핸들을 같은 스크롤뷰 안에 둬야 핸들을 잡아도 시트가 끌린다
-          // (DraggableScrollableSheet 는 controller 가 붙은 스크롤러로만 끌림 —
-          //  my_story_map_screen 의 같은 주석 참고).
-          child: ListView(
-            controller: scrollController,
-            padding: EdgeInsets.zero,
-            children: [
-              const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: colors.divider,
-                    borderRadius: BorderRadius.circular(2),
+    return NotificationListener<DraggableScrollableNotification>(
+      // 드래그/스냅 중 매 프레임 들어온다. 광고 클릭 게이팅에만 쓰므로
+      // notifier 갱신만 하고 알림은 그대로 위로 흘려보낸다(false).
+      onNotification: (notification) {
+        _onExtentChanged(notification.extent);
+        return false;
+      },
+      child: DraggableScrollableSheet(
+        controller: widget.controller,
+        initialChildSize: kMapFeedPeekSize,
+        minChildSize: kMapFeedPeekSize,
+        maxChildSize: _kMaxSize,
+        snap: true,
+        snapSizes: const [kMapFeedPeekSize, _kMidSize, _kMaxSize],
+        builder: (context, scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: colors.surface,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(22)),
+              boxShadow: [
+                BoxShadow(
+                  color: colors.shadow,
+                  blurRadius: 16,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            // 핸들을 같은 스크롤뷰 안에 둬야 핸들을 잡아도 시트가 끌린다
+            // (DraggableScrollableSheet 는 controller 가 붙은 스크롤러로만 끌림 —
+            //  my_story_map_screen 의 같은 주석 참고).
+            child: ListView(
+              controller: scrollController,
+              padding: EdgeInsets.zero,
+              children: [
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              for (final section in sections) ...[
-                MapFeedSectionRow(
-                  section: section,
-                  onItemTap: widget.onItemTap,
+                const SizedBox(height: 14),
+                // 광고 슬롯 — 시트 최상단(핸들 바로 아래).
+                ValueListenableBuilder<bool>(
+                  valueListenable: _adMountedNotifier,
+                  builder: (context, visible, _) => _FeedAdSlot(
+                    visible: visible,
+                    adBuilder: widget.adBuilder,
+                  ),
                 ),
-                const SizedBox(height: 18),
+                for (final section in sections) ...[
+                  MapFeedSectionRow(
+                    section: section,
+                    onItemTap: widget.onItemTap,
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
               ],
-              SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 광고 슬롯. **시트가 펼쳐져 멎은 뒤에만 광고를 만든다.**
+///
+/// 접힌 상태에서는 위젯 자체를 만들지 않는다. 지도를 열자마자 광고부터 보이는 건
+/// 첫인상이 나쁘고, 시트를 끌어올리는 동선 위에 광고가 있으면 오탭도 나기 쉽다.
+/// (오탭은 사용자에게도 짜증이고 AdMob 쪽에서 무효 클릭으로 잡힐 수도 있다.)
+/// "안 보이면 클릭도 안 된다"이므로 [IgnorePointer] 같은 별도 차단 장치가 필요 없다.
+///
+/// 부드럽게 나타나게 하려고 세 가지를 쓴다.
+/// 1. 마운트 자체를 시트가 멎은 뒤로 미룬다 ([_kAdSettleDelay]) — 네이티브 뷰 생성이
+///    애니메이션 프레임을 잡아먹지 않게.
+/// 2. [AnimatedSize] — 광고 로드가 끝나 높이가 0에서 늘어날 때 아래 섹션이 툭 밀리지
+///    않고 같이 흘러내린다.
+///
+/// 라운드 처리는 [ClipRRect] 가 아니라 **광고를 감싸는 컨테이너의 테두리**로 준다.
+/// 플랫폼 뷰를 클리핑하면 매 프레임 saveLayer 가 떠서 비싸고, 안드로이드에서는
+/// 모서리가 제대로 안 깎이는 경우도 있다.
+/// 좌우 여백은 [Padding] 이 아니라 [AdBanner.inset] 이 **요청 폭 자체를 줄여서** 준다.
+/// 광고는 네이티브 뷰라 나중에 감싸는 위젯으로 줄일 수 없기 때문이다.
+class _FeedAdSlot extends StatelessWidget {
+  const _FeedAdSlot({required this.visible, this.adBuilder});
+
+  final bool visible;
+  final WidgetBuilder? adBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: !visible
+          ? const SizedBox(width: double.infinity, height: 0)
+          : Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceMuted,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: adBuilder?.call(context) ?? const AdBanner.inset(),
+                ),
+              ),
+            ),
     );
   }
 }

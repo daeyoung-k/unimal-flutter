@@ -29,9 +29,18 @@ class AdService extends GetxService {
       return Platform.isIOS ? _testBannerIos : _testBannerAndroid;
     }
     if (Platform.isIOS) {
-      return dotenv.env['ADMOB_BANNER_IOS'] ?? _testBannerIos;
+      return _envOr('ADMOB_BANNER_IOS', _testBannerIos);
     }
-    return dotenv.env['ADMOB_BANNER_ANDROID'] ?? _testBannerAndroid;
+    return _envOr('ADMOB_BANNER_ANDROID', _testBannerAndroid);
+  }
+
+  /// .env 값이 **없거나 빈 문자열**이면 테스트 ID로 폴백한다.
+  ///
+  /// `ADMOB_BANNER_IOS=` 처럼 키만 있고 값이 비어 있으면 dotenv 는 null 이 아니라
+  /// 빈 문자열을 준다. `?? fallback` 만 쓰면 빈 ID 로 광고를 요청해 조용히 실패한다.
+  String _envOr(String key, String fallback) {
+    final value = dotenv.env[key];
+    return (value == null || value.isEmpty) ? fallback : value;
   }
 
   // 구글 공식 테스트 배너 ID (폴백 — 실 ID 누락 시에도 안전하게 테스트 광고 노출)
