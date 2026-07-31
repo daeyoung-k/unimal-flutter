@@ -1847,10 +1847,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
-  /// 텍스트 글 — 줌인 카드 아이콘(**카드 영역만**, 2026-07-30). 점은 그리지
-  /// 않는다 — 카드가 앵커 오프셋(kTextCardAnchor)으로 점 위에 떠 있고 그 아래
-  /// **항상 켜져 있는 실제 점 마커가 보인다**. 하단 점 자리를 아이콘에 넣지
-  /// 않는 이유(터치 영역 가로채기)는 kTextCardSize 주석 참고.
+  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 하단 투명 여백). 점은 그리지 않는다 —
+  /// 그 투명 여백 자리에 **항상 켜져 있는 실제 점 마커가 보인다**(2026-07-29).
+  /// 박스 하단 중앙이 지도 좌표(anchor 기본 0.5,1.0)이므로 bottomCenter 정렬.
   /// 제목 없으면 본문만 카드.
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
@@ -1863,15 +1862,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         height: _textCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: Padding(
-            // 카드 그림자(blur 8, y2) 잘림 방지 — 앵커 계산에 포함된 값.
-            padding: const EdgeInsets.only(bottom: kTextCardShadowPad),
-            child: TextMarkerCard(
-              title: title,
-              body: post.content,
-              time: relativeTimeFromString(post.createdAt),
-              maxLines: 2,
-            ),
+          child: TextBubbleMarker(
+            title: title,
+            body: post.content,
+            time: relativeTimeFromString(post.createdAt),
+            maxLines: 2,
           ),
         ),
       ),

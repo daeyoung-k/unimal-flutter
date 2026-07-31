@@ -202,17 +202,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
             : const Size(kNormalMarkerSize, kNormalMarkerSize),
         tags: {'title': title, 'boardId': p.boardId, 'isText': isText ? '1' : '0'},
-        caption: NOverlayCaption(
-          text: _markerCaption(title),
-          textSize: _markerCaptionTextSize,
-          color: colors.textPrimary,
-          haloColor: colors.background,
-          // 텍스트 글은 말풍선 카드가 제목을 보여주는 줌부터 캡션을 끈다 —
-          // 제목 중복 방지. 값 선택 근거는 메인 지도(map_naver) 같은 자리의
-          // 주석 참고 (히스테리시스 vs 단일 임계값 트레이드오프).
-          maxZoom:
-              isText ? kTextCardEnterZoom : NaverMapViewOptions.maximumZoom,
-        ),
+        // 기본 캡션 — 8자 말줄임. 텍스트 글은 말풍선 카드가 제목을 보여주는
+        // 줌부터 캡션을 끈다(제목 중복 방지). 값 선택 근거는 메인 지도
+        // (map_naver) 같은 자리의 주석 참고. 선택 해제 복원과 같은 정의를
+        // 쓰기 위해 [_defaultCaption] 헬퍼로 분리 (2026-07-31).
+        caption: _defaultCaption(title, colors, isText: isText),
       );
       _markerRefs[id] = marker;
       if (isText) {
@@ -472,9 +466,36 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     await controller.updateCamera(update);
   }
 
-  /// 선택된 마커를 z-index 부스트 + (사진 마커) 확대로 강조. [markerId]가
-  /// null이면 강조 해제. 메인 지도(_applySelectionHighlight)와 동일한 방식.
+  /// 기본 캡션 — 8자 말줄임. 텍스트 글은 카드 줌(16.8+)부터 네이티브가 끈다.
+  /// 마커 생성과 선택 해제 복원이 같은 정의를 쓴다 (메인 지도와 동일 규칙).
+  NOverlayCaption _defaultCaption(String title, AppColors colors,
+          {required bool isText}) =>
+      NOverlayCaption(
+        text: _markerCaption(title),
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        maxZoom: isText ? kTextCardEnterZoom : NaverMapViewOptions.maximumZoom,
+      );
+
+  /// 선택(포커스) 캡션 — 전체 타이틀을 requestWidth 로 2~3줄 랩 (메인 지도와
+  /// 동일, 피그마 18-2 ⑤). **maxZoom 을 걸지 않는다** — 걸면 카드 줌(19)에서
+  /// 선택했을 때 타이틀이 사라진다 (메인 지도 같은 자리 주석 참고).
+  NOverlayCaption _selectedCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title,
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        requestWidth: kSelectedMarkerCaptionWidth,
+      );
+
+  /// 선택된 마커를 z-index 부스트 + (사진 마커) 확대 + **전체 타이틀 캡션**
+  /// (줌 숨김 보호 forceShowCaption)으로 강조. [markerId]가 null이면 강조 해제.
+  /// 메인 지도(_applySelectionHighlight)와 동일한 방식 (캡션은 2026-07-31 추가
+  /// — 텍스트 글 캡션이 카드 줌부터 꺼져 선택해도 제목이 안 보이던 문제).
   void _applySelectionHighlight(String? markerId) {
+    final colors = AppColors.of(context);
     final prevId = _highlightedMarkerId;
     if (prevId != null && prevId != markerId) {
       final prev = _markerRefs[prevId];
@@ -488,6 +509,13 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             prev.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
           } catch (_) {/* same */}
         }
+        // 캡션 복원 — 8자 말줄임 + 강제 노출 해제 (생성 시와 동일 정의).
+        final prevTitle = prev.tags['title'] ?? '';
+        try {
+          prev.setCaption(_defaultCaption(prevTitle, colors,
+              isText: _textMarkerRefs.containsKey(prevId)));
+          prev.setIsForceShowCaption(false);
+        } catch (_) {/* same */}
       }
     }
     _highlightedMarkerId = markerId;
@@ -503,6 +531,14 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             marker.setSize(const Size(
                 kNormalMarkerSize * kSelectedMarkerScale,
                 kNormalMarkerSize * kSelectedMarkerScale));
+          } catch (_) {/* same */}
+        }
+        // 선택 마커는 전체 타이틀 캡션 + 줌/충돌 숨김 보호.
+        final title = (marker.tags['title'] ?? '').trim();
+        if (title.isNotEmpty) {
+          try {
+            marker.setCaption(_selectedCaption(title, colors));
+            marker.setIsForceShowCaption(true);
           } catch (_) {/* same */}
         }
       }
@@ -624,10 +660,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     );
   }
 
-  /// 텍스트 글 줌인 카드 아이콘 — **카드 영역만** (2026-07-30). 점은 그리지
-  /// 않고, 카드가 앵커 오프셋(kTextCardAnchor)으로 점 위에 떠 있어 그 아래
-  /// 실제 점 마커가 보인다. 하단 점 자리를 아이콘에 넣지 않는 이유(터치 영역
-  /// 가로채기)는 kTextCardSize 주석 참고. 제목 없으면 본문만 카드.
+  /// 텍스트 글 줌인 카드 아이콘 — 카드 + 하단 투명 여백(점은 그리지 않고 실제
+  /// 점 마커가 그 자리에 보인다, 2026-07-29). 하단 중앙이 지도 좌표
+  /// (anchor 0.5,1.0)이므로 bottomCenter 정렬. 제목 없으면 본문만 카드.
   /// (메인 지도와 동일 위젯)
   Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
     final String? title =
@@ -640,15 +675,11 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         height: kTextCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: Padding(
-            // 카드 그림자(blur 8, y2) 잘림 방지 — 앵커 계산에 포함된 값.
-            padding: const EdgeInsets.only(bottom: kTextCardShadowPad),
-            child: TextMarkerCard(
-              title: title,
-              body: post.content,
-              time: relativeTimeFromString(post.createdAt),
-              maxLines: 2,
-            ),
+          child: TextBubbleMarker(
+            title: title,
+            body: post.content,
+            time: relativeTimeFromString(post.createdAt),
+            maxLines: 2,
           ),
         ),
       ),

@@ -8,9 +8,9 @@ import 'package:unimal/screens/map/marker/marker_constants.dart';
 
 /// 말풍선 레이어 목표 1건 — 화면이 글 모델(MapPost/BoardPost)에 관계없이
 /// 필요한 값만 넘긴다. [position]은 화면이 실제 마커를 그린 좌표
-/// (jitter 적용 포함)와 같아야 카드가 점 바로 위에 뜬다 — 카드는 앵커
-/// 오프셋으로 점 위에 떠 있고 그 아래에 실제 점 마커가 보이므로 좌표가
-/// 어긋나면 카드와 점이 따로 떨어져 보인다.
+/// (jitter 적용 포함)와 같아야 카드가 점 바로 위에 뜬다 — 말풍선 아이콘은
+/// 하단이 투명해 그 자리에 실제 점 마커가 보이므로 좌표가 어긋나면
+/// 카드와 점이 따로 떨어져 보인다.
 class BubbleMarkerTarget {
   const BubbleMarkerTarget({
     required this.id,
@@ -40,13 +40,13 @@ class BubbleMarkerTarget {
 ///   리클러스터링 payload 되돌림(C1)이 없고 alpha 트윈이 안전하다.
 /// - 같은 id 재생성이 없어 delete/add 탭 핸들러 경합(C2)도 없다.
 /// - 클러스터러블 마커에는 이 레이어의 어떤 기법도 적용 금지.
-/// - 말풍선은 **점 마커를 건드리지 않는다** (2026-07-29) — 카드가 앵커
-///   오프셋(kTextCardAnchor)으로 점 위에 떠 있어 그 아래 실제 점이 보이고,
-///   점의 제목 캡션은 `NOverlayCaption.maxZoom` 이 네이티브에서 끈다.
-///   이 레이어가 켜는 충돌 숨김은 "카드와 겹치는 **다른** 마커의 캡션"
-///   정리 용도뿐이다.
-/// - 아이콘은 **카드 영역만** (2026-07-30) — 예전의 하단 투명 점 자리는
-///   터치 영역에 포함돼 이웃 점 마커의 탭을 가로챘다 (kTextCardSize 주석).
+/// - 말풍선은 **점 마커를 건드리지 않는다** (2026-07-29) — 아이콘 하단이 투명해
+///   그 자리에 실제 점이 보이고, 점의 제목 캡션은 `NOverlayCaption.maxZoom` 이
+///   네이티브에서 끈다. 이 레이어가 켜는 충돌 숨김은 "카드와 겹치는 **다른**
+///   마커의 캡션" 정리 용도뿐이다.
+/// - 알려진 한계: 하단 투명 띠도 마커 터치 영역에 포함돼, 겹친 말풍선의
+///   띠가 이웃 점 마커의 탭을 가로챌 수 있다 (범위 밖 앵커 해법은 네이티브
+///   클램프로 실패 — kTextCardSize 주석 참고. 다른 방식 필요).
 /// - `minZoom(kBubbleMinZoom)` 하드 가드 — 클러스터링 구간(≤16)과 공존하면
 ///   충돌 숨김이 새 클러스터 마커를 숨김 고착시킨다 (2026-07-19 사고).
 ///   마커 숨김은 이제 끄지만 캡션 충돌 숨김 경로가 남아 있고, 사고 이력이
@@ -170,17 +170,16 @@ class BubbleMarkerLayer {
     }
   }
 
-  /// 말풍선 일반 NMarker 생성 — 아이콘은 **카드 영역만**이고, 범위 밖 앵커
-  /// (kTextCardAnchor)로 카드가 지도 좌표 위 점 자리만큼 떠 있다. 카드 아래
-  /// 빈 공간으로 실제 점 마커가 보이며, 마커 터치 영역(투명 포함 아이콘
-  /// 사각형)이 카드로 좁아져 이웃 점 마커의 탭을 가로채지 않는다 (2026-07-30).
+  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드 + 하단 투명 여백이고, 기본 앵커
+  /// (0.5, 1.0)가 지도 좌표라 그 투명 여백 자리에 실제 점 마커가 보인다.
+  /// (범위 밖 앵커로 탭 영역을 좁히는 시도는 네이티브 클램프로 원복 —
+  /// marker_constants.dart 의 kTextCardSize 주석 참고, 2026-07-31)
   NMarker _buildMarker(BubbleMarkerTarget target, NOverlayImage icon) {
     final marker = NMarker(
       id: _overlayId(target.id),
       position: target.position,
       icon: icon,
       size: kTextCardSize,
-      anchor: kTextCardAnchor,
       // 페이드 인 시작값 — add 직후 _fade 가 1.0 으로 올린다.
       alpha: 0,
     );
@@ -197,9 +196,9 @@ class BubbleMarkerLayer {
     // Dart sync 타이밍과 무관하게 원천 차단한다.
     marker.setMinZoom(kBubbleMinZoom);
     marker.setIsMinZoomInclusive(true);
-    // 점 마커를 가리지 않는다 (2026-07-29). 카드 아래 빈 공간으로 실제 점이
-    // 보이도록 하는 설계이므로, 여기서 점을 가리면 점이 아예 사라진다.
-    // 기본값도 false 지만 의도를 명시해 둔다.
+    // 점 마커를 가리지 않는다 (2026-07-29). 말풍선 아이콘은 하단을 투명하게
+    // 비워 두고 그 자리에 실제 점이 보이도록 하므로, 여기서 점을 가리면
+    // 점이 아예 사라진다. 기본값도 false 지만 의도를 명시해 둔다.
     //
     // 대가: 204dp 카드와 겹치는 다른 마커도 정리되지 않아 그대로 보인다.
     // 말풍선 대상이 "단일 + 비밀집(120dp 내 이웃 2개 미만)"으로 제한돼 있어
