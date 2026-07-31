@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
@@ -110,8 +111,45 @@ Color markerRingColor({required bool isOwner, required String createdAt}) {
 /// 캐시되어 테마 전환에 실시간 반응하지 않으므로(기존 동작과 동일),
 /// 지도 라이트/다크 스타일 모두에서 잘 보이는 라이트 팔레트를 기본으로 쓴다.
 class MarkerImageFactory {
+  /// 마커 썸네일 이미지 스트림.
+  ///
+  /// 두 겹으로 비용을 줄인다:
+  ///
+  /// 1. **[CachedNetworkImageProvider] — 디스크 캐시.** 생 [NetworkImage] 는
+  ///    Flutter `ImageCache`(메모리 전용)만 타서 프로세스가 죽으면 캐시도
+  ///    사라진다. 즉 콜드 스타트마다 마커 사진을 전량 재다운로드했다.
+  ///    실측(2026-07-29, iOS 시뮬레이터): 사진 마커 1장에 1326ms 가 들었고
+  ///    그중 대부분이 바이트 전송이었다. 같은 코드 경로에서 30KB 이미지는
+  ///    83ms — 파이프라인이 아니라 전송량이 원인이었다. 디스크 캐시가 붙으면
+  ///    2회차 이후 콜드 스타트에서 이 구간의 네트워크가 사라진다.
+  /// 2. **[ResizeImage] — 디코드 축소.** 200x200 캔버스에만 쓰는 이미지를
+  ///    원본 해상도로 디코드하던 낭비를 없앤다. 크기 선정 이유는
+  ///    [kMarkerThumbDecodeSize] 참고.
+  ///
+  /// [url] 은 호출자가 `FileInfo.markerImageUrl` 로 결정한다 — 서버 썸네일
+  /// (긴 변 400px JPEG)이 있으면 그것, 없으면 원본이다. 서버 파생이 들어온 뒤
+  /// (2026-07-29)에도 아래 두 겹을 유지하는 이유는 **폴백 경로 방어**다:
+  /// 백필이 안 돼 기존 파일은 여전히 원본(500KB~3.3MB)으로 내려오고, 썸네일
+  /// 생성이 실패한 파일도 원본으로 온다.
+  ///
+  /// 주의:
+  /// - 정책은 반드시 `fit` — `exact` 는 종횡비를 무시해 사진이 찌그러진다.
+  /// - [CachedNetworkImageProvider] 의 `maxWidth`/`maxHeight` 는 쓰지 않는다.
+  ///   그 경로는 `CacheManager` 가 `ImageCacheManager` 여야 하고, 축소는
+  ///   이미 [ResizeImage] 가 담당한다. (둘을 같이 쓰면 중복 축소)
+  /// - 서버 썸네일이 이미 400px 이면 [ResizeImage] 는 실질 no-op 이다
+  ///   (`allowUpscaling` 기본 false + `fit` 이라 확대하지 않는다). 비용이 아니라
+  ///   원본 폴백 때만 일하는 안전망으로 남겨 둔다.
+  /// - CloudFront 에는 URL 리사이즈 기능이 없다 (`?w=`, `?width=`,
+  ///   `Accept: image/webp` 모두 원본 반환 — 2026-07-29 확인). 그래서 크기를
+  ///   줄이는 유일한 방법이 서버가 미리 만든 파생을 받는 것이다.
   Future<ImageStream> getImageStream(String url) async {
-    final NetworkImage assetImage = NetworkImage(url);
+    final ResizeImage assetImage = ResizeImage(
+      CachedNetworkImageProvider(url),
+      width: kMarkerThumbDecodeSize,
+      height: kMarkerThumbDecodeSize,
+      policy: ResizeImagePolicy.fit,
+    );
     final ImageStream stream = assetImage.resolve(ImageConfiguration.empty);
     return stream;
   }
@@ -362,7 +400,7 @@ class MarkerImageFactory {
   /// 모양: 화이트 원 + 1dp 테두리 + 블루 챗 글리프 (튀어나온 꼬리 없음 —
   /// 피그마 "18 텍스트 마커 변형 시트" 확정안, 카드/점 같은 패밀리).
   /// 원 바닥이 캔버스 하단(anchor 0.5,1.0)에 오도록 배치해 지도 좌표를 가리킨다.
-  /// 위젯([TextDotGlyph])과 [paintTextDot] 로 같은 그림을 공유한다.
+  /// 모양은 [paintTextDot] 이 단일 소유한다 (피그마 기하 원본).
   Future<Uint8List> createTextDotImage({Color? bubbleColor}) async {
     if (bubbleColor == null && _textDotBytesCache != null) {
       return _textDotBytesCache!;
@@ -370,10 +408,13 @@ class MarkerImageFactory {
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
-    const double size = 200.0;
+    // 규격은 marker_constants 에서 관리 — 표시 크기([kTextDotMarkerSize])가
+    // 이 두 값으로부터 역산되므로 여기서 직접 숫자를 쓰면 둘이 어긋난다.
+    const double size = kTextDotCanvasSize;
     // 좌우 8px·상단 16px 여유(테두리 안티앨리어싱 + 그림자), 원 바닥 = 캔버스
-    // 하단(200). 표시 크기(위계 42~66dp 정사각) 기준 원 지름 = 0.92x.
-    const double unit = (size - 16) / kTextDotFrameH;
+    // 하단(200). 즉 캔버스 대비 원 지름 = 0.92x — 표시 크기는 이 비율을
+    // 되돌려 원이 말풍선 안 점(32dp)과 같아지도록 정해져 있다.
+    const double unit = (size - kTextDotCanvasPadding) / kTextDotFrameH;
 
     paintTextDot(
       canvas,

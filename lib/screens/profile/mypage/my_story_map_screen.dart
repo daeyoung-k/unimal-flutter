@@ -173,8 +173,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       NOverlayImage icon;
       try {
         if (p.fileInfoList.isNotEmpty) {
-          final stream =
-              await _markerImageFactory.getImageStream(p.fileInfoList.first.fileUrl);
+          // 서버 썸네일(400px) 우선 — 없으면 원본 폴백 (메인 지도와 동일 규칙).
+          final stream = await _markerImageFactory
+              .getImageStream(p.fileInfoList.first.markerImageUrl);
           final bytes = await _markerImageFactory.createMarkerImage(stream);
           icon = await overlayImageFromBytes(bytes);
         } else {
@@ -194,14 +195,18 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         id: id,
         position: position,
         icon: icon,
-        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+        // 텍스트 글은 위계·기본 크기가 아니라 [kTextDotMarkerSize] 고정 —
+        // 줌인 시 말풍선 안 점(32dp)으로 넘어갈 때 원 지름이 튀지 않게
+        // 한다(메인 지도와 동일 규칙, 2026-07-29 결정).
+        size: isText
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize),
         tags: {'title': title, 'boardId': p.boardId, 'isText': isText ? '1' : '0'},
-        caption: NOverlayCaption(
-          text: _markerCaption(title),
-          textSize: _markerCaptionTextSize,
-          color: colors.textPrimary,
-          haloColor: colors.background,
-        ),
+        // 기본 캡션 — 8자 말줄임. 텍스트 글은 말풍선 카드가 제목을 보여주는
+        // 줌부터 캡션을 끈다(제목 중복 방지). 값 선택 근거는 메인 지도
+        // (map_naver) 같은 자리의 주석 참고. 선택 해제 복원과 같은 정의를
+        // 쓰기 위해 [_defaultCaption] 헬퍼로 분리 (2026-07-31).
+        caption: _defaultCaption(title, colors, isText: isText),
       );
       _markerRefs[id] = marker;
       if (isText) {
@@ -213,6 +218,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       marker.setOnTapListener((NClusterableMarker _) async {
         if (!mounted) return;
         if (isText) {
+          // 탭한 글의 말풍선을 겹침 위로 — 줌인 후 말풍선이 생성되는
+          // 경로에서도 선택이 먼저 기억돼 처음부터 맨 앞에 뜬다.
+          _bubbleLayer.select(id);
           final cam = await _mapController?.getCameraPosition();
           if (cam != null && cam.zoom < kTextCardEnterZoom) {
             await _zoomToTextCard(position);
@@ -286,7 +294,13 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       final icon = child != null ? _markerIcons[child.id] : null;
       if (icon != null) {
         clusterMarker.setIcon(icon);
-        clusterMarker.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
+        // 크기도 원래 규칙으로 복원 — 텍스트 점은 kTextDotMarkerSize 고정.
+        // 여기서 기본 크기로 되돌리면 줌아웃→줌인 왕복 때 텍스트 점만
+        // 50dp 로 커져 말풍선 전환에서 다시 튄다 (2026-07-29).
+        final bool childIsText = child?.tags['isText'] == '1';
+        clusterMarker.setSize(childIsText
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize));
       }
       clusterMarker.setCaption(NOverlayCaption(
         text: _markerCaption((child?.tags['title'] ?? '').trim()),
@@ -303,6 +317,8 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
           if (!mounted) return;
           // 텍스트 마커: 카드 줌 미만이면 줌인해 카드로 펼침 (메인 지도와 동일).
           if (isText && pos != null) {
+            // 탭한 글의 말풍선을 겹침 위로 (줌인 후 생성돼도 선택 유지).
+            if (markerId != null) _bubbleLayer.select(markerId);
             final cam = await _mapController?.getCameraPosition();
             if (cam != null && cam.zoom < kTextCardEnterZoom) {
               await _zoomToTextCard(pos);
@@ -450,9 +466,36 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     await controller.updateCamera(update);
   }
 
-  /// 선택된 마커를 z-index 부스트 + (사진 마커) 확대로 강조. [markerId]가
-  /// null이면 강조 해제. 메인 지도(_applySelectionHighlight)와 동일한 방식.
+  /// 기본 캡션 — 8자 말줄임. 텍스트 글은 카드 줌(16.8+)부터 네이티브가 끈다.
+  /// 마커 생성과 선택 해제 복원이 같은 정의를 쓴다 (메인 지도와 동일 규칙).
+  NOverlayCaption _defaultCaption(String title, AppColors colors,
+          {required bool isText}) =>
+      NOverlayCaption(
+        text: _markerCaption(title),
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        maxZoom: isText ? kTextCardEnterZoom : NaverMapViewOptions.maximumZoom,
+      );
+
+  /// 선택(포커스) 캡션 — 전체 타이틀을 requestWidth 로 2~3줄 랩 (메인 지도와
+  /// 동일, 피그마 18-2 ⑤). **maxZoom 을 걸지 않는다** — 걸면 카드 줌(19)에서
+  /// 선택했을 때 타이틀이 사라진다 (메인 지도 같은 자리 주석 참고).
+  NOverlayCaption _selectedCaption(String title, AppColors colors) =>
+      NOverlayCaption(
+        text: title,
+        textSize: _markerCaptionTextSize,
+        color: colors.textPrimary,
+        haloColor: colors.background,
+        requestWidth: kSelectedMarkerCaptionWidth,
+      );
+
+  /// 선택된 마커를 z-index 부스트 + (사진 마커) 확대 + **전체 타이틀 캡션**
+  /// (줌 숨김 보호 forceShowCaption)으로 강조. [markerId]가 null이면 강조 해제.
+  /// 메인 지도(_applySelectionHighlight)와 동일한 방식 (캡션은 2026-07-31 추가
+  /// — 텍스트 글 캡션이 카드 줌부터 꺼져 선택해도 제목이 안 보이던 문제).
   void _applySelectionHighlight(String? markerId) {
+    final colors = AppColors.of(context);
     final prevId = _highlightedMarkerId;
     if (prevId != null && prevId != markerId) {
       final prev = _markerRefs[prevId];
@@ -466,6 +509,13 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             prev.setSize(const Size(kNormalMarkerSize, kNormalMarkerSize));
           } catch (_) {/* same */}
         }
+        // 캡션 복원 — 8자 말줄임 + 강제 노출 해제 (생성 시와 동일 정의).
+        final prevTitle = prev.tags['title'] ?? '';
+        try {
+          prev.setCaption(_defaultCaption(prevTitle, colors,
+              isText: _textMarkerRefs.containsKey(prevId)));
+          prev.setIsForceShowCaption(false);
+        } catch (_) {/* same */}
       }
     }
     _highlightedMarkerId = markerId;
@@ -481,6 +531,14 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             marker.setSize(const Size(
                 kNormalMarkerSize * kSelectedMarkerScale,
                 kNormalMarkerSize * kSelectedMarkerScale));
+          } catch (_) {/* same */}
+        }
+        // 선택 마커는 전체 타이틀 캡션 + 줌/충돌 숨김 보호.
+        final title = (marker.tags['title'] ?? '').trim();
+        if (title.isNotEmpty) {
+          try {
+            marker.setCaption(_selectedCaption(title, colors));
+            marker.setIsForceShowCaption(true);
           } catch (_) {/* same */}
         }
       }
@@ -568,6 +626,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         latitude: latitude,
         rawZoom: rawZoom,
       );
+      // 카드끼리 겹칠 때 렌더/탭 우선순위 동점 방지용 안정 구분값 —
+      // 전부 같은 zIndex(300000)면 네이티브가 임의 순서로 탭을 배정한다.
+      var order = 0;
       for (final entry in _textMarkerRefs.entries) {
         final id = entry.key;
         final post = _textMarkerPosts[id];
@@ -577,9 +638,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         targets.add(BubbleMarkerTarget(
           id: id,
           position: position,
+          score: order++,
           buildIcon: () => _buildTextCardIcon(post),
           onTap: () {
             if (!mounted) return;
+            // 겹친 말풍선 중 탭한 카드를 맨 앞으로 (2026-07-30).
+            _bubbleLayer.select(id);
             _applySelectionHighlight(id);
             unawaited(_moveCameraToMarker(position));
             unawaited(showPostDetailSheet(context, post.boardId).then((_) {
@@ -596,8 +660,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     );
   }
 
-  /// 텍스트 글 줌인 카드 아이콘 — 꼬리 끝이 하단 중앙(anchor 0.5,1.0)에 오도록
-  /// bottomCenter 정렬. 제목 없으면 본문만 카드. (메인 지도와 동일 위젯)
+  /// 텍스트 글 줌인 카드 아이콘 — 카드 + 하단 투명 여백(점은 그리지 않고 실제
+  /// 점 마커가 그 자리에 보인다, 2026-07-29). 하단 중앙이 지도 좌표
+  /// (anchor 0.5,1.0)이므로 bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// (메인 지도와 동일 위젯)
   Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
@@ -874,6 +940,8 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       await showPostDetailSheet(context, post.boardId);
       return;
     }
+    // 텍스트 글이면 말풍선도 맨 앞으로 (말풍선이 없으면 no-op).
+    _bubbleLayer.select(id);
     _applySelectionHighlight(id);
     unawaited(_moveCameraToMarker(marker.position));
     await showPostDetailSheet(context, post.boardId);

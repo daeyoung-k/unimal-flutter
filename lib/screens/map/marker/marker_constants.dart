@@ -23,6 +23,34 @@ const double kMarkerSizeLower = 42.0; // 하위 score
 const double kMarkerSizeUpper = 58.0; // 상위 score
 const double kMarkerSizeHot = 66.0; // 핫플 (상위 5%) + 캡션 우선권
 
+/// 텍스트 점 마커 비트맵 캔버스 규격 — `createTextDotImage` 가 이 값으로 그린다.
+/// 캔버스 200px 고정: 클러스터/스택 +N 뱃지 합성(`addClusterBadge`)이 200x200 을
+/// 가정한다. 패딩 16px 은 테두리 안티앨리어싱 + 드롭섀도 여유.
+const double kTextDotCanvasSize = 200.0;
+const double kTextDotCanvasPadding = 16.0;
+
+/// 텍스트 점 마커 표시 크기 — **score 위계 비적용** (2026-07-29 결정).
+///
+/// 텍스트 마커는 사진 마커와 달리 score 크기 위계(42/50/58/66)를 타지 않고
+/// 항상 이 크기다 — 피그마 18 "텍스트 마커 변형 시트"의 점 지름 32dp 확정안을
+/// 어느 줌에서나 그대로 따른다.
+///
+/// (연혁: 처음 이 값을 도입한 이유는 "줌인 시 말풍선 아이콘 안에 그려지는
+/// 점 32dp 와 크기를 맞춘다"였다. 이후 말풍선에서 점을 아예 빼고 실제 점
+/// 마커가 그대로 보이게 바꿨으므로(2026-07-29) 맞출 상대는 사라졌고, 남은
+/// 근거는 위의 피그마 스펙 + 위계 비적용 결정이다.)
+///
+/// **값이 32 가 아니라 34.78 인 이유**: `createTextDotImage` 는 캔버스
+/// [kTextDotCanvasSize]px 안에 32dp 프레임을 `unit=(200-16)/32` 로 그려
+/// 원이 캔버스의 92%(184/200)만 차지한다. 따라서 화면상 원 지름을 32dp 로
+/// 만들려면 표시 크기를 그 비율로 되돌려야 한다. 테두리도 이때 정확히 1dp 다.
+///
+/// 아래 `32.0` 은 `text_marker_widgets.dart` 의 `kTextDotFrameW` 와 같은 값이다
+/// (그 파일은 위젯 계층이라 여기서 import 하지 않는다 — 한쪽을 바꾸면 반드시
+/// 다른 쪽도 바꿀 것).
+const double kTextDotMarkerSize =
+    32.0 * kTextDotCanvasSize / (kTextDotCanvasSize - kTextDotCanvasPadding);
+
 /// score 위계 백분위 경계.
 const double kMarkerTierHotPercentile = 0.95;
 const double kMarkerTierUpperPercentile = 0.75;
@@ -35,6 +63,24 @@ const int kMarkerTierMinSample = 8;
 /// 마커 링(테두리) 두께 — 표시 dp 기준 (피그마 §1: 화이트 링 4px).
 /// 비트맵 캔버스(200px)에는 `4 * 200 / kNormalMarkerSize` 로 환산해 그린다.
 const double kMarkerRingWidthDp = 4.0;
+
+/// 마커 썸네일 **디코드** 목표 크기 — 원본 풀해상도 디코드 방지용.
+///
+/// 마커 비트맵은 200x200 캔버스(`createMarkerImage`)에만 쓰이므로 원본
+/// 해상도로 디코드할 이유가 없다. 폰 사진 원본(예: 4032x3024 ≈ 1,220만 픽셀)을
+/// 그대로 디코드하면 마커 하나당 수십 MB 비트맵을 만들고 버리며, 아이콘
+/// 생성 루프가 직렬이라 이 비용이 마커 수만큼 누적된다.
+///
+/// 200 이 아니라 **2배 여유(400)** 인 이유: `createMarkerImage` 가 원본의
+/// **중앙 정사각형을 크롭**해 200px 원에 그린다. fit 정책으로 200x200 에
+/// 맞추면 4:3 가로 사진은 200x150 이 되어 중앙 정사각(150px)이 200px 보다
+/// 작아져 확대 흐림이 생긴다. 400 이면 400x300 → 중앙 정사각 300px ≥ 200px
+/// 이라 어떤 종횡비에서도 확대가 일어나지 않는다.
+///
+/// **주의**: `ResizeImagePolicy.exact` + width/height 동시 지정은 종횡비를
+/// 무시하고 늘려버린다(`BoxFit.fill` 동일 — image_provider.dart 문서).
+/// 반드시 `ResizeImagePolicy.fit` 과 함께 쓸 것.
+const int kMarkerThumbDecodeSize = 400;
 
 /// "새 글" 링(accent) 유지 시간 — 작성 후 24시간 (피그마 §1).
 const Duration kNewPostRingDuration = Duration(hours: 24);
@@ -111,6 +157,14 @@ const Map<NInclusiveRange<int>, double> kClusterMergeDistances = {
 /// 폭 220 = 카드 204 + 그림자(blur 8) 여유. 높이 130 = 카드(제목+본문2줄 ≈ 77)
 /// + 간격 4 + 점 39 + 상단 그림자 여유. bottomCenter 정렬이라 남는 공간은 투명.
 /// fromWidget size와 NMarker size를 동일하게 — 스케일 왜곡 방지.
+///
+/// **주의 — 범위 밖 앵커 접근 금지** (2026-07-31 원복): 하단 점 자리(투명
+/// 여백)가 마커 터치 영역에 포함돼 이웃 점 마커의 탭을 가로채는 문제를
+/// "아이콘을 카드(220x94)로 줄이고 앵커 y=1.28 로 띄우는" 방식으로 고치려
+/// 했으나, **네이티브 SDK 가 앵커를 0~1 로 클램프**해 실기기(iOS/Android)
+/// 에서 카드가 점 위로 내려앉았다 (플러그인 v1.4.4 Dart/브리지 코드에는
+/// 클램프가 없지만 SDK 내부에서 잘린다). 투명 여백 방식으로 원복 — 탭
+/// 가로채기 문제는 다른 방식으로 해결할 것.
 const Size kTextCardSize = Size(220, 130);
 
 /// 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 줌).

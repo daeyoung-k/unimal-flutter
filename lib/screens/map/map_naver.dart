@@ -9,13 +9,17 @@ import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/map_bottom_card.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
+import 'package:unimal/screens/map/feed/map_feed_sheet.dart';
 import 'package:unimal/screens/map/marker/bubble_marker_layer.dart';
 import 'package:unimal/screens/map/marker/marker_constants.dart';
+import 'package:unimal/screens/map/marker/marker_group.dart';
 import 'package:unimal/screens/map/marker/marker_score_tiers.dart';
 import 'package:unimal/screens/map/marker/text_marker_widgets.dart';
 import 'package:unimal/screens/map/map_reload_policy.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/map/marker/marker_image_factory.dart';
+import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/service/map/naver_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
@@ -115,6 +119,33 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // BubbleMarkerLayer 가 담당한다.
   final BubbleMarkerLayer _bubbleLayer =
       BubbleMarkerLayer(debugLabel: 'map bubble');
+
+  // ── 바텀카드 피드 (설계 docs/specs/2026-07-29-지도-바텀카드-피드.md) ──
+  // 시트가 자기 데이터를 소유한다. 여기서는 조회 좌표만 알려주고 컨트롤러를
+  // 보유한다(마커 탭 시 접어야 하므로).
+  final ValueNotifier<MapFeedQuery?> _feedQuery =
+      ValueNotifier<MapFeedQuery?>(null);
+  final DraggableScrollableController _feedSheetController =
+      DraggableScrollableController();
+
+  /// 피드 카드로 열린 확장카드의 글. 마커 탭 경로(`_selectedGroupIndex`)와
+  /// 별도다 — 피드 글은 `_postGroups` 에 없을 수 있다.
+  MapPost? _feedSelectedPost;
+
+  /// 위 글의 상세. `MapBottomCard` 가 `getBoardDetail` 을 다시 호출하지 않도록
+  /// 씨딩한다.
+  BoardPost? _feedSelectedDetail;
+
+  /// 피드 카드를 열기 전의 시트 높이. 카드를 닫을 때 이 높이로 복원한다.
+  /// null 이면 복원하지 않는다(피드가 아닌 경로로 카드가 열린 경우).
+  double? _feedSheetSizeBeforeCard;
+
+  bool _isOpeningFeedPost = false;
+
+  /// 피드 시트가 실제로 렌더되고 있는지. 하단 버튼 위치를 이 값으로 정한다.
+  /// 서버 미구현 기간에는 영구히 false 다.
+  bool _hasFeedContent = false;
+
   // 현재 z-index 부스트되어 있는 마커 ID (한 번에 1개만 부스트).
   String? _highlightedMarkerId;
   // 선택 마커가 사용하는 z-index. score 기반(약 200,000 + score)보다 충분히 큰 값.
@@ -208,7 +239,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 조합해 "가까운 것만 묶임"이 되도록 한다.
   static const double _defaultEntryZoom = 16.5;
 
-  bool get _isAnyCardOpen => _selectedSymbol != null || _selectedPosts.isNotEmpty;
+  // 피드 확장카드도 포함 — 열린 동안 검색바·하단 버튼·피드 시트가 함께
+  // 페이드아웃되어 기존 마커 카드와 동일하게 동작한다.
+  bool get _isAnyCardOpen =>
+      _selectedSymbol != null ||
+      _selectedPosts.isNotEmpty ||
+      _feedSelectedPost != null;
   bool get _isMapTabActive =>
       Get.find<NavController>().selectedIndex.value == 0;
   bool get _isMapInteractionOpen =>
@@ -488,6 +524,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _freshnessTimer?.cancel();
     _fanAnimTimer?.cancel();
     _bubbleLayer.cancelTimers();
+    _feedQuery.dispose();
+    _feedSheetController.dispose();
     _searchController.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -659,6 +697,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         _lastQueriedZoom = rawZoom ?? zoom.toDouble();
         _lastQueriedApiZoom = zoom;
         _lastSuccessfulMapRefreshAt = DateTime.now();
+        // 피드 시트에 현재 조회 지점을 알린다. 실제 조회 여부(시트가 펼쳐졌는지)는
+        // 시트가 판단한다 (설계 §3).
+        _feedQuery.value = MapFeedQuery(
+          latitude: latitude,
+          longitude: longitude,
+          zoom: zoom,
+        );
         _successfulMapRefreshGeneration++;
         final hasNewerPending =
             pendingGenerationAtStart != _pendingAutoRefreshGeneration;
@@ -769,21 +814,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // jitter 로 흩뿌리던 방식을 폐기하고 그룹당 마커 하나(대표 + 뒷장 + +N 뱃지)로
     // 쌓는다. 줌인해도 유지되며, 탭하면 하단 카드 스트립에서 그룹 내 글을 넘겨본다.
     // 정밀도 주의: kStackGroupPrecision(4자리 ≈ 11m) — 진짜 같은 지점만 묶는다.
-    final Map<String, List<MapPost>> grouped = {};
-    for (final post in posts) {
-      final key = _stackGroupKey(post.latitude, post.longitude);
-      grouped.putIfAbsent(key, () => []).add(post);
-    }
-    // 그룹 내 score 내림차순 — 첫 글이 대표(마커 아이콘·캡션·zIndex 기준)
-    for (final list in grouped.values) {
-      list.sort((a, b) => b.score.compareTo(a.score));
-    }
+    // 11m 타일 그룹핑 + 대표 선정은 marker_group.dart 의 순수 규칙에 위임한다.
+    // 랭킹 score(그룹 최댓값)와 표시 대표(사진 우선)가 분리돼 나온다
+    // (설계: docs/specs/2026-07-28-마커-사진-우선-대표-선정.md).
+    final groups = buildMarkerGroups(posts);
+    final List<List<MapPost>> markerGroups = [for (final g in groups) g.posts];
+    // 표시 대표 id → 그룹 랭킹 score. 아래 빌드 루프가 크기·zIndex·태그에 쓴다.
+    final Map<String, double> rankScoreById = {
+      for (final g in groups) g.representative.id: g.rankScore,
+    };
 
-    final List<List<MapPost>> markerGroups = grouped.values.toList();
-
-    // score 크기 위계 — 화면에 로드된 마커(그룹 대표 score)의 상대 백분위.
-    final tiers =
-        MarkerScoreTiers.fromScores(markerGroups.map((g) => g.first.score));
+    // score 크기 위계 — 화면에 로드된 그룹들의 **랭킹 score** 상대 백분위.
+    // 표시 대표 score 를 쓰면 사진 우선 이동 때문에 위계가 뒤틀린다.
+    final tiers = MarkerScoreTiers.fromScores(groups.map((g) => g.rankScore));
 
     // 말풍선 대상 판정 — 밀집 계산은 말풍선 레이어 sync 와 같은 헬퍼를 쓴다.
     // 여기서는 canCard 태그(탭 줌 유도)에만 사용하며, 점↔말풍선 표현 자체는
@@ -798,6 +841,16 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final newMarkerIds = markerGroups.map((g) => g.first.id).toSet();
     debugPrint('[map] markerGroups built: ${markerGroups.length} markers '
         '(grouped from ${posts.length} posts, tiers=${tiers.enabled})');
+
+    // 스택 그룹 구성 추적 — 표시 대표(첫 글, 사진 우선)와 랭킹 score(그룹
+    // 최댓값)가 다를 수 있으므로 둘 다 남긴다. "사진 글인데 점 마커" 추적용.
+    if (kDebugMode) {
+      for (final g in groups.where((g) => g.posts.length > 1)) {
+        debugPrint('[map] stack group rank=${g.rankScore} '
+            'rep=${g.representative.id} → ${g.posts.map((p) => '${p.id}'
+            '(score=${p.score} files=${p.fileInfoList.length})').join(' | ')}');
+      }
+    }
 
     // 1) 기존에 있고 새에 없는 마커만 제거
     int deletedCount = 0;
@@ -850,9 +903,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // 탭 줌 유도에만 사용. 점 마커의 payload 는 항상 점이다 (2-레이어).
       final bool canBecomeCard = textBubbleEligibleIds.contains(topPost.id);
 
-      // score 크기 위계 (42/50/58/66) — 그룹 대표 score 의 화면 내 백분위.
-      final double tierSize = tiers.sizeFor(topPost.score);
-      final bool isHot = tiers.isHot(topPost.score);
+      // 랭킹 score — 그룹 최댓값. 표시 대표(topPost)의 score 와 다를 수 있다
+      // (사진 우선 대표 선정 — docs/specs/2026-07-28).
+      final double rankScore = rankScoreById[topPost.id] ?? topPost.score;
+
+      // 표시 크기.
+      // - 사진 글: score 크기 위계 (42/50/58/66) — 그룹 랭킹 score 의 화면 내 백분위.
+      // - 텍스트 글: **위계 비적용, 항상 [kTextDotMarkerSize]** (2026-07-29 결정).
+      //   줌인하면 말풍선 아이콘 안의 점(32dp 고정)으로 표현이 넘어가는데,
+      //   위계 크기였으면 전환 순간 원 지름이 46→32dp(기본) / 60.7→32dp(핫플)로
+      //   튀었다. 이유와 34.78 값의 근거는 상수 주석 참고.
+      final double displaySize =
+          isTextPost ? kTextDotMarkerSize : tiers.sizeFor(rankScore);
+      final bool isHot = tiers.isHot(rankScore);
 
       // 이미 화면에 있는 마커 → 재사용. 스택 글 수가 바뀌면 재생성.
       // 점↔말풍선 표현은 별도 말풍선 레이어가 담당하므로 여기에는
@@ -864,11 +927,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // 위계 변화(뷰포트 이동으로 백분위가 바뀜)는 재합성 없이 반영:
           // 크기는 setSize, 캡션 우선권은 setIsForceShowCaption.
           // 선택 중 마커의 크기는 제외.
-          if (_markerBaseSize[topPost.id] != tierSize) {
-            _markerBaseSize[topPost.id] = tierSize;
+          // 텍스트 마커는 displaySize 가 상수라 이 비교가 항상 거짓 — 위계
+          // 변화로 크기가 바뀌지 않는다.
+          if (_markerBaseSize[topPost.id] != displaySize) {
+            _markerBaseSize[topPost.id] = displaySize;
             if (_highlightedMarkerId != topPost.id) {
               try {
-                _markerRefs[topPost.id]?.setSize(Size(tierSize, tierSize));
+                _markerRefs[topPost.id]?.setSize(Size(displaySize, displaySize));
               } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
             }
           }
@@ -908,7 +973,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (!isTextPost) {
         // ── 사진 글: 원형 썸네일 + 링 (내 글=primary, 새 글 24h=accent) ──
         try {
-          final firstUrl = topPost.fileInfoList.first.fileUrl;
+          // 원본이 아니라 서버 썸네일(400px) 우선 — 없으면 원본 폴백.
+          final firstUrl = topPost.fileInfoList.first.markerImageUrl;
           final stream = await _markerImageFactory.getImageStream(firstUrl);
           baseBytes = await _markerImageFactory.createMarkerImage(
             stream,
@@ -962,9 +1028,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         id: topPost.id,
         position: pos,
         icon: icon,
-        size: Size(tierSize, tierSize),
+        size: Size(displaySize, displaySize),
         tags: {
-          'score': topPost.score.toString(),
+          'score': rankScore.toString(),
           // 클러스터 빌더가 tags 만 받으므로 유도 타이틀(타이틀 비면 본문 첫 줄)을
           // 여기서 계산해 담는다.
           'title': derivedTitle,
@@ -974,19 +1040,40 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           'canCard': canBecomeCard ? '1' : '0',
           // 스택 글 수 — 클러스터 +N 뱃지가 마커 수가 아닌 글 수 합계를 표시.
           'count': stackCount.toString(),
+          // 클러스터 대표 선정용 — 이 그룹에 사진이 하나라도 있는가.
+          // 표시 대표는 사진 우선이므로 대표만 보면 판정된다.
+          'hasPhoto': topPost.fileInfoList.isEmpty ? '0' : '1',
         },
         caption: NOverlayCaption(
           text: _truncateMarkerTitle(derivedTitle),
           textSize: _markerCaptionTextSize,
           color: captionTokens.textPrimary,
           haloColor: captionTokens.background,
+          // 텍스트 글은 이 줌 이상에서 말풍선 카드가 제목을 보여주므로 캡션을
+          // 네이티브 줌 범위로 끈다 — 제목 중복 방지. 충돌 숨김에 의존하지
+          // 않는 확정적 방식이다(말풍선 박스는 좌표 위쪽, 캡션은 아래쪽이라
+          // 애초에 충돌 판정이 걸리지 않는다).
+          //
+          // 단일 임계값이라 말풍선의 히스테리시스(enter 16.8 / exit 16.3)를
+          // 정확히 따라가지 못한다. enter 를 쓰는 이유: exit(16.3)로 잡으면
+          // 기본 진입 줌(16.5)에서 캡션이 사라져 기본 화면이 망가진다.
+          // 대가는 줌아웃 하강 중 16.3~16.8 구간에서 말풍선과 캡션이 함께
+          // 보이는 것 — 그 0.5 구간까지 없애려면 setCaption 직접 제어(=
+          // 클러스터러블 in-place 변경, C1 위험)가 필요해 값어치가 없다고 판단.
+          //
+          // 사진 글에는 걸지 않는다(말풍선이 뜨지 않음). 선택 마커의 전체
+          // 타이틀 캡션(_selectedCaption)에도 걸면 안 된다 — 줌 19에서 선택 시
+          // 타이틀이 사라진다.
+          maxZoom: isTextPost
+              ? _textCardEnterZoom
+              : NaverMapViewOptions.maximumZoom,
         ),
       );
 
-      final baseZIndex = 200000 + topPost.score.toInt();
+      final baseZIndex = 200000 + rankScore.toInt();
       _markerRefs[topPost.id] = marker;
       _markerBaseZIndex[topPost.id] = baseZIndex;
-      _markerBaseSize[topPost.id] = tierSize;
+      _markerBaseSize[topPost.id] = displaySize;
       _markerStackCount[topPost.id] = stackCount;
       _markerIsHot[topPost.id] = isHot;
       _markerTitle[topPost.id] = derivedTitle;
@@ -1008,7 +1095,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       // (2026-07-14 로그: 재생성 1건 add, 이후 숨김 무효). 숨김은
       // addOverlayAll 이후 실제 네이티브 호출로 일괄 수행한다.
       if (_expandedStackId != null &&
-          _stackGroupKey(topPost.latitude, topPost.longitude) ==
+          stackGroupKey(topPost.latitude, topPost.longitude) ==
               _expandedStackGroupKey) {
         // 접을 때 복원할 대상만 새 대표로 갱신 — 숨김은 add 후.
         _expandedStackId = topPost.id;
@@ -1091,7 +1178,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     if (_expandedStackGroupKey != null) {
       final fanIdx = _postGroups.indexWhere((g) =>
           g.isNotEmpty &&
-          _stackGroupKey(g.first.latitude, g.first.longitude) ==
+          stackGroupKey(g.first.latitude, g.first.longitude) ==
               _expandedStackGroupKey);
       if (fanIdx >= 0) {
         final repId = _postGroups[fanIdx].first.id;
@@ -1111,7 +1198,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 검색 핀 등 다른 일반 마커를 지우지 않도록 레이어가 개별 삭제한다.
     await _bubbleLayer.clear(controller);
     if (controller != null) {
-      await controller.clearOverlays(type: NOverlayType.clusterableMarker);
+      // ⚠️ `controller.clearOverlays(type: clusterableMarker)` 를 쓰지 말 것.
+      //    반드시 id 별 deleteOverlay 로 지운다 (2026-07-28).
+      //
+      // clearOverlays 는 iOS 에서 `ClusteringController.clearClusterableMarker()`
+      // → `clusterer.clear()` + mapView 재부착을 타는데, 이 이후 네이티브
+      // 클러스터러가 `clusterMarkerBuilder` 이벤트를 **영구히 보내지 않는다.**
+      // iOS 는 클러스터 마커를 `marker.hidden = true` 로 만들고 그 Dart 왕복
+      // (clusterMarkerBuilder → NClusterMarker._apply → setIsVisible(true))
+      // 으로만 보이게 하므로, 이벤트가 끊기면 클러스터링 구간(≤16)의 마커가
+      // 전부 숨김 상태로 남는다 = "글 등록/삭제 후 줌아웃하면 마커가 다 사라짐".
+      //
+      // 재현 로그 근거:
+      //   clearOverlays 사용 시 — 삭제 전 z16.50 에서 clusterBuilder 정상 발생,
+      //     삭제(forceRebuild) 후 z15.64 / z14.39 에서 0회. 마커 전멸.
+      //   id 별 deleteOverlay 로 교체 — 등록·삭제 후에도 z12~16 전 구간에서
+      //     clusterBuilder / composeCluster 정상 발생. 마커 유지.
+      //
+      // deleteOverlay 는 `deleteClusterableMarker()`(clusterer.remove + 재부착)
+      // 를 타며 클러스터러가 살아 있다. 삭제 대상은 _mapMarkerIds 가 전부이고
+      // (말풍선·검색핀·펼침 마커는 일반 NMarker 라 애초에 이 타입이 아니다),
+      // 이 루프가 clearOverlays 와 동일한 범위를 지운다.
+      for (final id in _mapMarkerIds) {
+        try {
+          controller.deleteOverlay(
+            NOverlayInfo(type: NOverlayType.clusterableMarker, id: id),
+          );
+        } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+      }
     }
     _mapMarkerIds.clear();
     _markerRefs.clear();
@@ -1347,12 +1461,6 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   // 공용 헬퍼 위임 — 글자 수 제한은 marker_constants.dart에서 관리.
   String _truncateMarkerTitle(String title) => truncateMarkerCaption(title);
 
-  /// 같은 자리 스택 그룹핑 좌표 키 (kStackGroupPrecision, ≈11m 타일).
-  /// 그룹핑과 펼침 숨김 가드가 반드시 같은 키를 쓰도록 한 곳에서 관리.
-  String _stackGroupKey(double lat, double lng) =>
-      '${lat.toStringAsFixed(kStackGroupPrecision)},'
-      '${lng.toStringAsFixed(kStackGroupPrecision)}';
-
   /// 텍스트 마커 표현(점↔카드)을 줌 히스테리시스로 결정하고 _textCardMode를 갱신.
   /// 카드 상태에서는 exit 미만으로 내려가야 점으로, 점 상태에서는 enter 이상이어야 카드로 전환.
   bool _resolveTextCardMode(double rawZoom) {
@@ -1455,6 +1563,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           buildIcon: () => _buildTextCardIcon(post),
           onTap: () {
             _focusNode.unfocus();
+            // 겹친 말풍선 중 탭한 카드를 맨 앞으로 — 카드 오픈으로 말풍선이
+            // 페이드 아웃되는 동안, 그리고 카드를 닫아 말풍선이 되살아날 때
+            // 마지막으로 본 글이 위에 오도록 (2026-07-30).
+            _bubbleLayer.select(postId);
             final idx = _postGroups
                 .indexWhere((g) => g.isNotEmpty && g.first.id == postId);
             if (idx < 0) return;
@@ -1475,6 +1587,148 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     );
   }
 
+  /// 피드 시트를 peek 으로 접는다. 컨트롤러가 아직 시트에 붙지 않았으면
+  /// (섹션 0개로 시트가 렌더되지 않은 경우) 조용히 넘어간다.
+  void _collapseFeedSheet() {
+    if (!_feedSheetController.isAttached) return;
+    unawaited(_feedSheetController.animateTo(
+      kMapFeedPeekSize,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    ));
+  }
+
+  /// 피드 카드 탭 → 확장카드를 연다. **카메라는 움직이지 않는다.**
+  ///
+  /// 피드 응답은 서버에서 캐시되고 `isLike`/`isOwner`/전체 이미지 목록이 빠져
+  /// 있으므로 상세를 받아야 확장카드를 제대로 채울 수 있다(설계 §5).
+  Future<void> _openFeedPost(MapFeedItem item) async {
+    if (_isOpeningFeedPost) return;
+    _isOpeningFeedPost = true;
+    _focusNode.unfocus();
+    // 카드를 닫을 때 돌아올 높이를 기억한다. 컨트롤러가 아직 붙지 않았으면
+    // (섹션 0개로 시트 미렌더) 기억할 것이 없다. 상세 조회가 실패해 카드가
+    // 안 열려도 이 값 자체는 무해하다 — 다음에 카드가 열릴 때 덮어써진다.
+    if (_feedSheetController.isAttached) {
+      _feedSheetSizeBeforeCard = _feedSheetController.size;
+    }
+    try {
+      final detail = await BoardApiService().getBoardDetail(item.boardId);
+      if (!mounted) return;
+      setState(() {
+        _feedSelectedDetail = detail;
+        _feedSelectedPost = MapPost(
+          id: detail.boardId,
+          nickname: detail.nickname,
+          profileImage: detail.profileImage,
+          title: detail.title,
+          content: detail.content,
+          streetName: detail.streetName,
+          // 상세에 좌표가 없으면 피드 아이템 좌표로 폴백 — 주소 탭 이동에 쓰인다.
+          latitude: detail.latitude ?? item.latitude,
+          longitude: detail.longitude ?? item.longitude,
+          createdAt: detail.createdAt,
+          fileInfoList: detail.fileInfoList,
+          likeCount: detail.likeCount,
+          replyCount: detail.replyCount,
+          // score 는 마커 globalZIndex 전용이라 카드에서 쓰이지 않는다.
+          score: 0,
+          isOwner: detail.isOwner,
+          isLike: detail.isLike,
+        );
+      });
+    } catch (e) {
+      debugPrint('[map] 피드 글 상세 조회 실패 ${item.boardId}: $e');
+      // getBoardDetail 이 이미 사용자 알럿을 띄운다 — 여기선 카드를 열지 않는다.
+      // 캡처한 높이는 버린다. 카드가 열리지 못했으므로 복원할 "돌아갈 자리"가 없다.
+      // 남겨두면 사용자가 그 뒤 시트를 다른 높이로 옮겨 보다가 지도를 탭했을 때
+      // (_closeAllCards → _restoreFeedSheetHeight) 열린 카드도 없이 시트가 조회
+      // 실패 시점의 높이로 튄다.
+      _feedSheetSizeBeforeCard = null;
+    } finally {
+      _isOpeningFeedPost = false;
+    }
+  }
+
+  /// 피드 확장카드 닫기.
+  ///
+  /// 마커 탭 경로의 `_applySelectionHighlight(null)` /
+  /// `_resumeAutomaticReloadsAfterInteractionClose()` 는 부르지 않는다 —
+  /// 피드 카드는 마커를 선택한 적이 없고 자동 재조회를 멈춘 적도 없다.
+  void _closeFeedPost() {
+    if (_feedSelectedPost == null) return;
+    setState(() {
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
+    });
+    // 피드 카드도 _isAnyCardOpen 을 통해 자동 재조회를 멈춘다(_canAutoRefresh).
+    // 그 사이 신선도 타이머가 발화했다면 _onFreshnessDue 가 defer 후 타이머를
+    // 재설정하지 않으므로, 닫을 때 소비해주지 않으면 지도가 정지 상태로 남는다.
+    // 마커 카드·검색 해제와 같은 불변식이며 계약 테스트가 이를 못박고 있다.
+    //
+    // 단 _resumeAutomaticReloadsAfterInteractionClose() 는 부르지 않는다 —
+    // 그건 _onCameraIdle 로 말풍선까지 복원하는데, 피드 카드는 마커를 선택한 적이
+    // 없어 복원할 것이 없다.
+    unawaited(_consumePendingFreshness());
+
+    _restoreFeedSheetHeight();
+  }
+
+  /// 피드 확장카드를 **아래로 드래그해서** 닫기 — 시트까지 peek 으로 접는다.
+  ///
+  /// [_closeFeedPost] 와 갈라놓은 이유는 **제스처 방향이 곧 의도**이기 때문이다.
+  /// 뒤로가기 버튼은 "돌아간다"라서 보던 높이를 복원하는 게 맞지만, 아래로 내리는
+  /// 동작은 "치운다"다. 손가락이 아래로 갔는데 피드가 열어둔 높이 그대로 올라온 채
+  /// 기다리고 있으면, 내린 만큼 도로 올라온 것처럼 보인다.
+  ///
+  /// 기억한 높이를 **먼저 버린다.** 안 버리면 [_closeFeedPost] 안의
+  /// [_restoreFeedSheetHeight] 가 복원 애니메이션을 걸고, 바로 뒤의
+  /// [_collapseFeedSheet] 와 두 애니메이션이 경합해 시트가 튄다.
+  /// (주소 탭 경로 [_moveCameraToFeedPost] 와 같은 패턴이다.)
+  void _dismissFeedPost() {
+    _feedSheetSizeBeforeCard = null;
+    _closeFeedPost();
+    _collapseFeedSheet();
+  }
+
+  /// 피드 카드를 열기 전 높이로 시트를 되돌린다 — 피드를 보다 카드를 열었으면
+  /// 돌아왔을 때도 그 자리여야 "뒤로 왔다"는 느낌이 된다.
+  ///
+  /// **카드를 닫는 setState 뒤에 불러야 한다.** 카드가 열린 동안 시트는
+  /// `IgnorePointer` + `opacity: 0` 이라 애니메이션이 보이지 않는다.
+  ///
+  /// 기억한 높이는 한 번 쓰고 지운다 — 남겨두면 다음에 다른 경로로 카드가 열렸다
+  /// 닫힐 때 엉뚱한 높이로 튄다.
+  void _restoreFeedSheetHeight() {
+    final restore = _feedSheetSizeBeforeCard;
+    _feedSheetSizeBeforeCard = null;
+    if (restore == null || !_feedSheetController.isAttached) return;
+    unawaited(_feedSheetController.animateTo(
+      restore,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    ));
+  }
+
+  /// 주소 탭 → 카드를 닫고 그 좌표로 카메라 이동.
+  void _moveCameraToFeedPost() {
+    final post = _feedSelectedPost;
+    if (post == null) return;
+    // 이 경로는 아래 _collapseFeedSheet() 로 시트를 의도적으로 접는다(방금
+    // 이동한 지도를 시트가 덮지 않게). _closeFeedPost() 의 높이 복원이 그
+    // 의도를 덮어쓰지 않도록 먼저 지운다.
+    _feedSheetSizeBeforeCard = null;
+    _closeFeedPost();
+    // 이동한 지도를 펼쳐진 시트가 덮지 않게 접는다 (마커 선택 경로와 대칭).
+    _collapseFeedSheet();
+    _mapController?.updateCamera(
+      NCameraUpdate.scrollAndZoomTo(
+        target: NLatLng(post.latitude, post.longitude),
+        zoom: kClusterExpandZoom,
+      ),
+    );
+  }
+
   void _closeAllCards() {
     if (_searchMarkerAdded && _mapController != null) {
       _mapController!.deleteOverlay(NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
@@ -1490,9 +1744,17 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _selectedPostIndex = null;
       _isCardExpanded = false;
       _cardDragOffset = 0.0;
+      // 피드 카드도 함께 닫는다 — 지도 탭은 "열린 것 전부 닫기"다. 이게 없으면
+      // 마커 카드만 닫히고 피드 카드가 남아 "지도 탭 = 닫기" 규칙이 깨진다.
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
     });
     _applySelectionHighlight(null);
     unawaited(_resumeAutomaticReloadsAfterInteractionClose());
+    // 이 경로는 _closeFeedPost 를 경유하지 않고 필드를 직접 비우므로(마커 카드와
+    // 함께 닫아야 해서) 높이 복원도 여기서 직접 해줘야 한다. 안 하면 지도 탭으로
+    // 닫을 때만 시트가 접힌 채 남고, 기억한 높이가 stale 하게 살아 있다.
+    _restoreFeedSheetHeight();
   }
 
   /// 상호작용(카드/검색/펼침) 종료 후 자동 재조회 재개.
@@ -1585,8 +1847,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     }
   }
 
-  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 아래 점 앵커 합성). 점 꼬리 끝이 박스
-  /// 하단 중앙(anchor 기본 0.5,1.0)에 오도록 bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// 텍스트 글 — 줌인 카드 아이콘(카드 + 하단 투명 여백). 점은 그리지 않는다 —
+  /// 그 투명 여백 자리에 **항상 켜져 있는 실제 점 마커가 보인다**(2026-07-29).
+  /// 박스 하단 중앙이 지도 좌표(anchor 기본 0.5,1.0)이므로 bottomCenter 정렬.
+  /// 제목 없으면 본문만 카드.
   Future<NOverlayImage> _buildTextCardIcon(MapPost post) {
     final String? title =
         post.title.trim().isNotEmpty ? post.title.trim() : null;
@@ -1610,47 +1874,74 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   /// 클러스터 마커 빌더.
-  /// 아이콘 = score 최상위 마커 이미지 + 우상단 +N 뱃지(합성). caption = 타이틀(마커 아래).
+  ///
+  /// 표시 대표 = **사진 자식 우선**, 없으면 최고 score 자식
+  /// ([pickClusterRepIndex]). 아이콘·캡션·탭 위치·스택 판정이 모두 그 자식을
+  /// 따르고, 우상단 +N 뱃지 숫자만 전체 자식 count 합계를 쓴다.
   void _buildClusterMarker(NClusterInfo info, NClusterMarker clusterMarker) {
     debugPrint('[map] clusterBuilder called size=${info.size}');
     try {
-    // children 중 score 최대 마커 식별 + 스택 글 수 합산
+    // 표시 대표는 **사진 자식 우선**, 없으면 최고 score 자식
+    // (스택 마커와 같은 규칙 — docs/specs/2026-07-28).
+    // 클러스터가 품은 총 글 수는 마커 수(info.size)가 아니라 count 태그 합계다.
+    final children = info.children;
+    final ranks = <ClusterChildRank>[];
+    int totalCount = 0;
+    for (final child in children) {
+      totalCount += int.tryParse(child.tags['count'] ?? '1') ?? 1;
+      ranks.add(ClusterChildRank(
+        hasPhoto: child.tags['hasPhoto'] == '1',
+        score: double.tryParse(child.tags['score'] ?? '0') ?? 0,
+      ));
+    }
+
+    final repIdx = pickClusterRepIndex(ranks);
     String? topId;
     String? topTitle;
     NLatLng? topPosition;
     bool topCanCard = false;
     int topOwnCount = 1;
     double topScore = -1;
-    // 클러스터가 품은 총 글 수 — 스택 마커(count 2+)를 포함하므로
-    // 마커 수(info.size)가 아니라 count 태그 합계를 뱃지에 표시.
-    int totalCount = 0;
-    for (final child in info.children) {
-      final childCount = int.tryParse(child.tags['count'] ?? '1') ?? 1;
-      totalCount += childCount;
-      final s = double.tryParse(child.tags['score'] ?? '0') ?? 0;
-      if (s > topScore) {
-        topScore = s;
-        topId = child.id;
-        topTitle = child.tags['title'];
-        topPosition = child.position;
-        topCanCard = child.tags['canCard'] == '1';
-        topOwnCount = childCount;
-      }
+    if (repIdx >= 0) {
+      final rep = children[repIdx];
+      topId = rep.id;
+      topTitle = rep.tags['title'];
+      topPosition = rep.position;
+      topCanCard = rep.tags['canCard'] == '1';
+      topOwnCount = int.tryParse(rep.tags['count'] ?? '1') ?? 1;
+      topScore = ranks[repIdx].score;
     }
 
     if (topId != null) {
       // 현재 빌드 시점의 총 글 수 기록 → 비동기 합성 결과의 stale 적용 방지
       _clusterCurrentSize[topId] = totalCount;
 
+      // 대표/좌표 추적 — 클러스터 마커는 대표 마커 좌표가 아니라 네이티브가
+      // 계산한 위치에 그려진다. 줌 조작마다 찍히므로 디버그 빌드 한정.
+      if (kDebugMode) {
+        debugPrint('[map] clusterBuilder top=$topId score=$topScore '
+            'count=$totalCount '
+            'clusterPos=(${clusterMarker.position.latitude.toStringAsFixed(5)}, '
+            '${clusterMarker.position.longitude.toStringAsFixed(5)}) '
+            'topPos=(${topPosition?.latitude.toStringAsFixed(5)}, '
+            '${topPosition?.longitude.toStringAsFixed(5)})');
+      }
+
       if (info.size == 1) {
         // 단일 마커가 클러스터 빌더 거치는 경우 — 일반 마커처럼 표시.
         // 아이콘 캐시에 스택 합성본이 들어 있으므로 뱃지 추가 합성 불필요.
-        // 크기는 score 위계 기준값(42/50/58/66).
+        // 크기는 _markerBaseSize 에 저장된 표시 크기 그대로 — 사진은 score
+        // 위계(42/50/58/66), 텍스트는 kTextDotMarkerSize 고정이 자동 반영된다.
         final base = _markerIconCache[topId];
         if (base != null) {
           final baseSize = _markerBaseSize[topId] ?? _normalMarkerSize;
           clusterMarker.setIcon(base);
           clusterMarker.setSize(Size(baseSize, baseSize));
+        } else {
+          // 아이콘 미설정 → 네이티브 기본 마커로 그려진다. 지금까지 무계측
+          // 구간이라 "줌아웃 시 마커 소실" 조사에서 관측이 불가능했다.
+          debugPrint('[map] clusterBuilder NO ICON (size=1) topId=$topId '
+              'inMapMarkerIds=${_mapMarkerIds.contains(topId)}');
         }
       } else {
         final cacheKey = '${topId}_$totalCount';
@@ -1665,6 +1956,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           if (base != null) {
             clusterMarker.setIcon(base);
             clusterMarker.setSize(const Size(_clusterMarkerSize, _clusterMarkerSize));
+          } else {
+            debugPrint('[map] clusterBuilder NO ICON (size=${info.size}) '
+                'topId=$topId count=$totalCount '
+                'inMapMarkerIds=${_mapMarkerIds.contains(topId)}');
           }
           _composeClusterIconAsync(topId, totalCount, clusterMarker);
         }
@@ -1844,6 +2139,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     bool moveCamera = true,
     double? minZoom,
   }) async {
+    // 마커 탭과 피드 시트는 배타적 — 시트를 peek 으로 접는다.
+    _collapseFeedSheet();
     if (idx < 0 || idx >= _postGroups.length) return;
     if (_mapController == null) return;
     final post = _postGroups[idx].first;
@@ -1857,7 +2154,15 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       _isLoadingPlace = false;
       _selectedGroupIndex = idx;
       _selectedPostIndex = postIndex;
+      // 마커 탭 → 피드 카드는 닫는다. 피드 카드가 화면 하단만 덮고 상단 지도는
+      // 여전히 탭 가능하므로, 지우지 않으면 MapBottomCard 두 개가 동시에 마운트된다.
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
     });
+    // 이 경로는 시트를 접는 것이 의도다(_collapseFeedSheet, 위). 기억한 높이를
+    // 복원하지 않고 **버린다** — 남겨두면 다음에 피드 카드를 닫을 때 마커를 탭하기
+    // 전 높이로 엉뚱하게 튄다.
+    _feedSheetSizeBeforeCard = null;
     // 카드 열림 → 말풍선 레이어 제거 (피그마 18-2 ④ — sync 가 선택 중엔
     // 목표 공집합). 카메라 이동과 독립적으로 적용.
     unawaited(_syncBubbleLayerWithCurrentCamera());
@@ -1884,8 +2189,9 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       if (cached != null) return await overlayImageFromBytes(cached);
       final Uint8List bytes;
       if (post.fileInfoList.isNotEmpty) {
+        // 서버 썸네일(400px) 우선 — 없으면 원본 폴백.
         final stream = await _markerImageFactory
-            .getImageStream(post.fileInfoList.first.fileUrl);
+            .getImageStream(post.fileInfoList.first.markerImageUrl);
         bytes = await _markerImageFactory.createMarkerImage(
           stream,
           ringColor: markerRingColor(
@@ -2016,7 +2322,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 재숨김 방어가 이 값을 보고 동작한다. (기존엔 펼침 완료 시점 설정이라
     // 그 사이 끝난 재조회가 새 스택 마커를 보이는 채로 추가 — 재발 원인)
     _expandedStackId = stackId;
-    _expandedStackGroupKey = _stackGroupKey(top.latitude, top.longitude);
+    _expandedStackGroupKey = stackGroupKey(top.latitude, top.longitude);
     _stackFanCenter = center;
     debugPrint('[map] expandStackFan start id=$stackId seq=$seq');
 
@@ -2127,7 +2433,11 @@ class _MapNaverScreensState extends State<MapNaverScreens>
         position: center, // 팬아웃 시작점 — 애니메이션이 pos 로 이동
         alpha: 0, // 페이드인 시작값
         icon: icon,
-        size: const Size(kNormalMarkerSize, kNormalMarkerSize),
+        // 텍스트 점은 지도 어디서나 같은 크기 — 펼침 마커도 위계/기본 크기가
+        // 아니라 kTextDotMarkerSize 를 쓴다 (2026-07-29 결정).
+        size: post.fileInfoList.isEmpty
+            ? const Size(kTextDotMarkerSize, kTextDotMarkerSize)
+            : const Size(kNormalMarkerSize, kNormalMarkerSize),
       );
       fanMarker.setGlobalZIndex(_stackFanZIndex + i);
       final int postIdx = i;
@@ -2417,6 +2727,30 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     const seoulCityHall = NLatLng(37.5666, 126.979);
     final safeAreaPadding = MediaQuery.paddingOf(context);
     final isDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    // 하단 버튼(내 위치·내 지도)은 피드 시트 peek 위에 둔다. **단 시트가 실제로
+    // 렌더될 때만** — 섹션이 없으면 시트가 그려지지 않으므로(서버 미구현 기간에는
+    // 영구히) 그때 올리면 버튼이 허공에 뜬다.
+    //
+    // 시트는 불투명(colors.surface)하고 내부 ListView 가 포인터를 받으므로, peek
+    // 아래에 두면 버튼이 시각적으로도 탭으로도 죽는다. peek = 0.15 × Stack 높이는
+    // iPhone SE 90pt / iPhone 14 112pt 로 기본값 45 + 높이 36 = 81pt 를 항상 넘는다.
+    //
+    // MediaQuery.sizeOf(context).height 는 **화면 전체** 높이이고 시트 peek 은 Stack
+    // 높이(화면 − 네비바 64 − 하단 safe area) 기준이라 이 값이 실제 peek 보다 약간
+    // 크다 — 버튼이 조금 더 위로 가는 안전한 방향이다. 정확히 맞추려면 LayoutBuilder
+    // 가 필요한데 이 Stack 구조에는 과하다.
+    //
+    // 시트를 펼치면 여전히 가려지지만 그건 사용자가 의도한 조작이다.
+    //
+    // kMapFeedPeekSize 가 낮아질수록 이 값도 같이 작아진다. 언젠가
+    // (height * kMapFeedPeekSize + 12) 가 bottomButtonBase(45) 보다 작아지면
+    // 버튼이 오히려 더 내려가는 역전이 생긴다 — max 로 막아둔다
+    // (map_feed_sheet.dart 의 kMapFeedPeekSize 주석 참고, 2026-07-30).
+    const double bottomButtonBase = 45;
+    final double bottomButtonOffset = _hasFeedContent
+        ? max(bottomButtonBase,
+            MediaQuery.sizeOf(context).height * kMapFeedPeekSize + 12)
+        : bottomButtonBase;
     return Scaffold(
       body: Stack(
         children: [
@@ -2593,7 +2927,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // 내 위치 버튼 — 좌측 하단 고정
           Positioned(
             left: 16,
-            bottom: 45,
+            bottom: bottomButtonOffset,
             child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: NMyLocationButtonWidget(
@@ -2607,13 +2941,31 @@ class _MapNaverScreensState extends State<MapNaverScreens>
           // '내 지도' 진입 버튼 — 우측 하단(네비게이션 바 위). 카드 열리면 페이드아웃.
           Positioned(
             right: 16,
-            bottom: 45,
+            bottom: bottomButtonOffset,
             child: IgnorePointer(
               ignoring: _isAnyCardOpen,
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
                 opacity: _isAnyCardOpen ? 0 : 1,
                 child: _buildMyMapButton(),
+              ),
+            ),
+          ),
+          // 바텀카드 피드 — 상시 peek. 카드가 열리면 페이드아웃(배타적).
+          // 검색바와 같은 IgnorePointer + AnimatedOpacity 패턴.
+          IgnorePointer(
+            ignoring: _isAnyCardOpen,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _isAnyCardOpen ? 0 : 1,
+              child: MapFeedSheet(
+                query: _feedQuery,
+                controller: _feedSheetController,
+                onItemTap: (item) => unawaited(_openFeedPost(item)),
+                onContentChanged: (hasContent) {
+                  if (!mounted || _hasFeedContent == hasContent) return;
+                  setState(() => _hasFeedContent = hasContent);
+                },
               ),
             ),
           ),
@@ -2725,6 +3077,34 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                   : const SizedBox.shrink(key: ValueKey('empty')),
             ),
           ),
+          // 피드 카드로 열린 확장카드 — 마커 카드와 별도 경로.
+          if (_feedSelectedPost != null)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: MapBottomCard(
+                key: ValueKey('feed-${_feedSelectedPost!.id}'),
+                groups: [
+                  [_feedSelectedPost!]
+                ],
+                initialGroupIndex: 0,
+                expandedOnly: true,
+                initialDetail: _feedSelectedDetail,
+                minTopMargin: MediaQuery.sizeOf(context).height * 0.15 +
+                    64 +
+                    MediaQuery.paddingOf(context).bottom,
+                onClose: _closeFeedPost,
+                onDragDismiss: _dismissFeedPost,
+                onLocationTap: _moveCameraToFeedPost,
+                // 수정/삭제 후: 카드를 닫고 마커를 다시 그린다. 삭제된 글의 카드가
+                // 남아 있으면 좋아요·댓글이 서버 오류를 낸다 (마커 카드 경로와 동일).
+                onPostEdited: () {
+                  _closeFeedPost();
+                  refreshMap();
+                },
+              ),
+            ),
         ],
       ),
     );

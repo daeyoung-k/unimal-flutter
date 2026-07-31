@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
@@ -5,6 +7,7 @@ import 'package:unimal/screens/auth/login/widget/manual_login_form.dart';
 import 'package:unimal/service/login/kakao_login_service.dart';
 import 'package:unimal/service/login/naver_login_service.dart';
 import 'package:unimal/service/login/google_login_service.dart';
+import 'package:unimal/service/login/apple_login_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/theme/app_colors.dart';
 
@@ -235,7 +238,7 @@ class _SocialLoginSection extends StatefulWidget {
 }
 
 class _SocialLoginSectionState extends State<_SocialLoginSection> {
-  String? _loadingType; // 'kakao' | 'naver' | 'google'
+  String? _loadingType; // 'kakao' | 'naver' | 'google' | 'apple'
 
   Future<void> _login(String type, Future<void> Function() loginFn) async {
     if (_loadingType != null) return;
@@ -349,6 +352,34 @@ class _SocialLoginSectionState extends State<_SocialLoginSection> {
             ],
           ),
         ),
+        // Sign in with Apple — App Store 가이드라인 4.8 대응.
+        // 심사 기준은 iOS에만 적용되고, 안드로이드는 웹 OAuth 리디렉트 방식이라
+        // 서버 redirect_uri + 딥링크 브리지가 추가로 필요해 노출하지 않는다.
+        if (Platform.isIOS) ...[
+          const SizedBox(height: 12),
+          _LoginButton(
+            onPressed:
+                busy ? null : () => _login('apple', AppleLoginService().login),
+            backgroundColor: Colors.black,
+            isLoading: _loadingType == 'apple',
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.apple, color: Colors.white, size: 24),
+                SizedBox(width: 8),
+                Text(
+                  'Apple로 시작하기',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         TextButton(
           onPressed: busy ? null : widget.onEmailLogin,

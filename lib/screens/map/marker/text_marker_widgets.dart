@@ -3,20 +3,29 @@ import 'package:flutter/material.dart';
 /// 텍스트 전용 커스텀 마커 위젯 모음.
 ///
 /// 피그마 "18 텍스트 마커 변형 시트" 확정안(점 앵커 + 꼬리 없는 말풍선) 기준.
-/// - 줌인: [TextBubbleMarker] — 흰 콘텐츠 카드(꼬리 없음) + 4px 아래 점 앵커
 /// - 카드: [TextMarkerCard] — 제목+시간 행 + 본문 2줄, 고정 폭 204(본문 180)
-/// - 점: [TextDotGlyph] — 32dp 화이트 원 + 블루 챗 글리프 (튀어나온 꼬리 없음)
 ///
 /// 구 디자인(파란 말풍선 + 가짜 줄 3개)에서 **색 반전**했다: 화이트 면 +
 /// 블루 글리프. "블루는 배경이 아니라 강조 액센트로만" 톤 가이드와 일치.
-/// 점 마커가 좌표 앵커(원 바닥 = 지도 좌표, 사진 마커와 동일)를 담당하고,
-/// 말풍선 카드는 그 위에 4px 간격으로 떠 있다 (카드 자체엔 꼬리 없음).
+///
+/// **점은 말풍선 아이콘에 그리지 않는다** (2026-07-29 변경). 이전에는
+/// 카드 아래에 점 그림을 함께 합성하고, 말풍선이 뜰 때 밑의 실제 점 마커를
+/// 충돌 숨김으로 가렸다. 그래서 점이 사실상 두 개(실제 점 + 아이콘 안 점)
+/// 존재했고 **둘의 크기를 사람이 맞춰줘야** 했다(어긋나면 전환 순간 튄다).
+/// 지금은 아이콘 하단을 [kTextBubbleDotReserve] 만큼 투명하게 비워 두고
+/// 그 자리에 **실제 점 마커가 비쳐 보이게** 한다 — 점은 하나뿐이므로 맞출
+/// 대상이 없고, 페이드 중 점이 겹쳐 그려지는 일도 없다.
+///
+/// (연혁: 2026-07-30 에 이 투명 띠가 터치 영역에 포함돼 이웃 점 마커의 탭을
+/// 가로채는 문제로 "카드만 + 범위 밖 앵커" 방식을 시도했으나, 네이티브 SDK
+/// 가 앵커를 0~1 로 클램프해 실기기에서 카드가 점을 덮었다 → 07-31 원복.
+/// 상세는 marker_constants.dart 의 kTextCardSize 주석.)
 ///
 /// 이 위젯들은 `NOverlayImage.fromWidget(widget:, size:, context:)` 으로
 /// 비트맵 변환해 네이버 지도 마커 아이콘으로 사용한다. Theme.extension 미정착
 /// 상태라 색은 토큰 상수를 직접 참조한다 (off-tree 렌더 안정성).
-/// 줌아웃 점(클러스터/스택 +N 뱃지 합성 필요)은 바이트 파이프라인이라
-/// `MarkerImageFactory.createTextDotImage` 가 [paintTextDot] 로 같은 그림을 그린다.
+/// 점 마커 자체(클러스터/스택 +N 뱃지 합성 필요)는 바이트 파이프라인이라
+/// `MarkerImageFactory.createTextDotImage` 가 [paintTextDot] 로 그린다.
 class TextMarkerTokens {
   // app_colors.dart 라이트 토큰과 동기화 (마커 비트맵은 라이트 팔레트 고정).
   static const Color glyph = Color(0xFF4D91FF); // primaryStrong
@@ -35,14 +44,26 @@ class TextMarkerTokens {
 const double kTextDotFrameW = 32.0;
 const double kTextDotFrameH = 32.0;
 
+/// 말풍선 카드와 그 아래 점 사이 간격 (피그마 18: 4px).
+const double kTextBubbleCardGap = 4.0;
+
+/// 말풍선 아이콘 하단에 **투명하게 비워 둘** 높이 = 점 원 지름 + 카드-점 간격.
+///
+/// 말풍선 아이콘의 앵커는 `(0.5, 1.0)`(하단 중앙 = 지도 좌표)이므로, 이만큼
+/// 비워 두면 카드 바닥이 점 원 위쪽에서 정확히 [kTextBubbleCardGap] 만큼 뜬다.
+/// 그 투명 영역으로 **실제 점 마커가 그대로 보인다** — 점을 아이콘에 다시
+/// 그리지 않는 이유는 파일 상단 주석 참고.
+const double kTextBubbleDotReserve = kTextDotFrameH + kTextBubbleCardGap;
+
 /// 텍스트 점 마커 그림 — 피그마 "text-marker-dot" 노드의 기하를 그대로 옮겼다.
 /// - 화이트 원 32dp + border 1dp (외곽 = 정확히 32dp)
 /// - 챗 글리프: primaryStrong 라운드 사각 15 x 11.5 (r4) + 좌하단 작은 꼬리
 /// - 원 바닥 = (16, 32) = 지도 좌표 (anchor 0.5, 1.0)
 ///
 /// [origin]은 32x32 기준 프레임의 좌상단이 놓일 캔버스 위치, [unit]은 1dp당 px.
-/// 위젯([TextDotGlyph])과 바이트 팩토리([MarkerImageFactory.createTextDotImage])가
-/// 이 함수 하나로 같은 모양을 그린다.
+/// 지금은 바이트 팩토리(`MarkerImageFactory.createTextDotImage`) 하나만 이 함수를
+/// 쓴다 — 말풍선 아이콘은 점을 그리지 않기 때문이다(2026-07-29). 점 그림이
+/// 필요한 곳이 다시 생기면 반드시 이 함수를 경유해 모양을 한 곳에서 관리할 것.
 void paintTextDot(
   Canvas canvas, {
   required Offset origin,
@@ -95,46 +116,6 @@ void paintTextDot(
     ..lineTo(at(11.8, 23.5).dx, at(11.8, 23.5).dy)
     ..close();
   canvas.drawPath(glyphTail, glyphPaint);
-}
-
-/// 점 앵커 위젯 — [TextBubbleMarker] 에서 카드 아래에 붙는다.
-/// [diameter] = 원 지름(dp). 원 바닥이 위젯 하단 중앙(=지도 좌표).
-class TextDotGlyph extends StatelessWidget {
-  const TextDotGlyph({super.key, this.diameter = 32});
-
-  final double diameter;
-
-  @override
-  Widget build(BuildContext context) {
-    final double unit = diameter / kTextDotFrameW;
-    // 좌우 2px·상단 1px 여유 (테두리 안티앨리어싱). 하단은 여유 없이
-    // 원 바닥 = 위젯 바닥 — 앵커(0.5, 1.0) 정합.
-    return CustomPaint(
-      size: Size(diameter + 4, kTextDotFrameH * unit + 1),
-      painter: _TextDotPainter(unit),
-    );
-  }
-}
-
-class _TextDotPainter extends CustomPainter {
-  const _TextDotPainter(this.unit);
-
-  final double unit;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    paintTextDot(
-      canvas,
-      origin: Offset(
-        (size.width - kTextDotFrameW * unit) / 2,
-        size.height - kTextDotFrameH * unit,
-      ),
-      unit: unit,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _TextDotPainter old) => old.unit != unit;
 }
 
 /// 줌인 시 보이는 텍스트 카드(말풍선). 꼬리 없음 — 좌표 앵커는 아래 점이 담당.
@@ -240,9 +221,11 @@ class TextMarkerCard extends StatelessWidget {
   }
 }
 
-/// 줌인 텍스트 마커 = 카드(위) + 4px 간격 + 점 앵커(아래).
-/// 하단 중앙(점의 원 바닥)이 지도 좌표(anchor 0.5, 1.0)를 가리킨다.
-/// 카드와 점을 한 위젯으로 합성해 `fromWidget` 한 번으로 비트맵화한다.
+/// 줌인 텍스트 마커 = 카드(위) + [kTextBubbleDotReserve] 만큼의 **투명 여백**(아래).
+///
+/// 하단 중앙이 지도 좌표(anchor 0.5, 1.0)를 가리키고, 그 투명 여백 자리에는
+/// **항상 켜져 있는 실제 점 마커가 비쳐 보인다.** 점을 여기에 그리지 않는
+/// 이유는 파일 상단 주석 참고 (점 두 개의 크기 동기화 제거, 2026-07-29).
 class TextBubbleMarker extends StatelessWidget {
   const TextBubbleMarker({
     super.key,
@@ -272,8 +255,8 @@ class TextBubbleMarker extends StatelessWidget {
           maxLines: maxLines,
           cardWidth: cardWidth,
         ),
-        const SizedBox(height: 4),
-        const TextDotGlyph(),
+        // 점 자리 — 투명. 실제 점 마커가 이 영역으로 보인다.
+        const SizedBox(height: kTextBubbleDotReserve),
       ],
     );
   }

@@ -25,6 +25,10 @@ class MapCardExpandedContent extends StatefulWidget {
   /// 수정 버튼 탭 핸들러. null이면 수정 버튼 숨김.
   final VoidCallback? onEditTap;
 
+  /// 주소 탭 핸들러. null 이면 주소는 그냥 텍스트다.
+  /// 피드 카드로 열린 경우에만 주어진다 — 탭하면 그 좌표로 카메라가 이동한다.
+  final VoidCallback? onLocationTap;
+
   const MapCardExpandedContent({
     super.key,
     required this.post,
@@ -35,6 +39,7 @@ class MapCardExpandedContent extends StatefulWidget {
     this.onLikeTap,
     this.onRefreshDetail,
     this.onEditTap,
+    this.onLocationTap,
   });
 
   @override
@@ -215,29 +220,49 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                   ),
                   if (post.streetName.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 1),
-                          child: Icon(Icons.location_on_outlined,
-                              size: 13, color: colors.textTertiary),
-                        ),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(
-                            post.streetName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              color: colors.textTertiary,
-                              height: 1.3,
+                    // onLocationTap 이 있으면 주소 줄 전체(마커 아이콘 + 주소 텍스트)가
+                    // 탭 영역이다. 탭 가능하다는 신호는 **색**으로 준다 —
+                    // 마커 아이콘과 주소 텍스트가 primaryStrong 으로 물든다.
+                    //
+                    // 2026-07-30: 예전엔 우측에 my_location 아이콘을 하나 더 붙여
+                    // 어포던스를 줬는데, 왼쪽 마커 아이콘과 겹쳐서 **위치 표시가 두 개로
+                    // 보였다.** 우측 아이콘을 제거하고 왼쪽 마커 아이콘이 그 역할을
+                    // 이어받는다. 탭 영역은 그대로 줄 전체다(아이콘만 누르게 하면
+                    // 13dp 타겟이라 누르기 어렵다).
+                    GestureDetector(
+                      onTap: widget.onLocationTap,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(
+                              Icons.location_on_outlined,
+                              size: 13,
+                              color: widget.onLocationTap != null
+                                  ? colors.primaryStrong
+                                  : colors.textTertiary,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 2),
+                          Expanded(
+                            child: Text(
+                              post.streetName,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                color: widget.onLocationTap != null
+                                    ? colors.primaryStrong
+                                    : colors.textTertiary,
+                                height: 1.3,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ],

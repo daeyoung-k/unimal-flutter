@@ -488,26 +488,46 @@ void main() {
     expect(layer, contains('setMinZoom(kBubbleMinZoom)'));
   });
 
-  test('말풍선 전환은 페이드 트윈이고 충돌 숨김은 페이드와 교차된다', () {
+  test('말풍선은 페이드 트윈으로 전환하고 점 마커를 가리지 않는다', () {
     final layer = File('lib/screens/map/marker/bubble_marker_layer.dart')
         .readAsStringSync();
 
-    // 추가: alpha 0 add → 페이드 인 → 완료 후 충돌 숨김 on.
-    final addFade = layer.indexOf("_fade(id, marker, to: 1.0");
-    expect(addFade, isNonNegative);
-    expect(layer, contains('_setCollisionHiding(marker, true)'));
-    // 제거: 충돌 숨김 off → 페이드 아웃 → 완료 후 delete.
-    final unhide = layer.indexOf('_setCollisionHiding(marker, false)');
-    final fadeOut = layer.indexOf("_fade(id, marker, to: 0.0", unhide);
-    final delete = layer.indexOf('deleteOverlay', fadeOut);
-    expect(unhide, isNonNegative);
-    expect(fadeOut, greaterThan(unhide));
-    expect(delete, greaterThan(fadeOut));
-    // 페이드 아웃 중 재목표 시 취소 후 복귀.
-    expect(layer, contains('_removingIds.remove(id)'));
-    // 재전환 시 이전 트윈 취소 후 현재 alpha 에서 이어감.
-    expect(layer, contains('_fadeTimers.remove(id)?.cancel()'));
+    // 1. 페이드 트윈은 유지된다 — 추가 시 alpha 0→1, 제거 시 1→0.
+    final fadeIn = layer.indexOf('_fade(id, marker, to: 1.0');
+    final fadeOut = layer.indexOf('_fade(id, marker, to: 0.0');
+    expect(fadeIn, isNonNegative);
+    expect(fadeOut, isNonNegative);
     expect(layer, contains('kBubbleFadeDuration'));
+
+    // 2. 제거 순서: 페이드 아웃 → delete. 페이드가 끝난 뒤 지워야 시트가
+    // 툭 사라지지 않고 자연스럽게 없어진다.
+    final delete = layer.indexOf('deleteOverlay', fadeOut);
+    expect(delete, greaterThan(fadeOut));
+
+    // 3. setIsHideCollidedMarkers(false) — 점 마커를 가리지 않는다.
+    // 이번 설계 전환(2026-07-29)의 핵심: 말풍선 아이콘 하단이 투명해
+    // 그 자리에 실제 점이 보여야 하므로, true 로 되돌아가면 점이
+    // 아예 사라진다. 절대 true 로 바뀌면 안 된다.
+    expect(layer, contains('marker.setIsHideCollidedMarkers(false)'));
+
+    // 4. setIsHideCollidedCaptions(true) 는 존재하되 빌드 시점(1회) 설정
+    // 이지 더 이상 페이드 완료 훅이 아니다 — "카드(204dp)와 겹치는
+    // 다른 마커의 캡션" 정리 전용. 점 자신의 제목 캡션 억제는 여기가
+    // 아니라 NOverlayCaption.maxZoom(네이티브, kTextCardEnterZoom)이
+    // 담당한다 — 두 마커 모두 앵커가 (0.5,1.0)이라 아이콘은 좌표 위쪽,
+    // 캡션은 좌표 아래쪽으로 뻗어 애초에 충돌 판정이 걸리지 않기 때문.
+    expect(layer, contains('marker.setIsHideCollidedCaptions(true)'));
+
+    // 5. _setCollisionHiding 헬퍼(페이드에 맞춰 마커 숨김을 토글하던 옛
+    // 경로)는 재도입 금지 계약이다 — 다시 나타나면 점이 사라지는 사고로
+    // 되돌아간다.
+    expect(layer, isNot(contains('_setCollisionHiding')));
+
+    // 6. 페이드 아웃 중 재목표 시 취소 후 복귀.
+    expect(layer, contains('_removingIds.remove(id)'));
+
+    // 7. 재전환 시 이전 트윈 취소 후 현재 alpha 에서 이어감.
+    expect(layer, contains('_fadeTimers.remove(id)?.cancel()'));
   });
 
   test('메인 지도와 내지도가 같은 말풍선 레이어를 쓴다', () {
@@ -594,5 +614,36 @@ void main() {
     // 담당한다 (2-레이어: 선택 해제 후 현재 줌 기준 재구성).
     expect(idle, isNonNegative);
     expect(pending, greaterThan(idle));
+  });
+
+  test('마커 선택과 지도 탭은 피드 카드를 함께 닫는다', () {
+    final map = File('lib/screens/map/map_naver.dart').readAsStringSync();
+
+    // 피드 카드는 화면 하단만 덮고 상단 지도는 여전히 탭 가능하다. 두 경로에서
+    // _feedSelectedPost 를 지우지 않으면 MapBottomCard 두 개가 동시에 마운트되고,
+    // 지도 탭으로 피드 카드가 닫히지 않는다 (2026-07-30 최종 리뷰).
+    final closeAll = map.indexOf('void _closeAllCards()');
+    expect(closeAll, isNonNegative);
+    final selectMarker = map.indexOf('Future<void> _selectMarker(');
+    expect(selectMarker, isNonNegative);
+
+    // 각 함수 본문 안에서 피드 카드 상태가 초기화되는지 확인한다.
+    // (함수 시작 위치 이후 가장 가까운 초기화 지점이 그 함수 안에 있는지)
+    for (final entry in {
+      '_closeAllCards': closeAll,
+      '_selectMarker': selectMarker,
+    }.entries) {
+      final clearIdx = map.indexOf('_feedSelectedPost = null', entry.value);
+      expect(clearIdx, isNonNegative,
+          reason: '${entry.key} 가 _feedSelectedPost 를 지우지 않는다');
+      // 다음 최상위 메서드 선언보다 앞에 있어야 그 함수 안이다.
+      final nextMethod = map.indexOf('\n  Future<', entry.value + 1);
+      final nextVoid = map.indexOf('\n  void ', entry.value + 1);
+      final bound = [nextMethod, nextVoid]
+          .where((i) => i >= 0)
+          .fold<int>(map.length, (a, b) => a < b ? a : b);
+      expect(clearIdx, lessThan(bound),
+          reason: '${entry.key} 본문 밖에서 초기화되고 있다');
+    }
   });
 }

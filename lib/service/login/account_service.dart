@@ -169,6 +169,9 @@ class AccountService {
       LoginType.naver => _naverLogout,
       LoginType.kakao => _kakaoLogout,
       LoginType.google => _googleLogout,
+      // 애플은 SDK 로그아웃 개념이 없다. 세션은 우리 토큰으로만 관리되고,
+      // 애플 계정 연결 해제는 탈퇴 시 서버가 /auth/revoke 로 처리한다.
+      LoginType.apple => null,
       LoginType.manual || LoginType.none => null,
     };
     if (sdkLogout == null) return;

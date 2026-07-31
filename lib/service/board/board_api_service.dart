@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:logger/logger.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
+import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
 import 'package:unimal/state/secure_storage.dart';
 import 'package:unimal/utils/api_client.dart';
@@ -387,5 +388,83 @@ class BoardApiService {
     _logger.e('좋아요 요청 실패: ${response.statusCode}');
     _customAlert.showTextAlert('좋아요 요청 실패', '잠시 후 다시 시도해주세요.');
     return null;
+  }
+
+  // ── 지도 바텀카드 피드 ──────────────────────────────────────────────
+  /// 섹션 피드 조회. 실패/파싱불가면 null (호출자가 시트를 숨긴다).
+  ///
+  /// 서버가 3건 미만 섹션 제외·섹션 간 중복 제제까지 해서 내려주므로 앱은
+  /// 받은 섹션을 그대로 그린다.
+  ///
+  /// 주소(`siDo`/`guGun`/`dong`)는 넘기지 않는다 — 지도 화면이 현재 동을 모르고,
+  /// 앱이 역지오코딩을 먼저 하면 순차 2 RTT 가 되어 이 API 의 존재 이유(1 RTT)가
+  /// 깨진다. 서버가 gRPC 역지오코딩 폴백 + 캐시를 갖고 있다.
+  Future<MapFeedResponse?> getMapFeed({
+    required double latitude,
+    required double longitude,
+    required int zoom,
+    bool refresh = false,
+  }) async {
+    try {
+      final url = ApiUri.resolve('board/map/feed', {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'zoom': zoom.toString(),
+        if (refresh) 'refresh': 'true',
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+      final feed = decodeMapFeedResponse(response);
+      if (feed == null) {
+        _logger.e('지도 피드 조회 실패: ${response.statusCode}');
+      }
+      return feed;
+    } catch (e, st) {
+      _logger.e('지도 피드 조회 예외', error: e, stackTrace: st);
+      return null;
+    }
+  }
+
+  /// 피드 **섹션 1개**만 조회. 섹션별 새로고침 버튼이 쓴다.
+  ///
+  /// 서버는 이 요청을 받아도 내부적으로는 전체 피드를 계산한다 — 섹션들이 하나의
+  /// 후보 풀을 `HOT → LATEST → NEAR` 순으로 나눠 갖는 구조라 서로 독립이 아니기
+  /// 때문이다. 그 덕에 **부분 갱신 결과가 전체 조회 결과와 항상 일치한다**
+  /// (같은 글이 두 섹션에 겹쳐 뜨지 않는다). 앱이 아끼는 건 응답 크기(약 1/3)와
+  /// 화면 안정성이지 서버 연산이 아니다.
+  ///
+  /// [refresh] 는 서버의 60초 응답 캐시를 우회한다. 사용자가 버튼을 눌러서 온
+  /// 요청이면 반드시 true 로 보내야 한다 — 아니면 같은 자리에서 1분간 직전과
+  /// 똑같은 데이터가 돌아와 버튼이 고장난 것처럼 보인다.
+  ///
+  /// 반환값이 [MapFeedSectionResult] 인 이유는 "통신 실패"와 "그 섹션이 지금 없음"을
+  /// 호출자가 구분해야 하기 때문이다 (전자는 화면 유지, 후자는 섹션 제거).
+  Future<MapFeedSectionResult> getMapFeedSection({
+    required double latitude,
+    required double longitude,
+    required int zoom,
+    required MapFeedSectionType type,
+    bool refresh = true,
+  }) async {
+    try {
+      final url = ApiUri.resolve('board/map/feed/section', {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'zoom': zoom.toString(),
+        'type': type.requestValue,
+        if (refresh) 'refresh': 'true',
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+      final result = decodeMapFeedSectionResponse(response);
+      if (!result.isSuccess) {
+        _logger.e('지도 피드 섹션 조회 실패: ${response.statusCode} '
+            '(type=${type.requestValue})');
+      }
+      return result;
+    } catch (e, st) {
+      _logger.e('지도 피드 섹션 조회 예외', error: e, stackTrace: st);
+      return const MapFeedSectionResult.failed();
+    }
   }
 }

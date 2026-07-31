@@ -8,7 +8,9 @@ import 'package:unimal/screens/map/marker/marker_constants.dart';
 
 /// 말풍선 레이어 목표 1건 — 화면이 글 모델(MapPost/BoardPost)에 관계없이
 /// 필요한 값만 넘긴다. [position]은 화면이 실제 마커를 그린 좌표
-/// (jitter 적용 포함)와 같아야 말풍선 꼬리가 점 위에 정확히 겹친다.
+/// (jitter 적용 포함)와 같아야 카드가 점 바로 위에 뜬다 — 말풍선 아이콘은
+/// 하단이 투명해 그 자리에 실제 점 마커가 보이므로 좌표가 어긋나면
+/// 카드와 점이 따로 떨어져 보인다.
 class BubbleMarkerTarget {
   const BubbleMarkerTarget({
     required this.id,
@@ -38,15 +40,33 @@ class BubbleMarkerTarget {
 ///   리클러스터링 payload 되돌림(C1)이 없고 alpha 트윈이 안전하다.
 /// - 같은 id 재생성이 없어 delete/add 탭 핸들러 경합(C2)도 없다.
 /// - 클러스터러블 마커에는 이 레이어의 어떤 기법도 적용 금지.
+/// - 말풍선은 **점 마커를 건드리지 않는다** (2026-07-29) — 아이콘 하단이 투명해
+///   그 자리에 실제 점이 보이고, 점의 제목 캡션은 `NOverlayCaption.maxZoom` 이
+///   네이티브에서 끈다. 이 레이어가 켜는 충돌 숨김은 "카드와 겹치는 **다른**
+///   마커의 캡션" 정리 용도뿐이다.
+/// - 알려진 한계: 하단 투명 띠도 마커 터치 영역에 포함돼, 겹친 말풍선의
+///   띠가 이웃 점 마커의 탭을 가로챌 수 있다 (범위 밖 앵커 해법은 네이티브
+///   클램프로 실패 — kTextCardSize 주석 참고. 다른 방식 필요).
 /// - `minZoom(kBubbleMinZoom)` 하드 가드 — 클러스터링 구간(≤16)과 공존하면
 ///   충돌 숨김이 새 클러스터 마커를 숨김 고착시킨다 (2026-07-19 사고).
+///   마커 숨김은 이제 끄지만 캡션 충돌 숨김 경로가 남아 있고, 사고 이력이
+///   있는 구간이라 이 가드는 그대로 유지한다.
 class BubbleMarkerLayer {
   BubbleMarkerLayer({this.debugLabel = 'bubble'});
+
+  /// 선택된 말풍선 zIndex — 선택 점 마커(999999999) 바로 아래.
+  /// 다른 모든 말풍선(300000+score)·점(200000+score)보다는 확실히 위라
+  /// 겹친 말풍선 중 탭한 카드가 항상 앞으로 나온다.
+  static const int kSelectedBubbleZIndex = 999999998;
 
   final String debugLabel;
 
   final Map<String, NMarker> _refs = {};
   final Set<String> _ids = {};
+  // id 별 기본 zIndex (300000 + score) — 선택 해제 시 복원용.
+  final Map<String, int> _baseZIndex = {};
+  // 선택(탭)된 말풍선 id — 겹친 카드 중 이 카드만 zIndex 부스트.
+  String? _selectedId;
   // 페이드 아웃 진행 중(삭제 예정) — 다시 목표가 되면 취소 후 복귀.
   final Set<String> _removingIds = {};
   // 페이드 트윈 — id 별 진행 중 타이머와 현재 alpha.
@@ -58,8 +78,11 @@ class BubbleMarkerLayer {
   String _overlayId(String id) => 'bubble_$id';
 
   /// 말풍선 집합을 [targets]로 수렴시킨다. 불일치가 없으면 no-op.
-  /// - 제거분: 충돌 숨김 해제 → 페이드 아웃 → 삭제 (점이 밑에서 먼저 복귀).
-  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인 → 충돌 숨김.
+  /// - 제거분: 페이드 아웃 → 삭제.
+  /// - 추가분: 아이콘 전부 준비 → alpha 0 일괄 add → 페이드 인.
+  ///
+  /// 점 마커는 이 레이어가 전혀 건드리지 않는다 — 아이콘도 캡션도 그대로다.
+  /// (점의 제목 캡션은 `NOverlayCaption.maxZoom` 이 네이티브에서 끈다)
   /// - [canApply]: 비동기 아이콘 생성 뒤 add 직전에 재검증되는 화면 가드
   ///   (mounted, 재조회 중 아님, 바텀 카드 닫힘 등). 제거분에는 적용하지
   ///   않는다 — 카드 열림 등으로 목표가 비어도 제거는 진행돼야 한다.
@@ -78,17 +101,13 @@ class BubbleMarkerLayer {
       if (marker == null) continue;
       if (targetById.containsKey(id)) {
         if (_removingIds.remove(id)) {
-          _fade(id, marker, to: 1.0, onDone: () {
-            _setCollisionHiding(marker, true);
-          });
+          _fade(id, marker, to: 1.0);
         }
         continue;
       }
       if (_removingIds.contains(id)) continue; // 이미 페이드 아웃 중
       _removingIds.add(id);
       removeStarted++;
-      // 점이 먼저 자연스럽게 돌아오도록 충돌 숨김을 풀고 페이드 아웃.
-      _setCollisionHiding(marker, false);
       _fade(id, marker, to: 0.0, onDone: () {
         if (!identical(_refs[id], marker)) return;
         try {
@@ -100,6 +119,7 @@ class BubbleMarkerLayer {
         _refs.remove(id);
         _removingIds.remove(id);
         _alpha.remove(id);
+        _baseZIndex.remove(id);
       });
     }
 
@@ -140,20 +160,20 @@ class BubbleMarkerLayer {
       final marker = entry.value;
       _ids.add(id);
       _refs[id] = marker;
-      // alpha 0 payload 로 추가됐다 — 페이드 인 후 충돌 숨김을 켠다.
-      // (숨김을 먼저 켜면 점이 즉시 사라져 페이드 동안 빈 자리가 보인다)
+      // alpha 0 payload 로 추가됐다 — 페이드 인만 하면 끝.
+      // 점의 제목 캡션은 이 레이어가 손대지 않는다 (NOverlayCaption.maxZoom).
       _alpha[id] = 0.0;
-      _fade(id, marker, to: 1.0, onDone: () {
-        _setCollisionHiding(marker, true);
-      });
+      _fade(id, marker, to: 1.0);
     }
     if (kDebugMode) {
       debugPrint('[$debugLabel] sync +${built.length} -$removeStarted');
     }
   }
 
-  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드+아래 점 합성이라 기본 앵커
-  /// (0.5, 1.0) 기준으로 밑의 점 마커 위에 정확히 겹친다.
+  /// 말풍선 일반 NMarker 생성 — 아이콘은 카드 + 하단 투명 여백이고, 기본 앵커
+  /// (0.5, 1.0)가 지도 좌표라 그 투명 여백 자리에 실제 점 마커가 보인다.
+  /// (범위 밖 앵커로 탭 영역을 좁히는 시도는 네이티브 클램프로 원복 —
+  /// marker_constants.dart 의 kTextCardSize 주석 참고, 2026-07-31)
   NMarker _buildMarker(BubbleMarkerTarget target, NOverlayImage icon) {
     final marker = NMarker(
       id: _overlayId(target.id),
@@ -163,18 +183,65 @@ class BubbleMarkerLayer {
       // 페이드 인 시작값 — add 직후 _fade 가 1.0 으로 올린다.
       alpha: 0,
     );
-    // 점 레이어(200000+score)보다 항상 위.
-    marker.setGlobalZIndex(300000 + target.score);
+    // 점 레이어(200000+score)보다 항상 위. 선택된 카드는 부스트 값으로 —
+    // 줌인 경로(탭 → 줌 → 말풍선 생성)처럼 선택이 마커 생성보다 먼저인
+    // 케이스에서도 탭한 카드가 처음부터 맨 앞에 뜬다.
+    final baseZ = 300000 + target.score;
+    _baseZIndex[target.id] = baseZ;
+    marker.setGlobalZIndex(
+        target.id == _selectedId ? kSelectedBubbleZIndex : baseZ);
     // 클러스터링 구간(≤16)과의 공존 금지 — 줌아웃 제스처 중 idle 전에
     // 클러스터러가 재편성되면 충돌 숨김이 켜진 말풍선이 새 클러스터를
     // 숨김 고착시킨다 (2026-07-19 마커 소실). 네이티브 minZoom 으로
     // Dart sync 타이밍과 무관하게 원천 차단한다.
     marker.setMinZoom(kBubbleMinZoom);
     marker.setIsMinZoomInclusive(true);
-    // 밑의 점 마커(+제목 캡션) 충돌 숨김은 여기서 켜지 않는다 —
-    // 페이드 인 완료 후 _setCollisionHiding 이 켠다.
+    // 점 마커를 가리지 않는다 (2026-07-29). 말풍선 아이콘은 하단을 투명하게
+    // 비워 두고 그 자리에 실제 점이 보이도록 하므로, 여기서 점을 가리면
+    // 점이 아예 사라진다. 기본값도 false 지만 의도를 명시해 둔다.
+    //
+    // 대가: 204dp 카드와 겹치는 다른 마커도 정리되지 않아 그대로 보인다.
+    // 말풍선 대상이 "단일 + 비밀집(120dp 내 이웃 2개 미만)"으로 제한돼 있어
+    // 겹침 빈도는 낮다는 판단 — 거슬리면 kTextCardDenseNeighbors 를 조인다.
+    marker.setIsHideCollidedMarkers(false);
+    // 카드(204dp)와 겹치는 **다른** 마커의 캡션은 정리한다 — 카드 본문 위에
+    // 남의 제목이 겹쳐 읽히는 것만 막는 용도다.
+    //
+    // 밑의 점 마커 자신의 제목 캡션은 여기 책임이 아니다: 그건
+    // `NOverlayCaption.maxZoom`(= kTextCardEnterZoom)으로 네이티브가 끈다.
+    // 예전엔 이 플래그를 페이드에 맞춰 토글해 그걸 처리하려 했지만,
+    // 말풍선 박스는 좌표 위쪽 / 캡션은 좌표 아래쪽이라 애초에 충돌 판정이
+    // 걸리지 않는다 — 그래서 줌 범위 방식으로 바꿨다 (2026-07-29).
+    marker.setIsHideCollidedCaptions(true);
     marker.setOnTapListener((_) => target.onTap());
     return marker;
+  }
+
+  /// 탭한 말풍선을 겹친 카드들 위로 부스트한다. [id]가 null 이면 해제만.
+  /// 이전 선택은 기본 zIndex(300000+score)로 복원. 마커가 아직 없어도
+  /// (탭 → 줌인 → 말풍선 생성 순서) 선택 상태는 기억됐다가 [_buildMarker]
+  /// 에서 반영된다. idempotent — 같은 id 재호출은 no-op.
+  void select(String? id) {
+    if (_selectedId == id) return;
+    final prev = _selectedId;
+    _selectedId = id;
+    if (prev != null) {
+      final marker = _refs[prev];
+      final baseZ = _baseZIndex[prev];
+      if (marker != null && baseZ != null) {
+        try {
+          marker.setGlobalZIndex(baseZ);
+        } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
+      }
+    }
+    if (id != null) {
+      final marker = _refs[id];
+      if (marker != null) {
+        try {
+          marker.setGlobalZIndex(kSelectedBubbleZIndex);
+        } catch (_) {/* same */}
+      }
+    }
   }
 
   /// 말풍선 alpha 트윈 (33ms 스텝, easeOutQuad). 같은 id 재호출 시 이전
@@ -213,15 +280,6 @@ class BubbleMarkerLayer {
     });
   }
 
-  /// 밑의 점 마커(+캡션) 충돌 숨김 토글 — 페이드 인 완료 후 켜고,
-  /// 페이드 아웃 시작 전에 끈다 (점↔말풍선이 겹쳐서 교차되도록).
-  void _setCollisionHiding(NMarker marker, bool hide) {
-    try {
-      marker.setIsHideCollidedMarkers(hide);
-      marker.setIsHideCollidedCaptions(hide);
-    } catch (_) {/* 네이티브에서 이미 제거된 경우 무시 */}
-  }
-
   /// 모든 말풍선 즉시 삭제 + 타이머 정리 (전체 재렌더/화면 정리용).
   /// clusterableMarker 일괄 clear 에 안 걸리는 일반 NMarker 라 개별 삭제.
   Future<void> clear(NaverMapController? controller) async {
@@ -239,6 +297,9 @@ class BubbleMarkerLayer {
     _refs.clear();
     _removingIds.clear();
     _alpha.clear();
+    _baseZIndex.clear();
+    // _selectedId 는 유지 — 재렌더 후 같은 글 말풍선이 다시 생기면
+    // _buildMarker 가 부스트를 재적용한다.
   }
 
   /// 진행 중인 페이드 타이머만 취소 (State.dispose 용).
