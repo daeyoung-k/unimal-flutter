@@ -33,6 +33,19 @@ enum MapFeedSectionType {
         return null;
     }
   }
+
+  /// enum → 서버 문자열. 섹션 단건 조회(`/board/map/feed/section?type=...`)에 쓴다.
+  ///
+  /// [tryParse] 의 역방향인데 **`name.toUpperCase()` 로 때우지 않는다.** 지금은
+  /// 우연히 일치하지만, 서버 [FeedSectionType] 에 `NEAR_BY` 같은 언더스코어 값이
+  /// 하나만 생겨도 조용히 깨진다. 매핑을 양쪽 모두 명시해두면 새 타입을 추가할 때
+  /// 두 곳을 다 고치게 되고, 하나만 고치면 컴파일이 막아준다(switch 가 exhaustive).
+  String get requestValue => switch (this) {
+        MapFeedSectionType.latest => 'LATEST',
+        MapFeedSectionType.hot => 'HOT',
+        MapFeedSectionType.nearby => 'NEARBY',
+        MapFeedSectionType.near => 'NEAR',
+      };
 }
 
 /// 피드 카드 1장.
@@ -197,5 +210,51 @@ MapFeedResponse? decodeMapFeedResponse(http.Response response) {
     return MapFeedResponse.fromJson(data);
   } catch (_) {
     return null;
+  }
+}
+
+/// 섹션 단건 조회 결과.
+///
+/// **"통신 실패"와 "그 섹션이 지금 없음"을 구분해야 한다.** 서버는 적응형 섹션이라
+/// 요청한 섹션이 이번 계산에서 안 만들어지면 `data: null` 을 200 으로 내려주는데,
+/// 이건 정상 응답이고 앱은 그 섹션을 화면에서 **지워야** 한다. 반면 네트워크 오류나
+/// 파싱 실패면 기존 섹션을 **유지해야** 한다. 둘 다 null 로 뭉뚱그리면 잠깐의
+/// 통신 오류에 멀쩡한 섹션이 사라진다.
+class MapFeedSectionResult {
+  const MapFeedSectionResult._(this.section, this.isSuccess);
+
+  /// 조회 성공. [section] 이 null 이면 "그 섹션은 지금 존재하지 않는다"는 뜻.
+  const MapFeedSectionResult.loaded(MapFeedSection? section)
+      : this._(section, true);
+
+  /// 통신/파싱 실패. 호출자는 기존 화면을 그대로 둔다.
+  const MapFeedSectionResult.failed() : this._(null, false);
+
+  final MapFeedSection? section;
+  final bool isSuccess;
+
+  /// 성공했는데 섹션이 없는 경우 — 화면에서 제거해야 하는 상태.
+  bool get isRemoved => isSuccess && section == null;
+}
+
+/// HTTP 응답 → 섹션 단건. `decodeMapFeedResponse` 와 달리 **null 데이터를 성공으로
+/// 취급한다** ([MapFeedSectionResult] 주석 참고).
+MapFeedSectionResult decodeMapFeedSectionResponse(http.Response response) {
+  if (response.statusCode != 200) return const MapFeedSectionResult.failed();
+  try {
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    if (body is! Map) return const MapFeedSectionResult.failed();
+    final data = body['data'];
+    if (data == null) return const MapFeedSectionResult.loaded(null);
+    if (data is! Map<String, dynamic>) {
+      return const MapFeedSectionResult.failed();
+    }
+    // 모르는 type 이면 tryFromJson 이 null 을 준다. 이건 "섹션 없음"이 아니라
+    // 계약 위반이므로 실패로 본다 — 지우면 사용자는 이유를 알 수 없다.
+    final section = MapFeedSection.tryFromJson(data);
+    if (section == null) return const MapFeedSectionResult.failed();
+    return MapFeedSectionResult.loaded(section);
+  } catch (_) {
+    return const MapFeedSectionResult.failed();
   }
 }

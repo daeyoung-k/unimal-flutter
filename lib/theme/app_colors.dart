@@ -87,6 +87,13 @@ class AppColors {
   /// 좋아요 하트 코랄 색.
   final Color accentCoral;
 
+  /// "새로움/신선함" 액센트. 지도 피드 `LATEST` 섹션 뱃지 (2026-07-31).
+  ///
+  /// 초록을 새로 들인 이유 — 피드 섹션 뱃지 3개를 색으로 구분해야 하는데 기존
+  /// 액센트가 [accent](주황)·[accentCoral](좋아요 전용)·[danger](오류) 뿐이라
+  /// 코랄을 쓰면 하트와, 빨강을 쓰면 오류와 의미가 겹친다.
+  final Color accentGreen;
+
   // ────────────────────────────────────────────────────────────────
   // External — 외부 브랜드 (다크모드에서도 고정)
   // ────────────────────────────────────────────────────────────────
@@ -120,6 +127,7 @@ class AppColors {
     required this.danger,
     required this.accent,
     required this.accentCoral,
+    required this.accentGreen,
     required this.kakao,
     required this.shadow,
   });
@@ -161,6 +169,7 @@ class AppColors {
     danger: Color(0xFFE53935),
     accent: Color(0xFFFF9F43),
     accentCoral: Color(0xFFFF6B6B),
+    accentGreen: Color(0xFF2E9E5B),
 
     // External
     kakao: Color(0xFFFEE500),
@@ -198,6 +207,7 @@ class AppColors {
     danger: Color(0xFFFF6B6B),
     accent: Color(0xFFFFB872),
     accentCoral: Color(0xFFFF8585),
+    accentGreen: Color(0xFF4FBF7F),
 
     // External — 카카오 노란색 고정
     kakao: Color(0xFFFEE500),

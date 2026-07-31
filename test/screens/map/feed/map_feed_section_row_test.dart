@@ -54,22 +54,72 @@ void main() {
     expect(find.byType(MapFeedCard), findsNWidgets(2));
   });
 
-  testWidgets('hasMore가 false면 화살표를 숨긴다', (tester) async {
+  // hasMore 는 계속 파싱하지만 **화살표는 그리지 않는다** (2026-07-30 결정).
+  // 탭 동작이 없는 `>` 는 이 앱의 다른 모든 `>`(전부 눌린다)와 어긋나 버그로 읽힌다.
+  //
+  // 예전엔 "hasMore=true 면 화살표를 보인다" 테스트가 있었는데, 화살표를 걷어낼 때
+  // 같이 지우지 않아 그때부터 계속 깨진 채 방치돼 있었다. 되살리는 대신 **결정을
+  // 지키는 회귀 테스트**로 바꾼다 — 나중에 무심코 다시 붙이면 여기서 걸린다.
+  // (더보기 페이지네이션이 실제로 생기면 그때 '눌린다'는 테스트로 교체할 것)
+  testWidgets('hasMore 여부와 무관하게 화살표를 그리지 않는다', (tester) async {
+    for (final hasMore in [false, true]) {
+      await tester.pumpWidget(_wrap(MapFeedSectionRow(
+        section: _section(hasMore: hasMore),
+        onItemTap: (_) {},
+      )));
+
+      expect(
+        find.byIcon(Icons.chevron_right),
+        findsNothing,
+        reason: 'hasMore=$hasMore',
+      );
+    }
+  });
+
+  testWidgets('섹션 타입에 맞는 뱃지 아이콘을 그린다', (tester) async {
+    Future<void> pumpType(MapFeedSectionType type) => tester.pumpWidget(_wrap(
+          MapFeedSectionRow(
+            section: MapFeedSection(
+              type: type,
+              title: '제목',
+              hasMore: false,
+              items: [_item('a')],
+            ),
+            onItemTap: (_) {},
+          ),
+        ));
+
+    await pumpType(MapFeedSectionType.near);
+    expect(find.byIcon(Icons.place_rounded), findsOneWidget);
+
+    await pumpType(MapFeedSectionType.hot);
+    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
+
+    await pumpType(MapFeedSectionType.latest);
+    expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);
+  });
+
+  testWidgets('onRefresh 가 없으면 새로고침 버튼을 그리지 않는다', (tester) async {
     await tester.pumpWidget(_wrap(MapFeedSectionRow(
       section: _section(hasMore: false),
       onItemTap: (_) {},
     )));
 
-    expect(find.byIcon(Icons.chevron_right), findsNothing);
-  });
+    expect(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+      findsNothing,
+    );
 
-  testWidgets('hasMore가 true면 화살표를 보인다', (tester) async {
     await tester.pumpWidget(_wrap(MapFeedSectionRow(
-      section: _section(hasMore: true),
+      section: _section(hasMore: false),
       onItemTap: (_) {},
+      onRefresh: () {},
     )));
 
-    expect(find.byIcon(Icons.chevron_right), findsOneWidget);
+    expect(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+      findsOneWidget,
+    );
   });
 
   testWidgets('카드를 탭하면 해당 아이템으로 콜백한다', (tester) async {

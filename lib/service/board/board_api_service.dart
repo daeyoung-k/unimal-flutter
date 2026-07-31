@@ -403,12 +403,14 @@ class BoardApiService {
     required double latitude,
     required double longitude,
     required int zoom,
+    bool refresh = false,
   }) async {
     try {
       final url = ApiUri.resolve('board/map/feed', {
         'latitude': latitude.toString(),
         'longitude': longitude.toString(),
         'zoom': zoom.toString(),
+        if (refresh) 'refresh': 'true',
       });
       final headers = await _authHeaders();
       final response = await ApiClient.get(url, headers);
@@ -420,6 +422,49 @@ class BoardApiService {
     } catch (e, st) {
       _logger.e('지도 피드 조회 예외', error: e, stackTrace: st);
       return null;
+    }
+  }
+
+  /// 피드 **섹션 1개**만 조회. 섹션별 새로고침 버튼이 쓴다.
+  ///
+  /// 서버는 이 요청을 받아도 내부적으로는 전체 피드를 계산한다 — 섹션들이 하나의
+  /// 후보 풀을 `HOT → LATEST → NEAR` 순으로 나눠 갖는 구조라 서로 독립이 아니기
+  /// 때문이다. 그 덕에 **부분 갱신 결과가 전체 조회 결과와 항상 일치한다**
+  /// (같은 글이 두 섹션에 겹쳐 뜨지 않는다). 앱이 아끼는 건 응답 크기(약 1/3)와
+  /// 화면 안정성이지 서버 연산이 아니다.
+  ///
+  /// [refresh] 는 서버의 60초 응답 캐시를 우회한다. 사용자가 버튼을 눌러서 온
+  /// 요청이면 반드시 true 로 보내야 한다 — 아니면 같은 자리에서 1분간 직전과
+  /// 똑같은 데이터가 돌아와 버튼이 고장난 것처럼 보인다.
+  ///
+  /// 반환값이 [MapFeedSectionResult] 인 이유는 "통신 실패"와 "그 섹션이 지금 없음"을
+  /// 호출자가 구분해야 하기 때문이다 (전자는 화면 유지, 후자는 섹션 제거).
+  Future<MapFeedSectionResult> getMapFeedSection({
+    required double latitude,
+    required double longitude,
+    required int zoom,
+    required MapFeedSectionType type,
+    bool refresh = true,
+  }) async {
+    try {
+      final url = ApiUri.resolve('board/map/feed/section', {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'zoom': zoom.toString(),
+        'type': type.requestValue,
+        if (refresh) 'refresh': 'true',
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+      final result = decodeMapFeedSectionResponse(response);
+      if (!result.isSuccess) {
+        _logger.e('지도 피드 섹션 조회 실패: ${response.statusCode} '
+            '(type=${type.requestValue})');
+      }
+      return result;
+    } catch (e, st) {
+      _logger.e('지도 피드 섹션 조회 예외', error: e, stackTrace: st);
+      return const MapFeedSectionResult.failed();
     }
   }
 }

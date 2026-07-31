@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:unimal/screens/map/feed/map_feed_section_row.dart';
 import 'package:unimal/screens/map/feed/map_feed_sheet.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 
@@ -27,6 +30,91 @@ MapFeedResponse _feedWithSections() => MapFeedResponse(
         ),
       ],
     );
+
+MapFeedResponse _feedWithTwoSections() => MapFeedResponse(
+      dong: '역삼동',
+      sections: [
+        MapFeedSection(
+          type: MapFeedSectionType.near,
+          title: '가까운',
+          hasMore: false,
+          items: [_item('a')],
+        ),
+        MapFeedSection(
+          type: MapFeedSectionType.latest,
+          title: '최신',
+          hasMore: false,
+          items: [_item('b')],
+        ),
+      ],
+    );
+
+/// 새로고침 관련 테스트는 시트를 펼쳐야 헤더가 레이아웃되므로, 광고 슬롯이
+/// 실제 애드몹을 만들지 않도록 스텁을 꽂는다 (SDK 초기화 없이 돌리기 위함).
+Widget _adStub(BuildContext _) =>
+    const SizedBox(key: ValueKey('ad'), width: 320, height: 50);
+
+/// 시트를 최대까지 펼치고 광고 지연 마운트(260ms)까지 흘려보낸다.
+Future<void> _expand(
+  WidgetTester tester,
+  DraggableScrollableController controller,
+) async {
+  controller.jumpTo(0.9);
+  await tester.pump(const Duration(milliseconds: 300));
+  await tester.pumpAndSettle();
+}
+
+MapFeedSection _section(
+  MapFeedSectionType type,
+  String title,
+  List<String> boardIds,
+) =>
+    MapFeedSection(
+      type: type,
+      title: title,
+      hasMore: false,
+      items: boardIds.map(_item).toList(),
+    );
+
+/// 섹션별 새로고침 테스트용 공통 위젯 트리. 광고 스텁은 항상 꽂는다.
+Widget _sheetApp({
+  required ValueNotifier<MapFeedQuery?> query,
+  required DraggableScrollableController controller,
+  required Future<MapFeedResponse?> Function(MapFeedQuery) fetcher,
+  Future<MapFeedSectionResult> Function(MapFeedQuery, MapFeedSectionType)?
+      sectionFetcher,
+}) =>
+    MaterialApp(
+      home: Scaffold(
+        body: Stack(
+          children: [
+            MapFeedSheet(
+              query: query,
+              controller: controller,
+              onItemTap: (_) {},
+              fetcher: fetcher,
+              sectionFetcher: sectionFetcher,
+              adBuilder: _adStub,
+            ),
+          ],
+        ),
+      ),
+    );
+
+/// 화면에 그려진 섹션들을 위에서 아래 순서대로.
+List<MapFeedSectionType> _typesInOrder(WidgetTester tester) => tester
+    .widgetList<MapFeedSectionRow>(find.byType(MapFeedSectionRow))
+    .map((row) => row.section.type)
+    .toList();
+
+/// 특정 섹션이 지금 들고 있는 boardId 목록.
+List<String> _idsOf(WidgetTester tester, MapFeedSectionType type) => tester
+    .widgetList<MapFeedSectionRow>(find.byType(MapFeedSectionRow))
+    .firstWhere((row) => row.section.type == type)
+    .section
+    .items
+    .map((item) => item.boardId)
+    .toList();
 
 void main() {
   test('MapFeedQuery는 같은 값이면 동등하다', () {
@@ -283,5 +371,237 @@ void main() {
     controller.jumpTo(0.45);
     await tester.pumpAndSettle();
     expect(controller.size, closeTo(0.45, 0.001));
+  });
+
+  // ── 섹션별 부분 새로고침 ────────────────────────────────────────────
+
+  testWidgets('섹션마다 새로고침 버튼이 하나씩 있다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: (_) async => _feedWithTwoSections(),
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pumpAndSettle();
+    await _expand(tester, controller);
+
+    expect(find.byType(MapFeedSectionRow), findsNWidgets(2));
+    // 버튼과 갱신 대상이 1:1 — 서버에 섹션 단건 조회가 있으므로.
+    expect(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.near)),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('누른 섹션만 갈리고 나머지는 그대로 남는다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    final requested = <MapFeedSectionType>[];
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: (_) async => _feedWithTwoSections(),
+      sectionFetcher: (_, type) async {
+        requested.add(type);
+        return MapFeedSectionResult.loaded(
+          _section(MapFeedSectionType.latest, '방금 올라온 소식', ['new1', 'new2']),
+        );
+      },
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pumpAndSettle();
+    await _expand(tester, controller);
+
+    expect(_idsOf(tester, MapFeedSectionType.near), ['a']);
+    expect(_idsOf(tester, MapFeedSectionType.latest), ['b']);
+
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(requested, [MapFeedSectionType.latest]);
+    // LATEST 만 갈렸다.
+    expect(_idsOf(tester, MapFeedSectionType.latest), ['new1', 'new2']);
+    // NEAR 는 건드리지 않았다.
+    expect(_idsOf(tester, MapFeedSectionType.near), ['a']);
+    // 자리도 그대로다 — 지우고 뒤에 붙이면 새로고침마다 섹션이 위아래로 뛴다.
+    expect(_typesInOrder(tester), [
+      MapFeedSectionType.near,
+      MapFeedSectionType.latest,
+    ]);
+  });
+
+  testWidgets('섹션이 사라지면(성공+null) 그 자리만 제거된다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: (_) async => _feedWithTwoSections(),
+      // 적응형 섹션이라 조건을 못 채우면 서버가 data:null 을 200 으로 준다.
+      sectionFetcher: (_, __) async => const MapFeedSectionResult.loaded(null),
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pumpAndSettle();
+    await _expand(tester, controller);
+    expect(find.byType(MapFeedSectionRow), findsNWidgets(2));
+
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(_typesInOrder(tester), [MapFeedSectionType.near]);
+  });
+
+  testWidgets('통신 실패면 그 섹션을 지우지 않고 그대로 둔다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: (_) async => _feedWithTwoSections(),
+      sectionFetcher: (_, __) async => const MapFeedSectionResult.failed(),
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pumpAndSettle();
+    await _expand(tester, controller);
+
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+    );
+    await tester.pumpAndSettle();
+
+    // 실패를 "섹션 없음"으로 뭉뚱그리면 잠깐의 오류에 멀쩡한 섹션이 사라진다.
+    expect(_typesInOrder(tester), [
+      MapFeedSectionType.near,
+      MapFeedSectionType.latest,
+    ]);
+    expect(_idsOf(tester, MapFeedSectionType.latest), ['b']);
+  });
+
+  testWidgets('같은 섹션 연타는 무시되고, 다른 섹션은 동시에 돌 수 있다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    final calls = <MapFeedSectionType>[];
+    final gates = <MapFeedSectionType, Completer<MapFeedSectionResult>>{};
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: (_) async => _feedWithTwoSections(),
+      sectionFetcher: (_, type) {
+        calls.add(type);
+        final gate = Completer<MapFeedSectionResult>();
+        gates[type] = gate;
+        return gate.future;
+      },
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pumpAndSettle();
+    await _expand(tester, controller);
+
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+    );
+    await tester.pump();
+    expect(calls, [MapFeedSectionType.latest]);
+
+    // 같은 섹션 연타 — 요청이 더 나가지 않는다 (버튼이 비활성이라 탭이 빗나갈 수 있다).
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.latest)),
+      warnIfMissed: false,
+    );
+    await tester.pump();
+    expect(calls, [MapFeedSectionType.latest]);
+
+    // 다른 섹션은 막지 않는다 — 섹션별 요청은 서로 간섭하지 않으므로,
+    // 하나가 도는 동안 전부 막으면 부분 갱신을 만든 의미가 없다.
+    await tester.tap(
+      find.byKey(mapFeedRefreshButtonKey(MapFeedSectionType.near)),
+    );
+    await tester.pump();
+    expect(calls, [MapFeedSectionType.latest, MapFeedSectionType.near]);
+
+    gates[MapFeedSectionType.latest]!
+        .complete(const MapFeedSectionResult.failed());
+    gates[MapFeedSectionType.near]!
+        .complete(const MapFeedSectionResult.failed());
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('자동 갱신에는 아이콘이 돌지 않는다', (tester) async {
+    final query = ValueNotifier<MapFeedQuery?>(null);
+    final controller = DraggableScrollableController();
+    addTearDown(query.dispose);
+    addTearDown(controller.dispose);
+
+    final gates = <Completer<MapFeedResponse?>>[];
+    Future<MapFeedResponse?> fetcher(MapFeedQuery q) {
+      final gate = Completer<MapFeedResponse?>();
+      gates.add(gate);
+      return gate.future;
+    }
+
+    await tester.pumpWidget(_sheetApp(
+      query: query,
+      controller: controller,
+      fetcher: fetcher,
+    ));
+
+    query.value =
+        const MapFeedQuery(latitude: 37.5, longitude: 127.0, zoom: 14);
+    await tester.pump();
+    gates.first.complete(_feedWithSections());
+    await tester.pumpAndSettle();
+
+    await _expand(tester, controller);
+
+    // 펼친 상태에서 좌표가 바뀌면 자동 갱신이 돈다 — 사용자가 누른 게 아니므로
+    // 회전은 없어야 한다 (30초마다 아이콘이 도는 건 노이즈다).
+    query.value =
+        const MapFeedQuery(latitude: 37.7, longitude: 127.7, zoom: 14);
+    await tester.pump();
+
+    final row = tester.widget<MapFeedSectionRow>(
+      find.byType(MapFeedSectionRow).first,
+    );
+    expect(row.isRefreshing, isFalse);
+
+    gates.last.complete(_feedWithSections());
+    await tester.pumpAndSettle();
   });
 }

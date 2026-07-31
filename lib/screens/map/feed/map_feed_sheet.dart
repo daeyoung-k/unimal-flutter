@@ -22,7 +22,10 @@ import 'package:unimal/theme/app_colors.dart';
 /// 광고가 들어갈 필요가 없어졌다.
 const double kMapFeedPeekSize = 0.11;
 
-/// 중간 스냅. 핸들(28pt) + 광고 + 섹션 1개(약 224pt) 가 들어가는 높이.
+/// 중간 스냅. 핸들(28pt) + 광고 + 섹션 1개(약 238pt) 가 들어가는 높이.
+///
+/// 2026-07-31: 섹션 헤더에 새로고침 버튼(34pt)이 들어가며 헤더 줄이 20 → 34pt 로
+/// 커져 섹션 높이가 224 → 238 이 됐다. 시트는 스크롤되므로 넘쳐도 잘리지 않는다.
 ///
 /// 어댑티브 배너 높이는 기기 화면 높이에 따라 32/50/90pt 로 달라져 한 값으로 딱
 /// 맞출 수는 없다. 시트는 어차피 스크롤되므로 "적당히 편한 중간"으로 잡는다.
@@ -34,6 +37,12 @@ const double _kMaxSize = 0.9;
 /// "펼쳐져 있음" 판정 임계값. peek 보다 약간 크게 둬서 스냅 애니메이션 도중의
 /// 중간값이 "펼쳐짐"으로 오판되지 않게 한다.
 const double _kExpandedThreshold = kMapFeedPeekSize + 0.05;
+
+/// 섹션 구분자의 위/아래 여백 (헤어라인 기준 한쪽). 총 간격은 `28 + 1 + 28`.
+///
+/// 카드 사이 간격이 10 이므로 그 3배 가까이 벌려야 "다른 묶음"으로 읽힌다
+/// (`_sectionSeparator` 주석 참고). 섹션 간 여백을 조절할 유일한 손잡이다.
+const double _kSectionGap = 28;
 
 /// 시트가 멎고 나서 광고를 붙이기까지의 여유.
 ///
@@ -84,6 +93,7 @@ class MapFeedSheet extends StatefulWidget {
     required this.controller,
     required this.onItemTap,
     this.fetcher,
+    this.sectionFetcher,
     this.onContentChanged,
     this.adBuilder,
   });
@@ -100,6 +110,12 @@ class MapFeedSheet extends StatefulWidget {
   /// 테스트가 게이팅 로직(내용 없을 때 우회 / 펼쳤을 때만 갱신 / 같은 쿼리 스킵)을
   /// dotenv 초기화 없이 검증할 수 있도록 이음새를 둔다.
   final Future<MapFeedResponse?> Function(MapFeedQuery query)? fetcher;
+
+  /// 섹션 단건 조회 함수. 기본값은 실제 API 호출. ([fetcher] 와 같은 이유의 이음새)
+  final Future<MapFeedSectionResult> Function(
+    MapFeedQuery query,
+    MapFeedSectionType type,
+  )? sectionFetcher;
 
   /// 시트가 보여줄 내용을 갖게 되었는지 부모에게 알린다.
   ///
@@ -123,6 +139,21 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
   MapFeedResponse? _feed;
   MapFeedQuery? _loadedQuery;
   bool _isLoading = false;
+
+  /// 지금 사용자가 새로고침 중인 섹션들. 아이콘 회전·버튼 비활성에 쓴다.
+  ///
+  /// **Set 인 이유** — 섹션마다 요청이 독립이고 각자 자기 섹션만 교체하므로, 서로
+  /// 다른 섹션을 동시에 새로고침해도 안전하다. 하나가 도는 동안 나머지 버튼까지
+  /// 막으면 부분 갱신을 만든 의미가 없다. 같은 섹션 연타만 [_refreshSection] 이 막는다.
+  ///
+  /// 자동 갱신([_fetch])은 여기에 들어오지 않는다 — 사용자가 누르지 않았는데
+  /// 30초마다 아이콘이 도는 건 노이즈다.
+  final Set<MapFeedSectionType> _refreshingSections = <MapFeedSectionType>{};
+
+  /// 섹션별 갱신 횟수. [MapFeedSectionRow.revision] 으로 내려가 **새로고침한
+  /// 섹션의 캐러셀을 맨 앞으로 되돌린다** (자세한 이유는 그쪽 주석 참고).
+  final Map<MapFeedSectionType, int> _sectionRevisions =
+      <MapFeedSectionType, int>{};
 
   /// 시트가 펼쳐져 있는지. 드래그 중 매 프레임 바뀌므로 setState 대신 notifier 로 둬서
   /// 광고 슬롯만 다시 그린다 (시트 전체를 재빌드하면 스크롤이 버벅인다).
@@ -180,6 +211,105 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
     if (!_isExpanded) return;
     if (query == _loadedQuery) return;
     unawaited(_fetch(query));
+  }
+
+  /// 섹션 헤더의 ↻ 버튼. **그 섹션만** 다시 받아 제자리에 갈아끼운다.
+  ///
+  /// 서버는 섹션 하나를 요청받아도 내부에서 전체 피드를 계산한다 — 섹션들이 하나의
+  /// 후보 풀을 `HOT → LATEST → NEAR` 순으로 나눠 갖는 구조라 서로 독립이 아니기
+  /// 때문이다. 덕분에 **부분 갱신 결과가 전체 조회 결과와 어긋나지 않는다**
+  /// (같은 글이 두 섹션에 겹쳐 뜨는 일이 없다).
+  ///
+  /// 요청에는 `refresh=true` 가 실린다 — 서버 응답 캐시가 60초라 이걸 안 보내면
+  /// 같은 자리에서 1분간 직전과 똑같은 데이터가 돌아와 버튼이 고장난 것처럼 보인다.
+  Future<void> _refreshSection(MapFeedSectionType type) async {
+    final query = widget.query.value;
+    if (query == null) return;
+    // 같은 섹션 연타만 막는다. 다른 섹션은 동시에 돌아도 서로 간섭하지 않는다.
+    if (_refreshingSections.contains(type)) return;
+
+    setState(() => _refreshingSections.add(type));
+    try {
+      final result = widget.sectionFetcher != null
+          ? await widget.sectionFetcher!(query, type)
+          : await BoardApiService().getMapFeedSection(
+              latitude: query.latitude,
+              longitude: query.longitude,
+              zoom: query.zoom,
+              type: type,
+            );
+      if (!mounted) return;
+
+      // 통신/파싱 실패면 화면을 그대로 둔다. "그 섹션이 지금 없음"(성공 + null)
+      // 과 구분해야 잠깐의 오류에 멀쩡한 섹션이 사라지지 않는다.
+      if (!result.isSuccess) return;
+
+      // `_feed` 는 await 뒤에 다시 읽는다 — 대기 중에 자동 갱신이 통째로 갈아끼웠을
+      // 수 있다. 그 경우 아래 [_applySection] 이 해당 type 을 못 찾아 아무것도 하지
+      // 않는데, 이미 더 최신 데이터로 덮인 뒤이므로 그대로 두는 것이 맞다.
+      final current = _feed;
+      if (current == null) return;
+
+      final hadContent = _hasContent;
+      setState(() {
+        _feed = _applySection(current, type, result.section);
+        _sectionRevisions[type] = (_sectionRevisions[type] ?? 0) + 1;
+      });
+      if (_hasContent != hadContent) {
+        widget.onContentChanged?.call(_hasContent);
+      }
+    } finally {
+      if (mounted) setState(() => _refreshingSections.remove(type));
+    }
+  }
+
+  /// 섹션 사이 구분자 — 여백 + 헤어라인 + 여백.
+  ///
+  /// 개정 전에는 섹션마다 `SizedBox(height: 18)` 하나였는데, 그건 **카드 사이
+  /// 간격(10)의 두 배도 안 돼서 섹션 경계가 카드 경계와 비슷한 무게로 읽혔다.**
+  /// 근접성만으로 묶으려면 안쪽 간격보다 확실히 커야 한다.
+  ///
+  /// 배경색 교대(zebra)나 굵은 구분선은 쓰지 않는다. 시트가 이미 흰 표면이고 그 위에
+  /// 광고 배너 블록까지 있어서, 색 블록을 더 얹으면 화면이 조각조각 나뉜다.
+  /// 1px 헤어라인이면 "여기서 끊긴다"는 신호로 충분하다.
+  ///
+  /// 간격을 조절할 일이 생기면 [_kSectionGap] 하나만 만지면 된다.
+  Widget _sectionSeparator(AppColors colors) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: _kSectionGap),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            color: colors.divider,
+          ),
+          const SizedBox(height: _kSectionGap),
+        ],
+      );
+
+  /// [type] 섹션을 **제자리에서** 교체한다. [updated] 가 null 이면 그 자리를 없앤다.
+  ///
+  /// 자리를 유지하는 게 핵심이다. 지우고 뒤에 붙이면 서버의 표시 순서
+  /// (`FeedSectionType` 선언 순서)와 어긋나 새로고침할 때마다 섹션이 위아래로 뛴다.
+  ///
+  /// [updated] 가 null 인 경우는 적응형 섹션이 조건을 못 채워 사라진 정상 상황이다.
+  /// 마지막 섹션까지 사라지면 `sections` 가 비어 시트가 렌더되지 않는데, 그러면
+  /// [_hasContent] 가 false 가 되어 [_onQueryChanged] 의 "내용 없으면 무조건 조회"
+  /// 경로로 자연 복구된다.
+  MapFeedResponse _applySection(
+    MapFeedResponse current,
+    MapFeedSectionType type,
+    MapFeedSection? updated,
+  ) {
+    final sections = <MapFeedSection>[];
+    for (final section in current.sections) {
+      if (section.type != type) {
+        sections.add(section);
+      } else if (updated != null) {
+        sections.add(updated);
+      }
+    }
+    return MapFeedResponse(dong: current.dong, sections: sections);
   }
 
   Future<void> _fetch(MapFeedQuery query) async {
@@ -294,14 +424,27 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
                     adBuilder: widget.adBuilder,
                   ),
                 ),
-                for (final section in sections) ...[
+                // 섹션마다 자기 헤더에 새로고침 버튼을 갖는다 — 서버에 섹션 단건
+                // 조회가 있으므로 버튼과 갱신 대상이 정확히 1:1 이다.
+                //
+                // 바깥 key 는 **type 만**으로 안정적으로 둔다. 섹션이 사라지거나
+                // 순서가 바뀌어도 Flutter 가 같은 섹션을 알아보고, 새로고침 때
+                // 위젯이 통째로 재생성되지 않아 회전 애니메이션이 끊기지 않는다.
+                // 캐러셀만 되감는 건 [MapFeedSectionRow.revision] 이 처리한다.
+                for (final (index, section) in sections.indexed) ...[
+                  // 구분자는 섹션 **사이**에만. 첫 섹션 위(광고 바로 아래)나 마지막
+                  // 섹션 아래에 두면 있지도 않은 블록을 암시한다.
+                  if (index > 0) _sectionSeparator(colors),
                   MapFeedSectionRow(
+                    key: ValueKey('section-${section.type.name}'),
                     section: section,
                     onItemTap: widget.onItemTap,
+                    onRefresh: () => _refreshSection(section.type),
+                    isRefreshing: _refreshingSections.contains(section.type),
+                    revision: _sectionRevisions[section.type] ?? 0,
                   ),
-                  const SizedBox(height: 18),
                 ],
-                SizedBox(height: MediaQuery.paddingOf(context).bottom + 8),
+                SizedBox(height: MediaQuery.paddingOf(context).bottom + 24),
               ],
             ),
           );
