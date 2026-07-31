@@ -224,6 +224,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       marker.setOnTapListener((NClusterableMarker _) async {
         if (!mounted) return;
         if (isText) {
+          // 탭한 글의 말풍선을 겹침 위로 — 줌인 후 말풍선이 생성되는
+          // 경로에서도 선택이 먼저 기억돼 처음부터 맨 앞에 뜬다.
+          _bubbleLayer.select(id);
           final cam = await _mapController?.getCameraPosition();
           if (cam != null && cam.zoom < kTextCardEnterZoom) {
             await _zoomToTextCard(position);
@@ -320,6 +323,8 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
           if (!mounted) return;
           // 텍스트 마커: 카드 줌 미만이면 줌인해 카드로 펼침 (메인 지도와 동일).
           if (isText && pos != null) {
+            // 탭한 글의 말풍선을 겹침 위로 (줌인 후 생성돼도 선택 유지).
+            if (markerId != null) _bubbleLayer.select(markerId);
             final cam = await _mapController?.getCameraPosition();
             if (cam != null && cam.zoom < kTextCardEnterZoom) {
               await _zoomToTextCard(pos);
@@ -585,6 +590,9 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         latitude: latitude,
         rawZoom: rawZoom,
       );
+      // 카드끼리 겹칠 때 렌더/탭 우선순위 동점 방지용 안정 구분값 —
+      // 전부 같은 zIndex(300000)면 네이티브가 임의 순서로 탭을 배정한다.
+      var order = 0;
       for (final entry in _textMarkerRefs.entries) {
         final id = entry.key;
         final post = _textMarkerPosts[id];
@@ -594,9 +602,12 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         targets.add(BubbleMarkerTarget(
           id: id,
           position: position,
+          score: order++,
           buildIcon: () => _buildTextCardIcon(post),
           onTap: () {
             if (!mounted) return;
+            // 겹친 말풍선 중 탭한 카드를 맨 앞으로 (2026-07-30).
+            _bubbleLayer.select(id);
             _applySelectionHighlight(id);
             unawaited(_moveCameraToMarker(position));
             unawaited(showPostDetailSheet(context, post.boardId).then((_) {
@@ -613,9 +624,10 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
     );
   }
 
-  /// 텍스트 글 줌인 카드 아이콘 — 카드 + 하단 투명 여백(점은 그리지 않고 실제
-  /// 점 마커가 그 자리에 보인다, 2026-07-29). 하단 중앙이 지도 좌표
-  /// (anchor 0.5,1.0)이므로 bottomCenter 정렬. 제목 없으면 본문만 카드.
+  /// 텍스트 글 줌인 카드 아이콘 — **카드 영역만** (2026-07-30). 점은 그리지
+  /// 않고, 카드가 앵커 오프셋(kTextCardAnchor)으로 점 위에 떠 있어 그 아래
+  /// 실제 점 마커가 보인다. 하단 점 자리를 아이콘에 넣지 않는 이유(터치 영역
+  /// 가로채기)는 kTextCardSize 주석 참고. 제목 없으면 본문만 카드.
   /// (메인 지도와 동일 위젯)
   Future<NOverlayImage> _buildTextCardIcon(BoardPost post) {
     final String? title =
@@ -628,11 +640,15 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
         height: kTextCardSize.height,
         child: Align(
           alignment: Alignment.bottomCenter,
-          child: TextBubbleMarker(
-            title: title,
-            body: post.content,
-            time: relativeTimeFromString(post.createdAt),
-            maxLines: 2,
+          child: Padding(
+            // 카드 그림자(blur 8, y2) 잘림 방지 — 앵커 계산에 포함된 값.
+            padding: const EdgeInsets.only(bottom: kTextCardShadowPad),
+            child: TextMarkerCard(
+              title: title,
+              body: post.content,
+              time: relativeTimeFromString(post.createdAt),
+              maxLines: 2,
+            ),
           ),
         ),
       ),
@@ -893,6 +909,8 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
       await showPostDetailSheet(context, post.boardId);
       return;
     }
+    // 텍스트 글이면 말풍선도 맨 앞으로 (말풍선이 없으면 no-op).
+    _bubbleLayer.select(id);
     _applySelectionHighlight(id);
     unawaited(_moveCameraToMarker(marker.position));
     await showPostDetailSheet(context, post.boardId);

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 /// 텍스트 전용 커스텀 마커 위젯 모음.
 ///
 /// 피그마 "18 텍스트 마커 변형 시트" 확정안(점 앵커 + 꼬리 없는 말풍선) 기준.
-/// - 줌인: [TextBubbleMarker] — 흰 콘텐츠 카드 + 아래 **투명 여백**(점 자리)
 /// - 카드: [TextMarkerCard] — 제목+시간 행 + 본문 2줄, 고정 폭 204(본문 180)
 ///
 /// 구 디자인(파란 말풍선 + 가짜 줄 3개)에서 **색 반전**했다: 화이트 면 +
@@ -13,9 +12,16 @@ import 'package:flutter/material.dart';
 /// 카드 아래에 점 그림을 함께 합성하고, 말풍선이 뜰 때 밑의 실제 점 마커를
 /// 충돌 숨김으로 가렸다. 그래서 점이 사실상 두 개(실제 점 + 아이콘 안 점)
 /// 존재했고 **둘의 크기를 사람이 맞춰줘야** 했다(어긋나면 전환 순간 튄다).
-/// 지금은 아이콘 하단을 [kTextBubbleDotReserve] 만큼 투명하게 비워 두고
-/// 그 자리에 **실제 점 마커가 비쳐 보이게** 한다 — 점은 하나뿐이므로 맞출
-/// 대상이 없고, 페이드 중 점이 겹쳐 그려지는 일도 없다.
+/// 지금은 카드가 앵커 오프셋(`kTextCardAnchor`)으로 점 위에 떠 있고 그 아래
+/// **실제 점 마커가 그대로 보인다** — 점은 하나뿐이므로 맞출 대상이 없고,
+/// 페이드 중 점이 겹쳐 그려지는 일도 없다.
+///
+/// (연혁: 2026-07-29 ~ 07-30 사이엔 아이콘 하단을 [kTextBubbleDotReserve]
+/// 만큼 **투명하게 비워** 점 자리를 만들었다(TextBubbleMarker 위젯). 그런데
+/// 네이버 지도 마커의 터치 영역은 투명 픽셀 포함 아이콘 사각형 전체라, 그
+/// 투명 띠가 이웃 점 마커의 탭을 가로챘다 — 겹친 말풍선 아래 점을 탭하면
+/// 옆 글이 열리는 버그. 그래서 아이콘을 카드만으로 줄이고 위치는 앵커로
+/// 해결했다. 상세는 marker_constants.dart 의 kTextCardSize 주석.)
 ///
 /// 이 위젯들은 `NOverlayImage.fromWidget(widget:, size:, context:)` 으로
 /// 비트맵 변환해 네이버 지도 마커 아이콘으로 사용한다. Theme.extension 미정착
@@ -43,12 +49,11 @@ const double kTextDotFrameH = 32.0;
 /// 말풍선 카드와 그 아래 점 사이 간격 (피그마 18: 4px).
 const double kTextBubbleCardGap = 4.0;
 
-/// 말풍선 아이콘 하단에 **투명하게 비워 둘** 높이 = 점 원 지름 + 카드-점 간격.
+/// 말풍선 카드 바닥 ~ 지도 좌표 거리 = 점 원 지름 + 카드-점 간격.
 ///
-/// 말풍선 아이콘의 앵커는 `(0.5, 1.0)`(하단 중앙 = 지도 좌표)이므로, 이만큼
-/// 비워 두면 카드 바닥이 점 원 위쪽에서 정확히 [kTextBubbleCardGap] 만큼 뜬다.
-/// 그 투명 영역으로 **실제 점 마커가 그대로 보인다** — 점을 아이콘에 다시
-/// 그리지 않는 이유는 파일 상단 주석 참고.
+/// 지금은 아이콘에 투명 여백을 두지 않고(파일 상단 연혁 참고) 이 거리를
+/// 앵커 오프셋으로 처리한다 — marker_constants.dart 의 `kTextCardDotReserve`
+/// 가 같은 값을 별도로 정의한다 (한쪽을 바꾸면 반드시 다른 쪽도 바꿀 것).
 const double kTextBubbleDotReserve = kTextDotFrameH + kTextBubbleCardGap;
 
 /// 텍스트 점 마커 그림 — 피그마 "text-marker-dot" 노드의 기하를 그대로 옮겼다.
@@ -217,43 +222,6 @@ class TextMarkerCard extends StatelessWidget {
   }
 }
 
-/// 줌인 텍스트 마커 = 카드(위) + [kTextBubbleDotReserve] 만큼의 **투명 여백**(아래).
-///
-/// 하단 중앙이 지도 좌표(anchor 0.5, 1.0)를 가리키고, 그 투명 여백 자리에는
-/// **항상 켜져 있는 실제 점 마커가 비쳐 보인다.** 점을 여기에 그리지 않는
-/// 이유는 파일 상단 주석 참고 (점 두 개의 크기 동기화 제거, 2026-07-29).
-class TextBubbleMarker extends StatelessWidget {
-  const TextBubbleMarker({
-    super.key,
-    this.title,
-    required this.body,
-    this.time,
-    this.maxLines = 2,
-    this.cardWidth = 204,
-  });
-
-  final String? title;
-  final String body;
-  final String? time;
-  final int maxLines;
-  final double cardWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        TextMarkerCard(
-          title: title,
-          body: body,
-          time: time,
-          maxLines: maxLines,
-          cardWidth: cardWidth,
-        ),
-        // 점 자리 — 투명. 실제 점 마커가 이 영역으로 보인다.
-        const SizedBox(height: kTextBubbleDotReserve),
-      ],
-    );
-  }
-}
+// (TextBubbleMarker 위젯은 삭제됨 — 2026-07-30. 하단 투명 점 자리가 마커
+// 터치 영역에 포함돼 이웃 점 마커의 탭을 가로채는 문제로, 아이콘은
+// TextMarkerCard 만 쓰고 점 자리는 앵커 오프셋(kTextCardAnchor)으로 처리한다.)

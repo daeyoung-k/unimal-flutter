@@ -152,12 +152,40 @@ const Map<NInclusiveRange<int>, double> kClusterMergeDistances = {
   NInclusiveRange(15, 16): 40.0,
 };
 
-/// 텍스트(사진 없는) 글 마커의 줌인 카드 비트맵 크기.
-/// 확정안: 카드(고정 폭 204, 본문 폭 180) + 4px 간격 + 점 앵커(꼬리 끝 = 하단 중앙).
-/// 폭 220 = 카드 204 + 그림자(blur 8) 여유. 높이 130 = 카드(제목+본문2줄 ≈ 77)
-/// + 간격 4 + 점 39 + 상단 그림자 여유. bottomCenter 정렬이라 남는 공간은 투명.
+/// 텍스트(사진 없는) 글 마커의 줌인 카드 비트맵 크기 — **카드 영역만**.
+/// 폭 220 = 카드 204 + 그림자(blur 8) 여유. 높이 94 = 카드(제목+본문2줄 ≈ 77)
+/// + 상단 그림자 여유 + 하단 그림자 패드([kTextCardShadowPad]).
+/// bottomCenter 정렬이라 남는 상단 공간은 투명.
 /// fromWidget size와 NMarker size를 동일하게 — 스케일 왜곡 방지.
-const Size kTextCardSize = Size(220, 130);
+///
+/// **하단 점 자리(투명 여백)는 아이콘에 포함하지 않는다** (2026-07-30 변경).
+/// 예전엔 점 자리까지 포함한 220x130 비트맵을 앵커 (0.5, 1.0)으로 얹었는데,
+/// 네이버 지도 마커의 터치 영역은 **투명 픽셀을 포함한 아이콘 사각형 전체**라
+/// 그 투명 띠가 이웃 글의 점 마커 위를 덮으며 탭을 가로챘다 — 겹친 말풍선
+/// 상태에서 점을 탭하면 엉뚱한(옆) 글이 열리는 버그. 아이콘을 카드로 줄이고
+/// 앵커([kTextCardAnchor])를 범위 밖 값으로 내려 화면 위치는 그대로 두고
+/// 탭 영역만 카드로 좁혔다.
+const Size kTextCardSize = Size(220, 94);
+
+/// 카드 아래 그림자(blur 8, offset y2) 잘림 방지 패드 — 아이콘 안, 카드 밖.
+/// 카드가 아이콘 bottomCenter 에 정렬될 때 이만큼 위로 띄운다.
+const double kTextCardShadowPad = 10.0;
+
+/// 말풍선 카드 바닥 ~ 지도 좌표 사이 거리 = 점 32dp + 카드-점 간격 4dp.
+/// `text_marker_widgets.dart` 의 `kTextBubbleDotReserve` 와 같은 값이다
+/// (그 파일은 위젯 계층이라 여기서 import 하지 않는다 — 한쪽을 바꾸면
+/// 반드시 다른 쪽도 바꿀 것).
+const double kTextCardDotReserve = 36.0;
+
+/// 말풍선 마커 앵커 — 앵커점(지도 좌표)이 카드 바닥에서 [kTextCardDotReserve]
+/// 만큼 아래(점 자리)에 오도록 y 를 1 초과로 둔다.
+/// y = (아이콘 94 - 그림자 패드 10 + 점 자리 36) / 아이콘 94.
+/// 네이버 SDK 앵커는 0~1 권장이지만 클램프/검증 없이 오프셋 비율 곱으로만
+/// 계산되어 범위 밖 값도 동작한다 (flutter_naver_map v1.4.4 소스 확인).
+/// 만약 특정 플랫폼에서 클램프된다면 카드가 36dp 내려와 점을 덮는 것으로
+/// 즉시 티가 난다 — 그 경우 이 접근을 재검토할 것.
+const NPoint kTextCardAnchor =
+    NPoint(0.5, (94.0 - kTextCardShadowPad + kTextCardDotReserve) / 94.0);
 
 /// 텍스트 마커/클러스터 탭 시 줌인 목표 (카드가 펼쳐지는 줌).
 const double kTextCardCameraZoom = 19.0;
