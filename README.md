@@ -13,6 +13,8 @@
 
 > "지도 위에 당신의 이야기를 남기세요"
 
+**정식 출시 · 운영 중** — [App Store](https://apps.apple.com/kr/app/%EC%8A%A4%ED%86%A0%EB%A7%B5/id6762319739) · [Google Play](https://play.google.com/store/apps/details?id=com.unimal.android.stomap)
+
 ### 🎯 주요 기능
 
 - **📍 위치 기반 스토리**: 현재 위치에 스토리를 핀으로 등록하고 지도에 노출
@@ -259,29 +261,17 @@ Backend API (api.unimal.co.kr)
 - **환경 변수 분리**: `.env.local` / `.env.prod` 로 API 키 관리
 - **권한 관리**: 위치·카메라·사진·알림 권한 통합 관리 (`PermissionService`)
 
-### 환경 변수 키 목록
-```
-API_SCHEME, ANDORID_SERVER, IOS_SERVER
-NAVER_MAP_CLIENT_ID
-NAVER_LOGIN_CLIENT_ID, NAVER_LOGIN_CLIENT_SECRET, NAVER_LOGIN_CLIENT_NAME
-NAVER_LOGIN_IOS_URL_SCHEME
-NAVER_GEOCODING_CLIENT_ID, NAVER_GEOCODING_CLIENT_SECRET
-KAKAO_APP_KEY
-MAP_STYLE_IOS_ID, MAP_STYLE_ANDROID_ID
-```
-
 ---
 
 ## 📱 앱 정보
 
 | 항목 | 값 |
 |------|-----|
-| 앱 이름 | 스토맵 |
-| 버전 | 1.0.0+1 |
-| Android 패키지 | com.unimal.android |
-| iOS Bundle ID | com.unimal.ios |
-| 최소 SDK | Android: 정의 파일 참고 / iOS: 정의 파일 참고 |
+| 앱 이름 | 스토맵 (Stomap) |
+| Android 패키지 | com.unimal.android.stomap |
+| iOS Bundle ID | com.unimal.ios.stomap |
 | Firebase 프로젝트 | unimal-project |
+| 배포 | App Store · Google Play 정식 출시 |
 
 ### Android 권한
 ```
@@ -297,59 +287,6 @@ NSCameraUsageDescription              # 카메라
 NSPhotoLibraryUsageDescription        # 사진첩
 UIBackgroundModes: remote-notification # 백그라운드 푸시
 ```
-
----
-
-## ⚠️ 출시 전 체크리스트
-
-- [ ] `update_check_service.dart` 앱스토어 ID 실제 값으로 교체 (`id1234567890`)
-- [ ] `main.dart` 업데이트 체크 활성화 (`checkAndHandleUpdate()` 주석 해제)
-- [ ] `.env.prod` 서버 주소 및 API 키 최종 확인
-- [ ] Firebase 프로젝트 푸시 알림 인증서 등록 확인 (iOS APNs)
-
----
-
-## ✅ 주요 변경 이력
-
-### 2026-04-07
-
-- **앱 푸시 라우팅 구현** (`push_notification_service.dart`)
-  - 알림 클릭 시 `type` 필드 기반 화면 이동 (LIKE/REPLY/NOTICE/EVENT)
-  - 포그라운드·백그라운드·종료 상태 3가지 경로 모두 처리
-  - payload `jsonEncode` 적용으로 포그라운드 알림 데이터 파싱 가능
-
-- **웹뷰 화면 추가** (`screens/web/web_view_screen.dart`)
-  - `url`, `title` 파라미터로 동작 (`/webview` 라우트)
-  - 이전 화면 없을 시 지도 화면으로 이동
-
-- **지도 마커 API 연동** (`map_naver.dart`)
-  - `GET /board/map/location/post` 연동
-  - `score` 기반 `globalZIndex` 자동 적용
-  - 소수점 3자리 기준 마커 그룹핑 + PageView 카드
-
-- **이미지 로드 실패 처리** — 실패 시 마커 표시 생략
-
-- **공유하기 버그 수정** — `postalCode` 조건 제거, 위치 타임아웃 3초, 위치 오류 시 권한설정 이동
-
-### 2026-03-30
-
-- **지도 화면 개편** — Naver Maps 기반으로 확정, POI/커스텀 마커 인터랙션, 이 주변 스토리 조회 버튼
-- **공지사항 API 연동**
-- **권한설정 화면 권한 요청 로직 추가**
-
-### 2026-03-23
-
-- **게시판 리팩토링** (`board2.dart` → `board.dart`)
-- **게시판 검색 정렬 UI** — 바텀시트 방식으로 변경
-- **소셜 로그인 취소 버그 수정** (카카오·네이버·구글)
-- **권한설정 화면 신규 추가** (`permission_setting.dart`)
-
-### 2026-03-19
-
-- **앱 이름 변경**: Unimal → 스토맵
-- **로그인 화면 전면 개편** — 그라디언트 배경, 애니메이션
-- **스플래시 화면 / 앱 아이콘** 적용
-- **공유하기·프로필·하단 네비게이션** UI 전면 개편
 
 ---
 
