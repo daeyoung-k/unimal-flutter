@@ -21,6 +21,16 @@ class BoardPost {
   final bool isLike;
   final bool isOwner;
 
+  /// 공유 링크. **null 이면 공유할 수 없는 글이므로 버튼을 숨긴다.**
+  ///
+  /// URL 을 앱에서 조립하지 않고 서버가 완성해서 내려준다. 앱은 배포하면 못 고치기
+  /// 때문에, 도메인이나 경로가 바뀌면 서버 배포 한 번으로 끝나야 한다.
+  /// (서버 `ShareUrlFactory` KDoc 참고)
+  ///
+  /// "어떤 글이 공유 가능한가"의 판단도 서버에 있다. 앱은 null 여부만 본다 —
+  /// 공개 정책이 바뀌어도 앱은 그대로다.
+  final String? shareUrl;
+
   BoardPost({
     required this.boardId,
     required this.profileImage,
@@ -40,6 +50,7 @@ class BoardPost {
     required this.reply,
     required this.isLike,
     required this.isOwner,
+    this.shareUrl,
   });
 
   factory BoardPost.fromJson(Map<String, dynamic> json) {
@@ -74,6 +85,9 @@ class BoardPost {
           : <ReplyInfo>[],
       isLike: json['isLike'] as bool? ?? false,
       isOwner: json['isOwner'] as bool? ?? false,
+      // 여기만 '' 폴백을 쓰지 않는다. null 이 "공유 불가"라는 의미를 갖기 때문에
+      // 빈 문자열로 바꾸면 그 신호가 사라진다.
+      shareUrl: json['shareUrl'] as String?,
     );
   }
 //"fileInfoList":[{"fileId":"j8AaKOqB","fileUrl":"https://cdn.unimal.co.kr/images/aW1hZ2VfcGlja2VyX0FFMTNFOTk4LTJBQzktNEFFNy1BODZELUI2MkI2MDkyMEJCQy00MDM2NS0wMDAwMDI0NDcwN0NGRTdELmpwZw==-90ad052e8c7f49b697c55b09c8f64d6e.jpeg"},{"fileId":"wOqBW8yg","fileUrl":"https://cdn.unimal.co.kr/images/aW1hZ2VfcGlja2VyX0FFMjc3NTVGLTMzRTUtNDM1NS1BQUY2LTdDM0I2Rjg1Q0RFRS00MDM2NS0wMDAwMDI0NDcwQTQyMzIxLmpwZw==-c038f252b07b4094b425138ecb9c9f7c.jpeg"}]
@@ -99,6 +113,7 @@ class BoardPost {
       'reply': reply.map((e) => e.toJson()).toList(),
       'isLike': isLike,
       'isOwner': isOwner,
+      'shareUrl': shareUrl,
     };
   }
 } 

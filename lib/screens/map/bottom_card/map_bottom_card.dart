@@ -15,6 +15,7 @@ import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/like_info.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/service/share/post_share.dart';
 
 /// 카드 상태: 기본(default_) 또는 확장(expanded).
 /// 닫힘은 onClose 콜백으로 부모에서 처리.
@@ -770,6 +771,8 @@ class _MapBottomCardState extends State<MapBottomCard> {
               onReplyTap: isCenter ? _expandCard : null,
               onShowMore: isCenter ? _expandCard : null,
               onEditTap: (post.isOwner && isCenter) ? _navigateToEdit : null,
+              // 상세 화면이 없는 흐름이라 여기가 공유의 주 진입점이다.
+              showShare: isCenter,
             ),
           ),
         ],
@@ -881,45 +884,68 @@ class _MapBottomCardState extends State<MapBottomCard> {
           const SizedBox(height: 8),
           Builder(builder: (_) {
             final liked = _isLikedFor(post);
+            // 지표는 왼쪽, 행동(공유)은 오른쪽. 사진 글(PostInfoSection)과 동일한 배치.
             return Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _toggleLikeFor(post),
-                  child: Row(
-                    children: [
-                      Icon(
-                        liked ? Icons.favorite : Icons.favorite_outline,
-                        size: 15,
-                        color: liked ? colors.danger : colors.textMuted,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _toggleLikeFor(post),
+                      child: Row(
+                        children: [
+                          Icon(
+                            liked ? Icons.favorite : Icons.favorite_outline,
+                            size: 15,
+                            color: liked ? colors.danger : colors.textMuted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text('${_likeCountFor(post)}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  color: colors.textMuted)),
+                        ],
                       ),
-                      const SizedBox(width: 4),
-                      Text('${_likeCountFor(post)}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              color: colors.textMuted)),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 14),
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: isCenter ? _expandCard : null,
+                      child: Row(
+                        children: [
+                          Icon(Icons.chat_bubble_outline,
+                              size: 14, color: colors.primaryStrong),
+                          const SizedBox(width: 4),
+                          Text('${post.replyCount}',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  color: colors.textMuted)),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 14),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: isCenter ? _expandCard : null,
-                  child: Row(
-                    children: [
-                      Icon(Icons.chat_bubble_outline,
-                          size: 14, color: colors.primaryStrong),
-                      const SizedBox(width: 4),
-                      Text('${post.replyCount}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              color: colors.textMuted)),
-                    ],
+                // 사진 글과 같은 자리에 같은 아이콘을 둔다.
+                // 글 종류에 따라 공유 버튼이 있다 없다 하면 사용자가 못 찾는다.
+                if (isCenter && post.shareUrl != null)
+                  Builder(
+                    builder: (buttonContext) => GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => PostShare.share(
+                        context: buttonContext,
+                        shareUrl: post.shareUrl!,
+                        title: post.title,
+                      ),
+                      // 회색 — 본문 우하단 "더보기"와 파랑이 겹치지 않게.
+                      // 근거는 PostInfoSection 의 같은 아이콘 주석 참고.
+                      child: Icon(Icons.ios_share_rounded,
+                          size: 15, color: colors.textMuted),
+                    ),
                   ),
-                ),
               ],
             );
           }),

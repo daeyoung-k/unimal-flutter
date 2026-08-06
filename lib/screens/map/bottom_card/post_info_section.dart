@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/service/share/post_share.dart';
 import 'package:unimal/theme/app_colors.dart';
 
 /// Renders title, address, relative time, content, like/reply counts,
@@ -35,6 +36,16 @@ class PostInfoSection extends StatelessWidget {
   /// 외부에서 override한 좋아요 수. null이면 post.likeCount 사용.
   final int? likeCountOverride;
 
+  /// 공유 버튼 노출 여부.
+  ///
+  /// **지도 바텀카드가 공유의 주 진입점이다.** `showDetailButton: false` 이후로
+  /// 지도 흐름에서는 게시글 상세 화면에 갈 수 없어서, 여기에 없으면 대부분의
+  /// 사용자는 공유 버튼을 아예 못 본다.
+  ///
+  /// peek 카드(좌우로 살짝 보이는 옆 카드)에는 띄우지 않는다 — 중앙 카드가 아닌 글을
+  /// 공유하게 되면 "내가 뭘 공유한 거지"가 된다. 호출부에서 `isCenter` 로 건다.
+  final bool showShare;
+
   const PostInfoSection({
     super.key,
     required this.post,
@@ -47,6 +58,7 @@ class PostInfoSection extends StatelessWidget {
     this.onEditTap,
     this.isLiked = false,
     this.likeCountOverride,
+    this.showShare = false,
   });
 
   @override
@@ -231,55 +243,95 @@ class PostInfoSection extends StatelessWidget {
               });
             }),
             ),
+            // "더보기"는 본문 블록의 우하단에 겹쳐 그려진다. 여백이 없으면 바로
+            // 아래 액션 행의 공유 아이콘과 맞붙어, 오른쪽 끝에 탭 대상이 두 개
+            // 겹쳐 보이고 잘못 누르기 쉽다. 본문이 있을 때만 띄운다.
+            const SizedBox(height: 8),
           ],
           // 본문이 없을 때만 Spacer로 좋아요 행을 바닥에 고정.
           // (본문이 있으면 위 Expanded가 공간을 채우므로 Spacer 불필요)
           if (post.content.isEmpty) const Spacer(),
+          // 지표(좋아요·댓글)는 왼쪽, 행동(공유)은 오른쪽.
+          //
+          // spaceBetween 은 자식이 하나면 시작 정렬이 된다 — 공유 버튼이 없는
+          // peek 카드에서도 지표가 그대로 왼쪽에 남으므로 분기가 필요 없다.
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onLikeTap,
-                child: Row(
-                  children: [
-                    Icon(
-                      isLiked ? Icons.favorite : Icons.favorite_outline,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onLikeTap,
+                    child: Row(
+                      children: [
+                        Icon(
+                          isLiked ? Icons.favorite : Icons.favorite_outline,
+                          size: 16,
+                          color: isLiked ? colors.danger : colors.textMuted,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${likeCountOverride ?? post.likeCount}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Pretendard',
+                            color: colors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: onReplyTap,
+                    child: Row(
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            size: 15, color: colors.primaryStrong),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${post.replyCount}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'Pretendard',
+                            color: colors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              // 공유. shareUrl 이 null 이면 공유할 수 없는 글이거나 구버전 서버다.
+              // 판단은 서버가 하고 앱은 null 여부만 본다.
+              if (showShare && post.shareUrl != null)
+                Builder(
+                  // 버튼 자신의 context 가 필요하다 — iPad 공유 시트는 팝오버라
+                  // 기준 위치를 잡아야 하는데, 바깥 context 를 쓰면 화면 한가운데서 뜬다.
+                  builder: (buttonContext) => GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => PostShare.share(
+                      context: buttonContext,
+                      shareUrl: post.shareUrl!,
+                      title: post.title,
+                    ),
+                    // 회색이다. 한때 파랑(primaryStrong)이었는데 되돌렸다 —
+                    // 본문 우하단의 "더보기"가 같은 파랑이라 오른쪽 끝에 파란 액션이
+                    // 세로로 두 개 붙었고, 위계가 사라져 둘 다 안 눌리는 모양이 됐다.
+                    //
+                    // 이 카드에서 더보기가 공유보다 중요하다. 카드를 펼치는 방법이
+                    // 위로 드래그 / 댓글 탭 / 더보기 셋뿐이고(본문 탭은 안 먹는다),
+                    // 펼쳐야 댓글과 전문이 보인다. 파랑은 더보기가 가져간다.
+                    child: Icon(
+                      Icons.ios_share_rounded,
                       size: 16,
-                      color: isLiked ? colors.danger : colors.textMuted,
+                      color: colors.textMuted,
                     ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${likeCountOverride ?? post.likeCount}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'Pretendard',
-                        color: colors.textTertiary,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onReplyTap,
-                child: Row(
-                  children: [
-                    Icon(Icons.chat_bubble_outline,
-                        size: 15, color: colors.primaryStrong),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${post.replyCount}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'Pretendard',
-                        color: colors.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
           // 자세히 보기 — 전체 너비 큰 파란 버튼

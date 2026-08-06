@@ -6,6 +6,7 @@ import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/reply_info.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/service/share/post_share.dart';
 import 'package:unimal/theme/app_colors.dart';
 
 /// 확장 카드의 스크롤 가능한 내부 영역.
@@ -329,43 +330,70 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
           ),
         ],
         const SizedBox(height: 10),
+        // 지표는 왼쪽, 행동(공유)은 오른쪽. 접힌 카드와 동일한 배치.
         Row(
-          mainAxisAlignment: MainAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onLikeTap,
-              child: Row(
-                children: [
-                  Icon(
-                    widget.isLiked ? Icons.favorite : Icons.favorite_outline,
-                    size: 16,
-                    color: widget.isLiked ? colors.danger : colors.textMuted,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onLikeTap,
+                  child: Row(
+                    children: [
+                      Icon(
+                        widget.isLiked
+                            ? Icons.favorite
+                            : Icons.favorite_outline,
+                        size: 16,
+                        color:
+                            widget.isLiked ? colors.danger : colors.textMuted,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${widget.likeCountOverride ?? post.likeCount}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontFamily: 'Pretendard',
+                          color: colors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${widget.likeCountOverride ?? post.likeCount}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'Pretendard',
-                      color: colors.textMuted,
-                    ),
+                ),
+                const SizedBox(width: 16),
+                Icon(Icons.chat_bubble_outline,
+                    size: 15, color: colors.primaryStrong),
+                const SizedBox(width: 4),
+                Text(
+                  '${post.replyCount}',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'Pretendard',
+                    color: colors.textMuted,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Icon(Icons.chat_bubble_outline,
-                size: 15, color: colors.primaryStrong),
-            const SizedBox(width: 4),
-            Text(
-              '${post.replyCount}',
-              style: TextStyle(
-                fontSize: 13,
-                fontFamily: 'Pretendard',
-                color: colors.textMuted,
+            // 확장 카드가 글을 끝까지 읽는 화면이다 — 공유할 마음이 드는 건 대개 여기다.
+            // 접힌 카드와 같은 자리·같은 아이콘을 유지해 위치를 다시 찾지 않게 한다.
+            if (post.shareUrl != null)
+              Builder(
+                builder: (buttonContext) => GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => PostShare.share(
+                    context: buttonContext,
+                    shareUrl: post.shareUrl!,
+                    title: post.title,
+                  ),
+                  // 회색 — 접힌 카드와 같은 색을 유지한다. 확장 상태에는 "더보기"가
+                  // 없지만, 카드를 펼치고 접을 때 같은 아이콘의 색이 변하면
+                  // 다른 버튼처럼 보인다. 근거는 PostInfoSection 주석 참고.
+                  child: Icon(Icons.ios_share_rounded,
+                      size: 16, color: colors.textMuted),
+                ),
               ),
-            ),
           ],
         ),
       ],
