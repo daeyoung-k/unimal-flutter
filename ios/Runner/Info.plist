@@ -39,6 +39,21 @@
 		<string>????</string>
 		<key>CFBundleURLTypes</key>
 		<array>
+			<!-- 앱 딥링크 커스텀 스킴 (게시글 공유).
+			     공유 웹페이지가 stomap://post?id=... 로 앱을 연다.
+			     서버 설정 custom.share.scheme 과 반드시 같은 문자열이어야 한다.
+			     소셜 로그인 스킴과 dict 을 분리해 둔다 — 성격이 달라서 나중에
+			     Universal Links 로 옮길 때 이 블록만 보면 된다. -->
+			<dict>
+				<key>CFBundleTypeRole</key>
+				<string>Editor</string>
+				<key>CFBundleURLName</key>
+				<string>com.unimal.ios.stomap.deeplink</string>
+				<key>CFBundleURLSchemes</key>
+				<array>
+					<string>stomap</string>
+				</array>
+			</dict>
 			<dict>
 				<key>CFBundleTypeRole</key>
 				<string>Editor</string>

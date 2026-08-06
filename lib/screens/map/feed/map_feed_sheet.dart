@@ -216,7 +216,7 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
   /// 섹션 헤더의 ↻ 버튼. **그 섹션만** 다시 받아 제자리에 갈아끼운다.
   ///
   /// 서버는 섹션 하나를 요청받아도 내부에서 전체 피드를 계산한다 — 섹션들이 하나의
-  /// 후보 풀을 `HOT → LATEST → NEAR` 순으로 나눠 갖는 구조라 서로 독립이 아니기
+  /// 후보 풀을 `NEAR → HOT → LATEST` 순으로 나눠 갖는 구조라 서로 독립이 아니기
   /// 때문이다. 덕분에 **부분 갱신 결과가 전체 조회 결과와 어긋나지 않는다**
   /// (같은 글이 두 섹션에 겹쳐 뜨는 일이 없다).
   ///
@@ -362,7 +362,12 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final sections = _feed?.sections ?? const <MapFeedSection>[];
+    // 빈 섹션은 걸러낸다. MapFeedSectionRow 도 자체 방어가 있지만, 여기서 안 거르면
+    // 구분선(_sectionSeparator)만 남아 "있지도 않은 블록"을 암시하는 유령 선이 생긴다.
+    // 서버가 MIN_SECTION_SIZE 미만을 이미 걸러 내려주므로 평소엔 no-op 이다.
+    final sections = (_feed?.sections ?? const <MapFeedSection>[])
+        .where((s) => s.items.isNotEmpty)
+        .toList();
     // 보여줄 게 없으면 시트 자체를 만들지 않는다.
     if (sections.isEmpty) return const SizedBox.shrink();
 

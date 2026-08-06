@@ -45,10 +45,22 @@ class DetailBoardCard extends StatelessWidget {
                       boardPost.longitude != 0.0)
                   ? () {
                       final nav = Get.find<NavController>();
+                      // boardId 를 먼저 — 지도 화면은 pendingMapLat 변화를
+                      // 트리거로 쓰므로 나중에 넣으면 못 읽는다.
+                      nav.pendingMapBoardId.value = boardPost.boardId;
                       nav.pendingMapLng.value = boardPost.longitude;
                       nav.pendingMapLat.value = boardPost.latitude;
                       nav.selectedIndex.value = 0;
-                      Get.back();
+                      // Get.back() 은 한 단계만 pop 한다. 상세 화면 아래에 내 지도
+                      // (/my-story-map) 같은 다른 라우트가 끼어 있으면 메인 지도가
+                      // 아니라 거기로 떨어진다. 루트(RootScreen)까지 한 번에 걷어낸다.
+                      //
+                      // Get.offAllNamed('/map') 은 쓰면 안 된다 — 지도 화면이 새로
+                      // 만들어지면서 ever(pendingMapLat) 워커가 값이 이미 세팅된
+                      // '뒤에' 등록돼 영영 발화하지 않는다(카메라가 안 움직인다).
+                      // Get.until 은 기존 RootScreen 을 살려두므로 위에서 세팅한
+                      // pendingMapLat 이 이미 등록된 워커를 정상적으로 깨운다.
+                      Get.until((route) => route.isFirst);
                     }
                   : null,
             ),

@@ -9,6 +9,7 @@ import 'package:unimal/screens/board/detail_board/comment/comment_section.dart';
 import 'package:unimal/screens/board/detail_board/detail_card/detail_board_card.dart';
 import 'package:unimal/utils/custom_alert.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/service/share/post_share.dart';
 
 class DetailBoardScreen extends StatefulWidget {
   const DetailBoardScreen({super.key});
@@ -390,6 +391,23 @@ class _DetailBoardScreenState extends State<DetailBoardScreen> {
           onPressed: _goToBoard,
         ),
         actions: [
+          // shareUrl 이 null 이면 공유할 수 없는 글이다(비공개·차단·삭제).
+          // 판단은 서버가 하고 앱은 null 여부만 본다 — 공개 정책이 바뀌어도 앱은 그대로다.
+          if (_boardPost?.shareUrl != null)
+            Builder(
+              // Builder 로 감싸는 이유: iPad 공유 시트는 팝오버라 기준 위치가 필요한데,
+              // Scaffold 의 context 를 쓰면 화면 전체가 기준이 돼 엉뚱한 곳에서 뜬다.
+              // 버튼 자신의 context 여야 버튼 위에서 열린다.
+              builder: (buttonContext) => IconButton(
+                onPressed: () => PostShare.share(
+                  context: buttonContext,
+                  shareUrl: _boardPost!.shareUrl!,
+                  title: _boardPost!.title,
+                ),
+                icon: const Icon(Icons.ios_share_rounded, color: Color(0xFF374151), size: 21),
+                tooltip: '공유하기',
+              ),
+            ),
           if (_boardPost?.isOwner == true)
             IconButton(
               key: _menuButtonKey,

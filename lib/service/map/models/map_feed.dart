@@ -9,13 +9,25 @@ import 'package:http/http.dart' as http;
 /// 멤버를 두지 않는 이유다. UI 까지 unknown 이 흘러가면 화면에서 또 방어해야 한다.
 enum MapFeedSectionType {
   latest,
-  hot,
+
+  /// 서버 `FeedSectionType.ALL` ("전국 스토리") — 사진 + 반응이 있는 전국 글.
+  ///
+  /// 서버에서 `HOT` 이었다가 2026-08-06 에 `ALL` 로 바뀌었다. 반응 1건이면 통과라
+  /// "인기"라고 부를 표본이 안 됐기 때문이다. 진짜 인기 섹션은 나중에 `HOT` 이라는
+  /// 이름으로 **새로** 추가될 예정이라, 여기서 두 이름을 한 값에 묶으면 안 된다 —
+  /// [tryParse] 가 옛 `HOT` 도 받아주는 건 배포 시차용 과도기 조치일 뿐이다.
+  all,
+
   nearby,
 
-  /// 서버 `FeedSectionType.NEAR` — 현재 위치에서 가까운 순, 반경 제한 없음.
-  /// 2026-07-30 기준 서버가 실제로 내려주는 유일한 타입이다. `latest`/`hot`/
-  /// `nearby` 는 서버 주석에 "밀도가 오르면 추가하기로 정해져 있다"고 명시돼
-  /// 있어 미리 남겨둔다 — 그때는 서버만 배포하면 앱은 이미 안다.
+  /// 서버 `FeedSectionType.NEAR` ("가까운 스토리") — 지도 중심 5km 이내, 가까운 순.
+  /// 기간 제한은 없다 — 이름이 거리만 약속하므로 오래된 근처 글도 여기 들어온다.
+  ///
+  /// 2026-08-06 부터 반경 제한이 **보장된다**. 5km 안에서 최소 건수를 못 채우면
+  /// 서버가 반경을 푸는 대신 섹션 자체를 내려보내지 않는다. 그 전에는 반경을 풀고
+  /// 헤더만 "가까운 이야기"로 바꿔 보내서 100km 밖 글이 여기 섞였다.
+  ///
+  /// `nearby` 는 서버에 대응 타입이 없다(레거시). 서버는 NEAR/LATEST/ALL 셋을 낸다.
   near;
 
   /// 서버 문자열 → enum. 모르는 값이면 null (호출자가 그 섹션을 건너뛴다).
@@ -23,8 +35,12 @@ enum MapFeedSectionType {
     switch (raw) {
       case 'LATEST':
         return MapFeedSectionType.latest;
+      // 'HOT' 도 받는다 — 서버/앱 배포 시차 동안 옛 서버가 여전히 HOT 을 보낸다.
+      // 서버가 ALL 로 완전히 넘어간 뒤(그리고 구버전 앱 지원을 끊은 뒤) 지울 것.
+      // TODO(2026-09 이후 정리): 'HOT' case 제거.
+      case 'ALL':
       case 'HOT':
-        return MapFeedSectionType.hot;
+        return MapFeedSectionType.all;
       case 'NEARBY':
         return MapFeedSectionType.nearby;
       case 'NEAR':
@@ -42,7 +58,7 @@ enum MapFeedSectionType {
   /// 두 곳을 다 고치게 되고, 하나만 고치면 컴파일이 막아준다(switch 가 exhaustive).
   String get requestValue => switch (this) {
         MapFeedSectionType.latest => 'LATEST',
-        MapFeedSectionType.hot => 'HOT',
+        MapFeedSectionType.all => 'ALL',
         MapFeedSectionType.nearby => 'NEARBY',
         MapFeedSectionType.near => 'NEAR',
       };

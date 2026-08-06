@@ -26,3 +26,8 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+analyzer:
+  exclude:
+    # 삭제 예정 파일 보관함 — 분석 대상에서 제외
+    - _to_delete/**
