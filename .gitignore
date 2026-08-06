@@ -57,3 +57,5 @@ unimal-project-firebase-key.json
 firebase.json
 .claude/
 .superpowers/
+# 삭제 예정 (컨테이너에서 rm 불가라 임시 보관 — 로컬에서 지울 것)
+_to_delete/

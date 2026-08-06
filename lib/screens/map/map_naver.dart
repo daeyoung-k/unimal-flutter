@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_naver_map/flutter_naver_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -21,7 +22,7 @@ import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/screens/map/marker/marker_image_factory.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/service/map/models/map_post.dart';
-import 'package:unimal/service/map/naver_search_service.dart';
+import 'package:unimal/service/map/place_search_service.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/theme/app_colors.dart';
 import 'package:unimal/utils/display_title.dart';
@@ -39,7 +40,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     with WidgetsBindingObserver {
   NaverMapController? _mapController;
   final MarkerImageFactory _markerImageFactory = MarkerImageFactory();
-  final NaverSearchService _searchService = NaverSearchService();
+  final PlaceSearchService _searchService = PlaceSearchService();
   final BoardApiService _boardApiService = BoardApiService();
   final List<String> _mapMarkerIds = [];
   // 마커 ID → NOverlayImage 캐시. 클러스터 마커가 score 최상위 마커 이미지를 재사용할 때 사용.
@@ -154,13 +155,19 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  List<NaverLocalSearchResult> _searchResults = [];
+  // 통합 검색 결과 — 장소(외부 API 프록시)와 게시글(우리 DB)을 각각 담는다.
+  // 두 API 를 Future.wait 로 병렬 호출하되 리스트는 섹션으로 나눠 보여준다.
+  List<PlaceResult> _searchResults = [];
+  List<BoardPost> _postResults = [];
   bool _isSearching = false;
   Timer? _debounce;
 
+  bool get _hasSearchResults =>
+      _searchResults.isNotEmpty || _postResults.isNotEmpty;
+
   // POI 심볼 탭 관련 상태
   NSymbolInfo? _selectedSymbol;
-  NaverLocalSearchResult? _selectedPlace;
+  PlaceResult? _selectedPlace;
   bool _isLoadingPlace = false;
 
   // 커스텀 마커 탭 관련 상태
@@ -217,6 +224,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   static const _searchMarkerId = 'search_result_marker';
   static const _dismissThreshold = 80.0;
   bool _searchMarkerAdded = false;
+  /// _focusPostOnMap 중복 실행 방지.
+  bool _isFocusingPost = false;
 
   // 마커 크기·캡션 — marker_constants.dart 공용 값 (내지도와 반드시 동일).
   static const _normalMarkerSize = kNormalMarkerSize; // 일반(단일) 마커
@@ -282,7 +291,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     final nav = Get.find<NavController>();
     _pendingLocationWorker = ever(
       nav.pendingMapLat,
-      (_) => _applyPendingLocation(),
+      (_) => unawaited(_applyPendingLocation()),
     );
     _mapTabWorker = ever<int>(nav.selectedIndex, (index) {
       if (index == 0) unawaited(_consumePendingFreshness());
@@ -491,27 +500,71 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     );
   }
 
-  void _applyPendingLocation() {
+  /// 다른 화면(상세 게시글의 지도 버튼 등)에서 넘어온 위치 이동 요청 처리.
+  ///
+  /// boardId 가 함께 오면 검색 결과 탭과 똑같이 동작한다 — 그 글의 마커를 찾아
+  /// 바텀카드를 연다. 마커가 없으면(48시간 지난 텍스트 글 등) 위치 핀을 찍는다.
+  /// 여기서 상세 화면으로 폴백하면 안 된다. 대부분 상세 화면에서 넘어온 요청이라
+  /// 되돌아가는 꼴이 된다.
+  Future<void> _applyPendingLocation() async {
     final nav = Get.find<NavController>();
     final lat = nav.pendingMapLat.value;
     final lng = nav.pendingMapLng.value;
+    final boardId = nav.pendingMapBoardId.value;
     if (lat == null || lng == null) return;
+
+    // 컨트롤러가 아직 없으면 요청을 **비우지 않고** 남겨둔다. 여기서 비워버리면
+    // 푸시 콜드스타트처럼 지도 초기화 중에 들어온 요청이 영영 사라진다
+    // (NaverMap 이 컨트롤러를 넘겨주기까지 1초 가까이 걸린다).
+    // onMapReady 가 준비 직후 이 함수를 다시 불러 소비한다.
+    if (_mapController == null) return;
+
+    // 값을 비운다. 아래 await 구간에 워커가 다시 돌아도 위 null 가드에서 걸린다.
+    // (비우는 것 자체가 ever 를 재발화시키지만 null 이라 즉시 return)
+    nav.pendingMapLat.value = null;
+    nav.pendingMapLng.value = null;
+    nav.pendingMapBoardId.value = null;
+
     debugPrint('[map] _applyPendingLocation → (${lat.toStringAsFixed(5)}, '
-        '${lng.toStringAsFixed(5)}) zoom=$_clusterExpandZoom');
-    if (_mapController != null) {
+        '${lng.toStringAsFixed(5)}) zoom=$_clusterExpandZoom boardId=$boardId');
+
+    if (boardId == null || boardId.isEmpty) {
+      // 좌표만 온 경우 — 카메라 이동 + 재조회만 (기존 동작).
       _mapController!.updateCamera(
         NCameraUpdate.scrollAndZoomTo(
             target: NLatLng(lat, lng), zoom: _clusterExpandZoom),
       );
-      _loadMapMarkers(
+      unawaited(_loadMapMarkers(
         lat,
         lng,
         _apiZoomFor(_clusterExpandZoom),
         rawZoom: _clusterExpandZoom,
-      );
+      ));
+      return;
     }
-    nav.pendingMapLat.value = null;
-    nav.pendingMapLng.value = null;
+
+    final opened = await _focusPostOnMap(
+      boardId: boardId,
+      latitude: lat,
+      longitude: lng,
+    );
+    if (opened || !mounted) return;
+
+    // 마커가 없는 글 — 도착 지점을 알 수 있게 핀만 찍는다. 아무 표시도 없으면
+    // "제대로 온 건가?" 가 되고, 지도 버튼이 빈 약속처럼 느껴진다.
+    // 이전에 열려 있던 카드가 남아 핀과 겹치지 않도록 선택 상태를 정리한다.
+    setState(() {
+      _selectedGroupIndex = null;
+      _selectedPostIndex = null;
+      _selectedSymbol = null;
+      _selectedPlace = null;
+      _isLoadingPlace = false;
+      _isCardExpanded = false;
+      _feedSelectedPost = null;
+      _feedSelectedDetail = null;
+    });
+    _applySelectionHighlight(null);
+    await _addFocusPin(NLatLng(lat, lng));
   }
 
   @override
@@ -1241,23 +1294,77 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _highlightedMarkerId = null;
   }
 
+  /// 통합 검색 — 장소와 게시글을 병렬로 조회한다.
+  ///
+  /// 서버에 통합 엔드포인트를 두지 않고 앱에서 2회 병렬 호출하는 이유:
+  /// 장소는 외부 API(느리고 실패 가능), 게시글은 우리 DB(빠름)라 응답 특성이
+  /// 다르다. 서버에서 합치면 느린 쪽에 전체가 묶이고 한쪽 장애가 전체 장애가 된다.
+  /// 두 서비스 모두 실패 시 빈 목록을 주므로 한쪽이 죽어도 나머지는 그대로 뜬다.
   Future<void> _onSearch(String query) async {
     if (query.trim().length < 2) {
-      setState(() => _searchResults = []);
+      setState(() {
+        _searchResults = [];
+        _postResults = [];
+      });
       return;
     }
+    final requested = query.trim();
     setState(() => _isSearching = true);
-    final results = await _searchService.search(query);
+
+    final results = await Future.wait([
+      _searchService.search(query),
+      _boardApiService.searchPostsForMap(query),
+    ]);
+    // 응답이 도착한 시점의 입력이 이 요청의 검색어와 다르면 버린다.
+    // 이게 없으면 (1) 느린 응답이 최신 결과를 덮어쓰고, (2) 결과를 비운
+    // 직후(_onResultTap/_closeAllCards 등) 뒤늦게 도착한 응답이 패널을 되살린다.
+    if (!mounted || _searchController.text.trim() != requested) {
+      if (mounted) setState(() => _isSearching = false);
+      return;
+    }
+
     setState(() {
-      _searchResults = results;
+      _searchResults = results[0] as List<PlaceResult>;
+      // 좌표 없는 글은 지도로 보낼 수 없으므로 노출하지 않는다.
+      // 서버 PostInfo.latitude 는 non-null Double 이라 좌표가 없으면 null 이 아니라
+      // 0.0 으로 내려온다 — null 체크만으로는 못 거르고 지도가 (0,0) 으로 날아간다.
+      _postResults = (results[1] as List<BoardPost>)
+          .where((p) => _hasValidCoordinate(p.latitude, p.longitude))
+          .toList();
       _isSearching = false;
     });
   }
 
-  void _onResultTap(NaverLocalSearchResult result) {
+  /// 좌표 유효성. 서버가 좌표 없는 글을 0.0 으로 내려주므로 null 과 0 을 함께 본다.
+  /// (0, 0) 은 기니만 한복판이라 실제 게시글 좌표일 가능성이 없다.
+  bool _hasValidCoordinate(double? lat, double? lng) =>
+      lat != null && lng != null && lat != 0.0 && lng != 0.0;
+
+  /// 사진 없는 글이 지도 마커로 남아 있는 기간.
+  /// 서버 지도 마커 쿼리의 하드 필터와 같은 값이다:
+  ///   AND (bf.board_id IS NOT NULL OR b.created_at >= NOW() - INTERVAL '48 hours')
+  static const Duration _textPostMapLifetime = Duration(hours: 48);
+
+  /// 이 글이 지도 마커로 나타날 수 있는가.
+  ///
+  /// 서버 규칙을 앱에서 한 번 더 판정하는 건 결합이지만, 어긋나도 안전하다 —
+  /// 틀리면 최악의 경우 예전처럼 "카메라 이동 후 상세로 폴백"이 될 뿐이다.
+  /// score 상위 N개 컷은 예측할 수 없으므로 여기선 확정적인 배제 규칙만 본다.
+  bool _canAppearOnMap(BoardPost post) {
+    if (post.fileInfoList.isNotEmpty) return true;
+    final created = DateTime.tryParse(post.createdAt);
+    if (created == null) return true; // 파싱 실패 시엔 지도 경로를 시도한다.
+    return DateTime.now().difference(created) < _textPostMapLifetime;
+  }
+
+  void _onResultTap(PlaceResult result) {
+    // 아래에서 _searchController.text 를 코드로 바꾸므로 onChanged 가 안 뜬다.
+    // 예약된 검색을 직접 취소해야 결과 패널이 되살아나지 않는다.
+    _debounce?.cancel();
     _focusNode.unfocus();
     setState(() {
       _searchResults = [];
+      _postResults = [];
       _selectedSymbol = null;
       _selectedPlace = result;
       _selectedGroupIndex = null;
@@ -1271,10 +1378,347 @@ class _MapNaverScreensState extends State<MapNaverScreens>
       NCameraUpdate.scrollAndZoomTo(target: position, zoom: _placeFocusZoom),
     );
 
-    _addSearchMarker(result, position);
+    _addFocusPin(position);
   }
 
-  Future<void> _addSearchMarker(NaverLocalSearchResult result, NLatLng position) async {
+  /// 검색 결과의 게시글 탭 — 해당 위치로 지도를 옮기고 마커 카드를 연다.
+  ///
+  /// 검색은 전국 범위인데 지도 마커는 현재 화면 주변만 로드돼 있다. 그래서
+  /// 카메라 이동 → 마커 재조회 → 그룹 탐색 순서를 지켜야 한다(재조회를 건너뛰면
+  /// _postGroups 에 그 글이 없어 카드가 안 열린다).
+  ///
+  /// 재조회 후에도 못 찾을 수 있다. 지도 마커 API 는 score 상위 N개만 내려주고
+  /// "사진 없는 48시간 초과 글"은 아예 제외하기 때문이다. 그 경우 상세 화면으로
+  /// 폴백해 최소한 글은 볼 수 있게 한다.
+  /// 게시글 위치로 지도를 옮기고, 그 글의 마커를 찾아 바텀카드를 연다.
+  ///
+  /// 검색 결과 탭과 상세 화면의 지도 버튼이 공유하는 경로다. 두 진입점 모두
+  /// "특정 글 하나를 지도에서 보여준다"는 같은 일을 하므로 동작이 갈리면 안 된다.
+  ///
+  /// 지도 마커는 현재 화면 주변만 로드돼 있어 카메라 이동 → 마커 재조회 →
+  /// 그룹 탐색 순서를 지켜야 한다(재조회를 건너뛰면 _postGroups 에 그 글이 없다).
+  ///
+  /// 마커를 찾아 카드를 열었으면 true. false 면 그 글이 지도 마커로 존재하지
+  /// 않는다는 뜻이고(48시간 지난 텍스트 글, score 상위 N 컷에서 밀림 등),
+  /// 그 다음 처리는 호출부가 정한다 — 진입점마다 적절한 폴백이 다르기 때문이다.
+  Future<bool> _focusPostOnMap({
+    required String boardId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (_mapController == null) return false;
+    // 지도 버튼 연타나 "포커스 진행 중 검색 결과 탭" 같은 겹침 방지.
+    // 두 번째 호출은 조회가 큐잉돼 몇 초를 버리고 엉뚱한 폴백까지 유발한다.
+    if (_isFocusingPost) return false;
+    _isFocusingPost = true;
+
+    try {
+      // scrollAndZoomTo 로 그냥 옮기면 대상이 화면 정중앙에 놓여 바텀카드에 가린다.
+      // 마커 탭과 같은 헬퍼를 써 화면 상단 22% 지점에 오도록 보정한다
+      // (_moveCameraToMarker 는 카드 위 여백을 계산해 오프셋을 잡아준다).
+      //
+      // await 하지 않는다 — 내부에서 600ms fly 애니메이션 완료까지 기다리는데,
+      // 마커 조회는 좌표를 인자로 받으므로 카메라 settle 을 기다릴 이유가 없다.
+      // 비행과 조회가 겹쳐야 체감이 빠르다.
+      unawaited(_moveCameraToMarker(
+        NLatLng(latitude, longitude),
+        zoom: _clusterExpandZoom,
+      ));
+
+      final applied = await _loadMapMarkers(
+        latitude,
+        longitude,
+        _apiZoomFor(_clusterExpandZoom),
+        rawZoom: _clusterExpandZoom,
+        forceRebuild: true,
+      );
+      if (!mounted) return false;
+
+      var groupIdx = _findPostGroupIndex(boardId);
+
+      // 다른 조회가 진행 중이면 이번 요청은 큐잉되고 false 가 돌아온다
+      // (_loadMapMarkers). 그때 _postGroups 는 아직 이전 지역 것이라 바로
+      // 판단하면 멀쩡한 글도 폴백된다. 진행 중이던 조회 + 큐잉된 조회, 두 번의
+      // 왕복을 견뎌야 해서 3초를 준다(1초로는 모바일 네트워크에서 자주 모자란다).
+      if (!applied && groupIdx < 0) {
+        for (var i = 0; i < 15 && groupIdx < 0; i++) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          if (!mounted) return false;
+          groupIdx = _findPostGroupIndex(boardId);
+        }
+      }
+
+      if (groupIdx < 0) return false;
+
+      final postIdx = _postGroups[groupIdx].indexWhere((p) => p.id == boardId);
+      await _selectMarker(
+        groupIdx,
+        postIndex: postIdx >= 0 ? postIdx : 0,
+        moveCamera: false,
+      );
+      // _selectMarker 는 moveCamera:false 면 하이라이트를 적용하기 전에 return 한다.
+      // 카메라는 이미 이 함수가 옮겼으므로 하이라이트만 따로 걸어준다 — 안 걸면
+      // 카드는 열리는데 대상 마커가 평범한 크기로 남아 어느 건지 알 수 없다.
+      if (!mounted) return true;
+      _applySelectionHighlight(_postGroups[groupIdx].first.id);
+      return true;
+    } finally {
+      _isFocusingPost = false;
+    }
+  }
+
+  /// 검색 결과의 게시글 탭 — 지도에서 보여주고, 안 되면 상세 화면으로 보낸다.
+  Future<void> _onPostResultTap(BoardPost post) async {
+    final lat = post.latitude;
+    final lng = post.longitude;
+    // null 체크를 헬퍼와 따로 두는 이유: 헬퍼 호출만으로는 Dart 가 lat/lng 를
+    // double? → double 로 승격시키지 못해 아래에서 타입 에러가 난다.
+    // 로컬 변수에 대한 명시적 null 비교만 승격을 일으킨다.
+    if (lat == null || lng == null) return;
+    if (!_hasValidCoordinate(lat, lng)) return;
+
+    _debounce?.cancel();
+    _focusNode.unfocus();
+    setState(() {
+      _searchResults = [];
+      _postResults = [];
+      _selectedSymbol = null;
+      _selectedPlace = null;
+      _selectedGroupIndex = null;
+    });
+    // 검색어는 그대로 둔다 — 장소 탭과 달리 글 제목으로 바꾸면 "내가 뭘 검색했지"
+    // 를 잃어버려 되돌아가기 어렵다.
+
+    // 지도에 뜰 수 없는 글은 카메라를 옮기지 않고 바로 상세로 보낸다. 옮겨봐야
+    // 마커가 없어 어차피 폴백되는데, 그러면 뒤로 나왔을 때 지도만 엉뚱한 위치에
+    // 마커도 없이 남아 사용자가 길을 잃는다.
+    if (!_canAppearOnMap(post)) {
+      Get.toNamed('/detail-board', parameters: {'id': post.boardId});
+      return;
+    }
+
+    final opened = await _focusPostOnMap(
+      boardId: post.boardId,
+      latitude: lat,
+      longitude: lng,
+    );
+    if (opened || !mounted) return;
+
+    // 지도 마커 API 는 score 상위 N개만 준다. 검색으로는 찾히지만 마커로는 안
+    // 뜨는 글이 있다는 뜻이라, 상세 화면으로 보내 최소한 글은 볼 수 있게 한다.
+    Get.toNamed('/detail-board', parameters: {'id': post.boardId});
+  }
+
+  int _findPostGroupIndex(String boardId) =>
+      _postGroups.indexWhere((g) => g.any((p) => p.id == boardId));
+
+  /// 통합 검색 결과 패널 — '장소'와 '게시글'을 섹션 헤더로 구분한다.
+  ///
+  /// 탭으로 나누지 않은 이유: 탭을 눌러야 반대쪽이 보이면 "게시글도 검색된다"는
+  /// 사실 자체를 모르고 지나치기 쉽다. 한 리스트에 두면 두 API 가 따로 도착해도
+  /// 먼저 온 섹션부터 렌더링돼 체감 속도도 낫다.
+  Widget _buildSearchResultsPanel(BuildContext context) {
+    final colors = AppColors.of(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      // 결과가 많아도 지도를 다 덮지 않도록 절반까지만.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+      ),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: colors.shadow,
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          // 게시글이 먼저다. 스토맵은 지도 서비스가 아니라 이야기 서비스라,
+          // 검색창에 뭔가 치는 사람은 "주소를 찾으려고"가 아니라 "이야기를 찾으려고"
+          // 치는 경우가 대부분이다. 장소를 위에 두면 5건이 화면을 채워 게시글이
+          // 스크롤 아래로 밀려나고, 게시글도 검색된다는 사실 자체가 안 보인다.
+          if (_postResults.isNotEmpty) ...[
+            _buildSearchSectionHeader(context, '게시글'),
+            for (final post in _postResults) _buildPostTile(context, post),
+          ],
+          if (_searchResults.isNotEmpty) ...[
+            if (_postResults.isNotEmpty)
+              Divider(
+                height: 17,
+                thickness: 1,
+                indent: 16,
+                endIndent: 16,
+                color: colors.divider,
+              ),
+            _buildSearchSectionHeader(context, '장소'),
+            for (final result in _searchResults)
+              _buildPlaceTile(context, result),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchSectionHeader(BuildContext context, String label) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 4),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontFamily: 'Pretendard',
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+          color: AppColors.of(context).textTertiary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceTile(BuildContext context, PlaceResult result) {
+    final colors = AppColors.of(context);
+    final address = result.displayAddress;
+    return ListTile(
+      dense: true,
+      leading: Icon(Icons.place_outlined, color: colors.primaryStrong, size: 20),
+      title: Text(
+        result.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 14,
+          fontFamily: 'Pretendard',
+          fontWeight: FontWeight.w600,
+          color: colors.textPrimary,
+        ),
+      ),
+      subtitle: address.isEmpty
+          ? null
+          : Text(
+              address,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'Pretendard',
+                color: colors.textMuted,
+              ),
+            ),
+      onTap: () => _onResultTap(result),
+    );
+  }
+
+  /// 검색 결과의 게시글 한 줄.
+  ///
+  /// 썸네일 / 제목 / 본문 미리보기 / 주소 3단 구성. 작성일은 뺐다 —
+  /// 검색 결과에서 고르는 기준은 "언제 썼나"가 아니라 "무슨 이야기인가"라서,
+  /// 같은 자리에 본문 한 줄을 넣는 편이 고르는 데 훨씬 도움이 된다.
+  Widget _buildPostTile(BuildContext context, BoardPost post) {
+    final colors = AppColors.of(context);
+    final thumbUrl = post.fileInfoList.isNotEmpty
+        ? post.fileInfoList.first.markerImageUrl
+        : null;
+
+    // 줄바꿈·연속 공백을 한 칸으로 눕힌다. 본문을 그대로 한 줄에 넣으면
+    // 개행이 공백 하나로 보여 단어가 붙어버린다.
+    final content = post.content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final title = post.title.trim();
+    final hasTitle = title.isNotEmpty;
+
+    return InkWell(
+      onTap: () => _onPostResultTap(post),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: thumbUrl != null
+                    ? CachedNetworkImage(imageUrl: thumbUrl, fit: BoxFit.cover)
+                    : Container(
+                        color: colors.surfaceMuted,
+                        child: Icon(
+                          Icons.article_outlined,
+                          size: 20,
+                          color: colors.textMuted,
+                        ),
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 제목 없는 글은 본문이 곧 제목 역할을 한다(displayTitle 과 같은 관례).
+                  // 이때 아래 본문 줄까지 그리면 같은 문장이 두 번 보이므로,
+                  // 제목 줄을 2줄로 늘려 본문 줄을 대신한다.
+                  Text(
+                    hasTitle ? title : content,
+                    maxLines: hasTitle ? 1 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                      height: 1.3,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  if (hasTitle && content.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      content,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontFamily: 'Pretendard',
+                        height: 1.3,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                  if (post.streetName.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      post.streetName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'Pretendard',
+                        color: colors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "여기예요" 핀 하나를 지도에 찍는다.
+  ///
+  /// 장소 검색 결과와, 지도 마커가 없는 게시글(48시간 지난 텍스트 글 등)의
+  /// 위치 표시에 함께 쓴다. 둘 다 "사용자가 지목한 한 지점"이라 표현이 같아야 한다.
+  /// 정리는 _clearSearch / _closeAllCards / _selectMarker 가 이미 담당한다.
+  Future<void> _addFocusPin(NLatLng position) async {
     if (_mapController == null) return;
 
     if (_searchMarkerAdded) {
@@ -1300,9 +1744,13 @@ class _MapNaverScreensState extends State<MapNaverScreens>
   }
 
   void _clearSearch() {
+    // controller.clear() 는 onChanged 를 발생시키지 않아 예약된 타이머가 살아남는다.
+    // 취소하지 않으면 300ms 뒤 검색이 실행돼 빈 검색창 위로 결과 패널이 되살아난다.
+    _debounce?.cancel();
     _searchController.clear();
     setState(() {
       _searchResults = [];
+      _postResults = [];
       _selectedPlace = null;
     });
     _focusNode.unfocus();
@@ -1317,6 +1765,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _focusNode.unfocus();
     setState(() {
       _searchResults = [];
+      _postResults = [];
       _selectedGroupIndex = null;
       _selectedSymbol = symbolInfo;
       _selectedPlace = null;
@@ -1324,11 +1773,12 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     });
     _applySelectionHighlight(null);
 
+    // 줌은 건드리지 않는다 — 심볼 탭은 "이 장소가 뭔지 확인"이지 탐색 깊이를
+    // 바꾸는 동작이 아니다. 기본 진입 줌(16.5)에서 누르면 _placeFocusZoom(16.0)
+    // 으로 살짝 줌아웃되어 지도가 튀는 느낌이 났다. 중심 이동만 유지해
+    // 카드에 가리는 심볼을 화면 중앙으로 올린다.
     _mapController?.updateCamera(
-      NCameraUpdate.scrollAndZoomTo(
-        target: symbolInfo.position,
-        zoom: _placeFocusZoom,
-      ),
+      NCameraUpdate.scrollAndZoomTo(target: symbolInfo.position),
     );
 
     final results = await _searchService.search(symbolInfo.caption);
@@ -1737,6 +2187,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     // 지도 탭 = 펼침도 접는다 (피그마 B안: 재탭/이동 시 접힘)
     _collapseStackFan();
     setState(() {
+      _searchResults = [];
+      _postResults = [];
       _selectedSymbol = null;
       _selectedPlace = null;
       _isLoadingPlace = false;
@@ -2143,12 +2595,21 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     _collapseFeedSheet();
     if (idx < 0 || idx >= _postGroups.length) return;
     if (_mapController == null) return;
+
+    // 검색/위치 핀이 떠 있으면 지운다. 마커 카드가 열리는 순간 핀은 의미를 잃고,
+    // 카드가 가리키는 마커와 같은 자리에 겹쳐 보인다.
+    if (_searchMarkerAdded) {
+      _mapController!.deleteOverlay(
+          NOverlayInfo(type: NOverlayType.marker, id: _searchMarkerId));
+      _searchMarkerAdded = false;
+    }
     final post = _postGroups[idx].first;
     final markerPos = _markerRefs[post.id]?.position
         ?? NLatLng(post.latitude, post.longitude);
 
     setState(() {
       _searchResults = [];
+      _postResults = [];
       _selectedSymbol = null;
       _selectedPlace = null;
       _isLoadingPlace = false;
@@ -2786,6 +3247,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
             onMapReady: (controller) {
               setState(() => _mapController = controller);
               _moveToCurrentLocationOrDefault();
+              // 지도 초기화 중에 들어온 위치 이동 요청을 여기서 소비한다.
+              // (_applyPendingLocation 이 컨트롤러 없을 때 값을 남겨둔다)
+              // 기본 위치 이동보다 나중에 불러 이 쪽이 이기게 한다.
+              unawaited(_applyPendingLocation());
             },
             onMapTapped: (point, latLng) {
               _focusNode.unfocus();
@@ -2832,7 +3297,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       color: AppColors.of(context).textPrimary,
                     ),
                     decoration: InputDecoration(
-                      hintText: '장소 검색',
+                      hintText: '장소 · 게시글 검색',
                       hintStyle: TextStyle(
                         color: AppColors.of(context).textMuted,
                         fontFamily: 'Pretendard',
@@ -2863,7 +3328,10 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                       setState(() {});
                       _debounce?.cancel();
                       if (v.trim().length < 2) {
-                        setState(() => _searchResults = []);
+                        setState(() {
+                          _searchResults = [];
+                          _postResults = [];
+                        });
                         return;
                       }
                       _debounce = Timer(const Duration(milliseconds: 300), () {
@@ -2872,53 +3340,8 @@ class _MapNaverScreensState extends State<MapNaverScreens>
                     },
                   ),
                 ),
-                // 검색 결과 목록
-                if (_searchResults.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.of(context).surface,
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.of(context).shadow,
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: _searchResults.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, indent: 16, endIndent: 16),
-                      itemBuilder: (context, index) {
-                        final result = _searchResults[index];
-                        return ListTile(
-                          dense: true,
-                          leading: Icon(Icons.place_outlined, color: AppColors.of(context).primaryStrong, size: 20),
-                          title: Text(
-                            result.title,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.of(context).textPrimary,
-                            ),
-                          ),
-                          subtitle: Text(
-                            result.roadAddress.isNotEmpty ? result.roadAddress : result.address,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              color: AppColors.of(context).textMuted,
-                            ),
-                          ),
-                          onTap: () => _onResultTap(result),
-                        );
-                      },
-                    ),
-                  ),
+                // 검색 결과 목록 — 장소/게시글 섹션 분리
+                if (_hasSearchResults) _buildSearchResultsPanel(context),
               ],
             ),
               ),
@@ -3113,7 +3536,7 @@ class _MapNaverScreensState extends State<MapNaverScreens>
 
 class _PlaceInfoCard extends StatelessWidget {
   final NSymbolInfo? symbol;
-  final NaverLocalSearchResult? place;
+  final PlaceResult? place;
   final bool isLoading;
   final double safeAreaBottom;
   final VoidCallback onClose;

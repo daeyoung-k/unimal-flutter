@@ -112,6 +112,51 @@ class BoardApiService {
     return BoardPost.fromJson(bodyData['data'] as Map<String, dynamic>);
   }
 
+  // ── 지도 통합검색용 게시글 조회 ──────────────────────────────────────
+  /// 지도 상단 검색창의 "게시글" 섹션에 쓰는 조회.
+  ///
+  /// getBoardPostList 와 두 가지가 다르다.
+  /// 1) 실패해도 알럿을 띄우지 않는다 — 검색창은 타이핑 중 계속 호출되는 자리라
+  ///    알럿이 뜨면 사용자 경험이 크게 나빠진다.
+  /// 2) size 를 명시해 상위 몇 건만 받는다 — 드롭다운에 미리보기로 붙는 용도.
+  ///
+  /// 범위는 전국이다. 서버 PostListRequest 에 latitude/longitude/distance 가
+  /// 이미 있으므로, 나중에 "내 주변 우선"이 필요해지면 파라미터만 얹으면 된다.
+  Future<List<BoardPost>> searchPostsForMap(
+    String keyword, {
+    int size = 5,
+  }) async {
+    final trimmed = keyword.trim();
+    if (trimmed.length < 2) return [];
+
+    try {
+      final url = ApiUri.resolve('board/post/list', {
+        'page': '0',
+        'size': size.toString(),
+        'sortType': 'LATEST',
+        'keyword': trimmed,
+      });
+      final headers = await _authHeaders();
+      final response = await ApiClient.get(url, headers);
+
+      if (response.statusCode != 200) {
+        _logger.w('지도 통합검색 게시글 조회 실패: ${response.statusCode}');
+        return [];
+      }
+
+      final bodyData = jsonDecode(utf8.decode(response.bodyBytes));
+      final data = bodyData['data'];
+      if (data is! List) return [];
+
+      return data
+          .map((e) => BoardPost.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      _logger.w('지도 통합검색 게시글 조회 오류: $e');
+      return [];
+    }
+  }
+
   // ── 게시글 목록 조회 ────────────────────────────────────────────────
   Future<List<BoardPost>> getBoardPostList({
     int page = 0,
