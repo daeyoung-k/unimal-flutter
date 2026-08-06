@@ -92,8 +92,8 @@ void main() {
     await pumpType(MapFeedSectionType.near);
     expect(find.byIcon(Icons.place_rounded), findsOneWidget);
 
-    await pumpType(MapFeedSectionType.hot);
-    expect(find.byIcon(Icons.local_fire_department_rounded), findsOneWidget);
+    await pumpType(MapFeedSectionType.all);
+    expect(find.byIcon(Icons.public_rounded), findsOneWidget);
 
     await pumpType(MapFeedSectionType.latest);
     expect(find.byIcon(Icons.schedule_rounded), findsOneWidget);

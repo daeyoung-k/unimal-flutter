@@ -68,6 +68,10 @@ class MapFeedSectionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 빈 섹션은 그리지 않는다. 서버가 MIN_SECTION_SIZE 미만을 걸러 내려주므로
+    // 실제로 오진 않지만, 오면 헤더 + 178px 짜리 빈 줄이 남아 시트가 망가진다.
+    if (section.items.isEmpty) return const SizedBox.shrink();
+
     final colors = AppColors.of(context);
     final refresh = onRefresh;
 
@@ -150,9 +154,10 @@ class _SectionBadge extends StatelessWidget {
     final (icon, color) = switch (type) {
       // 시계 — "언제"가 기준인 섹션.
       MapFeedSectionType.latest => (Icons.schedule_rounded, colors.accentGreen),
-      // 불꽃 — 반응이 기준인 섹션.
-      MapFeedSectionType.hot =>
-        (Icons.local_fire_department_rounded, colors.accent),
+      // 지구본 — 전국 범위가 기준인 섹션("전국 스토리").
+      // 인기 컨셉을 접었으므로 예전의 불꽃 아이콘은 맞지 않는다.
+      // (서버 FeedSectionType.ALL 주석 참고 — 진짜 인기 섹션은 새 타입으로 추가할 것)
+      MapFeedSectionType.all => (Icons.public_rounded, colors.accent),
       // 위치핀 — "어디"가 기준인 섹션. 브랜드 파랑을 써서 지도 마커와 같은 계열로 읽힌다.
       MapFeedSectionType.near ||
       MapFeedSectionType.nearby =>

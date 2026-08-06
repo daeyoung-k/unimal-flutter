@@ -378,9 +378,22 @@ void main() {
 
   test('프로그램 카메라 로드는 raw zoom과 floor API zoom을 함께 전달한다', () {
     final source = File('lib/screens/map/map_naver.dart').readAsStringSync();
-    final pendingStart = source.indexOf('void _applyPendingLocation()');
+    // 시그니처가 async 로 바뀌었다(2026-08-06). indexOf 가 -1 이면 substring 이
+    // RangeError 로 죽어 원인이 안 보이므로, 앵커를 못 찾은 것 자체를 먼저 실패시킨다.
+    final pendingStart = source.indexOf('Future<void> _applyPendingLocation()');
+    expect(pendingStart, isNonNegative,
+        reason: '_applyPendingLocation 앵커를 찾지 못했다 — 시그니처가 바뀌었는지 확인');
     final pendingEnd = source.indexOf('@override\n  void dispose()', pendingStart);
     final pendingMethod = source.substring(pendingStart, pendingEnd);
+
+    // boardId 가 함께 온 경로는 _focusPostOnMap 에 위임한다. 계약(raw zoom + floor
+    // API zoom 을 함께 전달)은 두 경로 모두에서 지켜져야 하므로 여기도 검사한다.
+    final focusStart = source.indexOf('Future<bool> _focusPostOnMap(');
+    expect(focusStart, isNonNegative,
+        reason: '_focusPostOnMap 앵커를 찾지 못했다 — 시그니처가 바뀌었는지 확인');
+    final focusEnd = source.indexOf('Future<void> _onPostResultTap(', focusStart);
+    final focusMethod = source.substring(focusStart, focusEnd);
+
     final locationStart = source.indexOf(
       'Future<void> _moveToCurrentLocationOrDefault()',
     );
@@ -390,9 +403,11 @@ void main() {
     );
     final locationMethod = source.substring(locationStart, locationEnd);
 
-    expect(pendingMethod, contains('_apiZoomFor(_clusterExpandZoom)'));
-    expect(pendingMethod, contains('rawZoom: _clusterExpandZoom'));
-    expect(pendingMethod, isNot(contains('.round()')));
+    for (final method in [pendingMethod, focusMethod]) {
+      expect(method, contains('_apiZoomFor(_clusterExpandZoom)'));
+      expect(method, contains('rawZoom: _clusterExpandZoom'));
+      expect(method, isNot(contains('.round()')));
+    }
     expect(
       RegExp('_apiZoomFor\\(_defaultEntryZoom\\)')
           .allMatches(locationMethod)

@@ -16,7 +16,7 @@ const _fullJson = '''
        "nickname":"대영","profile_image":"https://cdn.example/p.jpg",
        "like_count":12,"reply_count":3,"created_at":"2026-07-29T14:33:00"}
     ]},
-    {"type":"HOT","title":"지금 인기 있는 스토리","has_more":false,"items":[]}
+    {"type":"ALL","title":"전국 스토리","has_more":false,"items":[]}
   ]}}
 ''';
 
