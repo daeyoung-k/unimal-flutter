@@ -769,14 +769,19 @@ class _MyStoryMapScreenState extends State<MyStoryMapScreen> {
             // 텍스트 마커 점↔카드 전환 감지 (메인 지도와 동일).
             onCameraIdle: _onCameraIdle,
           ),
+          // 하단 시트 — 끌어올리면 내 스토리/좋아요한 목록.
+          if (!_isLoading && _posts.isNotEmpty) _buildBottomSheet(colors),
+          // 상단 바 — **시트보다 뒤에 둔다.**
+          //
+          // 앞에 두면 시트를 maxChildSize(0.9)까지 끌어올렸을 때 시트가 위에
+          // 그려져 뒤로가기 버튼과 프로필 칩을 반쯤 덮는다. 어중간하게 잘린
+          // 모양이 되고, 이 화면에서 뒤로가기는 유일한 탈출구라 덮이면 안 된다.
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: _buildTopBar(colors),
           ),
-          // 하단 시트 — 끌어올리면 내 스토리/좋아요한 목록.
-          if (!_isLoading && _posts.isNotEmpty) _buildBottomSheet(colors),
           if (_isLoading)
             Positioned.fill(
               child: ColoredBox(
