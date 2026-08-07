@@ -5,7 +5,9 @@ import 'package:unimal/screens/map/bottom_card/relative_time.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/board/model/reply_info.dart';
+import 'package:unimal/screens/common/report_sheet.dart';
 import 'package:unimal/service/map/models/map_post.dart';
+import 'package:unimal/service/report/model/report_reason.dart';
 import 'package:unimal/service/share/post_share.dart';
 import 'package:unimal/theme/app_colors.dart';
 
@@ -394,6 +396,24 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                       size: 16, color: colors.textMuted),
                 ),
               ),
+            // 신고 — 남의 글에만. 내 글에는 이미 수정 버튼이 있다.
+            //
+            // 확장 카드에 두는 이유는 여기가 글을 끝까지 읽는 화면이기 때문이다.
+            // 문제를 발견하는 것도, 신고할 마음이 드는 것도 대개 다 읽은 뒤다.
+            if (!post.isOwner) ...[
+              const SizedBox(width: 14),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => ReportSheet.show(
+                  context,
+                  targetType: ReportTargetType.post,
+                  targetId: post.id,
+                  targetLabel: '게시글',
+                ),
+                child: Icon(Icons.flag_outlined,
+                    size: 16, color: colors.textMuted),
+              ),
+            ],
           ],
         ),
       ],
@@ -557,7 +577,8 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                     ],
                   ),
                 ),
-                if (reply.isOwner && !isEditing) _buildReplyMenu(reply),
+                // 내 댓글이면 수정·삭제, 남의 댓글이면 신고. 수정 중일 때만 감춘다.
+                if (!isEditing) _buildReplyMenu(reply),
               ],
             ),
           ),
@@ -629,24 +650,43 @@ class _MapCardExpandedContentState extends State<MapCardExpandedContent> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                ListTile(
-                  leading: Icon(Icons.edit_outlined, color: colors.textSecondary, size: 20),
-                  title: Text('수정',
-                      style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          color: colors.textPrimary,
-                          fontWeight: FontWeight.w500)),
-                  onTap: () { Navigator.pop(ctx); _startEditReply(reply); },
-                ),
-                ListTile(
-                  leading: Icon(Icons.delete_outline, color: colors.danger, size: 20),
-                  title: Text('삭제',
-                      style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          color: colors.danger,
-                          fontWeight: FontWeight.w500)),
-                  onTap: () { Navigator.pop(ctx); _confirmDeleteReply(reply); },
-                ),
+                if (reply.isOwner) ...[
+                  ListTile(
+                    leading: Icon(Icons.edit_outlined, color: colors.textSecondary, size: 20),
+                    title: Text('수정',
+                        style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            color: colors.textPrimary,
+                            fontWeight: FontWeight.w500)),
+                    onTap: () { Navigator.pop(ctx); _startEditReply(reply); },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.delete_outline, color: colors.danger, size: 20),
+                    title: Text('삭제',
+                        style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            color: colors.danger,
+                            fontWeight: FontWeight.w500)),
+                    onTap: () { Navigator.pop(ctx); _confirmDeleteReply(reply); },
+                  ),
+                ] else
+                  ListTile(
+                    leading: Icon(Icons.flag_outlined, color: colors.danger, size: 20),
+                    title: Text('신고',
+                        style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            color: colors.danger,
+                            fontWeight: FontWeight.w500)),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      ReportSheet.show(
+                        context,
+                        targetType: ReportTargetType.reply,
+                        targetId: reply.id,
+                        targetLabel: '댓글',
+                      );
+                    },
+                  ),
               ],
             ),
           ),

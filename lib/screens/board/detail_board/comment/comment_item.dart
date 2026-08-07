@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:unimal/screens/common/report_sheet.dart';
+import 'package:unimal/service/report/model/report_reason.dart';
 
 class CommentItem extends StatelessWidget {
   final Map<String, dynamic> comment;
@@ -146,46 +148,64 @@ class CommentItem extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (comment['isOwner'] as bool? ?? false)
-                  GestureDetector(
-                    onTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                        ),
-                        builder: (context) => SafeArea(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 36, height: 4,
-                                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[300],
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
+                // 내 댓글이면 수정·삭제, 남의 댓글이면 신고.
+                // 전에는 내 댓글에만 버튼이 떠서 신고할 방법이 없었다.
+                GestureDetector(
+                  onTap: () {
+                    final isOwner = comment['isOwner'] as bool? ?? false;
+
+                    showModalBottomSheet(
+                      context: context,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      builder: (sheetContext) => SafeArea(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 36, height: 4,
+                              margin: const EdgeInsets.only(top: 12, bottom: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(2),
                               ),
+                            ),
+                            if (isOwner) ...[
                               ListTile(
                                 leading: Icon(Icons.edit_outlined, color: Colors.grey[700], size: 20),
                                 title: Text('수정', style: TextStyle(fontFamily: 'Pretendard', color: Colors.grey[800], fontWeight: FontWeight.w500)),
-                                onTap: () { Navigator.pop(context); onEdit(); },
+                                onTap: () { Navigator.pop(sheetContext); onEdit(); },
                               ),
                               ListTile(
                                 leading: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 20),
                                 title: const Text('삭제', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFFEF4444), fontWeight: FontWeight.w500)),
-                                onTap: () { Navigator.pop(context); onDelete(); },
+                                onTap: () { Navigator.pop(sheetContext); onDelete(); },
                               ),
-                            ],
-                          ),
+                            ] else
+                              ListTile(
+                                leading: const Icon(Icons.flag_outlined, color: Color(0xFFEF4444), size: 20),
+                                title: const Text('신고', style: TextStyle(fontFamily: 'Pretendard', color: Color(0xFFEF4444), fontWeight: FontWeight.w500)),
+                                onTap: () {
+                                  Navigator.pop(sheetContext);
+                                  ReportSheet.show(
+                                    context,
+                                    targetType: ReportTargetType.reply,
+                                    targetId: comment['id'] as String,
+                                    targetLabel: '댓글',
+                                  );
+                                },
+                              ),
+                          ],
                         ),
-                      );
-                    },
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(Icons.more_vert, size: 18, color: Color(0xFF7AB3FF)),
-                    ),
+                      ),
+                    );
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.more_vert, size: 18, color: Color(0xFF7AB3FF)),
                   ),
+                ),
               ],
             ),
           ),

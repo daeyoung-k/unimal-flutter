@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/add/share_card_sheet.dart';
 import 'package:unimal/service/board/board_api_service.dart';
+import 'package:unimal/screens/common/report_sheet.dart';
 import 'package:unimal/service/board/model/board_post.dart';
+import 'package:unimal/service/report/model/report_reason.dart';
 import 'package:unimal/utils/time_utils.dart';
 
 class BoardCard extends StatefulWidget {
@@ -79,8 +81,13 @@ class _BoardCardState extends State<BoardCard> {
     }
   }
 
+  /// 카드 우상단 메뉴.
+  ///
+  /// **내 글이면 수정·삭제, 남의 글이면 신고**로 갈린다. 전에는 내 글에만 버튼이
+  /// 떠서 다른 사람의 글을 신고할 방법이 아예 없었다 — 사용자 콘텐츠를 다루는 앱에
+  /// 신고 창구가 없으면 스토어 심사에서도 걸린다(App Store 가이드라인 1.2).
   void _showMenu() {
-    if (!widget.boardPost.isOwner) return;
+    final isOwner = widget.boardPost.isOwner;
     final renderBox =
         _menuKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
@@ -101,41 +108,66 @@ class _BoardCardState extends State<BoardCard> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 4,
       color: Colors.white,
-      items: [
-        PopupMenuItem(
-          value: 'edit',
-          height: 44,
-          child: Row(children: [
-            Icon(Icons.edit_outlined, size: 16, color: Colors.grey[700]),
-            const SizedBox(width: 10),
-            Text('수정',
-                style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[800],
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w500)),
-          ]),
-        ),
-        const PopupMenuItem(
-          value: 'delete',
-          height: 44,
-          child: Row(children: [
-            Icon(Icons.delete_outline, size: 16, color: Color(0xFFE53935)),
-            SizedBox(width: 10),
-            Text('삭제',
-                style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFFE53935),
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w500)),
-          ]),
-        ),
-      ],
+      items: isOwner
+          ? [
+              PopupMenuItem(
+                value: 'edit',
+                height: 44,
+                child: Row(children: [
+                  Icon(Icons.edit_outlined, size: 16, color: Colors.grey[700]),
+                  const SizedBox(width: 10),
+                  Text('수정',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[800],
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w500)),
+                ]),
+              ),
+              const PopupMenuItem(
+                value: 'delete',
+                height: 44,
+                child: Row(children: [
+                  Icon(Icons.delete_outline, size: 16, color: Color(0xFFE53935)),
+                  SizedBox(width: 10),
+                  Text('삭제',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFFE53935),
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w500)),
+                ]),
+              ),
+            ]
+          : [
+              const PopupMenuItem(
+                value: 'report',
+                height: 44,
+                child: Row(children: [
+                  Icon(Icons.flag_outlined, size: 16, color: Color(0xFFE53935)),
+                  SizedBox(width: 10),
+                  Text('신고',
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFFE53935),
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w500)),
+                ]),
+              ),
+            ],
     ).then((value) {
       if (value == 'edit') {
         _openEditSheet();
       } else if (value == 'delete') {
         _confirmDelete();
+      } else if (value == 'report') {
+        if (!mounted) return;
+        ReportSheet.show(
+          context,
+          targetType: ReportTargetType.post,
+          targetId: widget.boardPost.boardId,
+          targetLabel: '게시글',
+        );
       }
     });
   }
@@ -292,8 +324,8 @@ class _BoardCardState extends State<BoardCard> {
                       ],
                     ),
                   ),
-                  if (widget.boardPost.isOwner)
-                    GestureDetector(
+                  // 내 글이면 수정·삭제, 남의 글이면 신고. 항상 노출한다.
+                  GestureDetector(
                       key: _menuKey,
                       onTap: _showMenu,
                       child: const Padding(
