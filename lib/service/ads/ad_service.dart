@@ -13,8 +13,19 @@ import 'package:google_mobile_ads/google_mobile_ads.dart';
 class AdService extends GetxService {
   static AdService get to => Get.find<AdService>();
 
+  /// 광고 전역 스위치. `--dart-define=ADS=false` 로 끈다.
+  ///
+  /// **스토어 스크린샷을 찍을 때 쓴다.** 심사 가이드라인상 스크린샷은 앱 자체를
+  /// 보여줘야 하고 광고가 들어가면 리젝 사유가 된다.
+  ///
+  /// 코드를 주석 처리하는 대신 플래그로 둔 이유는, 주석은 되돌리는 걸 잊으면
+  /// **광고가 사라진 채로 출시된다.** 수익이 0이 되는데 앱은 정상 동작해서
+  /// 한동안 눈치채지 못한다. 플래그는 빌드 명령에만 남으므로 그 사고가 없다.
+  static const bool enabled = bool.fromEnvironment('ADS', defaultValue: true);
+
   /// MobileAds SDK 초기화. main()에서 Get.putAsync로 1회 호출.
   Future<AdService> init() async {
+    if (!enabled) return this;
     await MobileAds.instance.initialize();
     return this;
   }

@@ -151,6 +151,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GetMaterialApp(
+      // 스토어 스크린샷은 시뮬레이터 debug 빌드로 찍는다(시뮬레이터는 release 를
+      // 지원하지 않는다). 배너가 켜져 있으면 캡처마다 지워야 해서 꺼둔다.
+      // release 에서는 어차피 표시되지 않으므로 항상 false 로 둔다.
+      debugShowCheckedModeBanner: false,
       getPages: AppRoutes().pages(),
       home: loginChecked ? RootScreen() : LoginScreens(),
       localizationsDelegates: const [

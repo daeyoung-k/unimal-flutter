@@ -2,6 +2,13 @@
     // IntelliSense를 사용하여 가능한 특성에 대해 알아보세요.
     // 기존 특성에 대한 설명을 보려면 가리킵니다.
     // 자세한 내용을 보려면 https://go.microsoft.com/fwlink/?linkid=830387을(를) 방문하세요.
+    //
+    // ── dart-define 플래그 ──────────────────────────────────────
+    //  ENV : local | prod  → .env.{값} 을 읽는다 (main.dart)
+    //  ADS : true  | false → 광고 전역 스위치 (AdService.enabled)
+    //
+    // iOS 시뮬레이터는 debug 모드만 지원한다.
+    // profile / release 구성은 실기기를 연결해야 실행된다.
     "version": "0.2.0",
     "configurations": [
         {
@@ -20,6 +27,9 @@
             "args": ["--dart-define=ENV=local"]
         },
         {
+            // 평소 prod 확인용 — 광고는 켠 채로 둔다.
+            // 꺼두면 배너 자리가 비어 실제와 레이아웃이 달라지고,
+            // 광고 로딩 실패도 눈치채지 못한다.
             "name": "Flutter (prod debug)",
             "type": "dart",
             "request": "launch",
@@ -27,6 +37,31 @@
             "args": ["--dart-define=ENV=prod"]
         },
         {
+            // 스토어 스크린샷 전용.
+            //
+            // 심사 가이드라인상 스크린샷에 광고가 들어가면 리젝 사유가 되므로
+            // ADS=false 로 배너와 시트의 광고 슬롯을 통째로 접는다.
+            //
+            // 찍기 전에 상태바를 고정하면 여러 장이 균일해진다:
+            //   xcrun simctl status_bar booted override \
+            //     --time "9:41" --batteryState charged --batteryLevel 100 \
+            //     --wifiBars 3 --cellularBars 4
+            //   (되돌리기: xcrun simctl status_bar booted clear)
+            //
+            // 캡처는 Cmd+S 대신 아래 — 창 크기와 무관하게 1320x2868 원본:
+            //   xcrun simctl io booted screenshot ~/Desktop/stomap-01.png
+            "name": "Flutter (스크린샷 - prod, 광고 off)",
+            "type": "dart",
+            "request": "launch",
+            "program": "lib/main.dart",
+            "flutterMode": "profile",
+            "args": [
+                "--dart-define=ENV=prod",
+                "--dart-define=ADS=false"
+            ]
+        },
+        {
+            // 실기기 전용 — 시뮬레이터에서는 실행되지 않는다.
             "name": "Flutter (prod - profile)",
             "type": "dart",
             "request": "launch",
@@ -35,12 +70,13 @@
             "args": ["--dart-define=ENV=prod"]
         },
         {
+            // 실기기 전용 — 실광고 + AOT 최적화가 적용된 최종 QA 빌드.
             "name": "Flutter (prod - release)",
             "type": "dart",
             "request": "launch",
             "program": "lib/main.dart",
             "flutterMode": "release",
             "args": ["--dart-define=ENV=prod"]
-        },
+        }
     ]
 }

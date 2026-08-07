@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:unimal/screens/map/feed/map_feed_section_row.dart';
 import 'package:unimal/service/ads/ad_banner.dart';
+import 'package:unimal/service/ads/ad_service.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/map/models/map_feed.dart';
 import 'package:unimal/theme/app_colors.dart';
@@ -425,7 +426,9 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
                 ValueListenableBuilder<bool>(
                   valueListenable: _adMountedNotifier,
                   builder: (context, visible, _) => _FeedAdSlot(
-                    visible: visible,
+                    // 광고를 끈 빌드(스토어 스크린샷용)에서는 슬롯째로 접는다.
+                    // 배너만 막으면 회색 껍데기가 남아 캡처에 그대로 찍힌다.
+                    visible: visible && AdService.enabled,
                     adBuilder: widget.adBuilder,
                   ),
                 ),

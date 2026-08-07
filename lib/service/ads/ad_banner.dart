@@ -49,6 +49,9 @@ class _AdBannerState extends State<AdBanner> {
   }
 
   Future<void> _loadBanner() async {
+    // 광고를 끈 빌드(스토어 스크린샷용)에서는 요청 자체를 하지 않는다.
+    if (!AdService.enabled) return;
+
     // AdService 가 없으면(초기화 실패 / 위젯 테스트) 광고 없이 조용히 넘어간다.
     if (!Get.isRegistered<AdService>()) return;
 
