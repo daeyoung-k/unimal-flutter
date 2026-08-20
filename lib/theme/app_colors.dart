@@ -94,6 +94,15 @@ class AppColors {
   /// 코랄을 쓰면 하트와, 빨강을 쓰면 오류와 의미가 겹친다.
   final Color accentGreen;
 
+  /// 브랜드 블루 **위에** 올라가는 요소의 색 (마이페이지 히어로 카드의 텍스트·
+  /// 아바타 링 등).
+  ///
+  /// light/dark 둘 다 흰색인 이유 — 이 색이 깔리는 바탕은 화면 배경이 아니라
+  /// [primary]~[primarySoft] 그라디언트이고, 그 그라디언트는 다크모드에서도
+  /// 파란색이다. 여기에 [surface] 를 쓰면 다크모드에서 파란 카드 위에 짙은
+  /// 회색 글씨가 얹혀 읽히지 않는다.
+  final Color onPrimary;
+
   // ────────────────────────────────────────────────────────────────
   // External — 외부 브랜드 (다크모드에서도 고정)
   // ────────────────────────────────────────────────────────────────
@@ -128,6 +137,7 @@ class AppColors {
     required this.accent,
     required this.accentCoral,
     required this.accentGreen,
+    required this.onPrimary,
     required this.kakao,
     required this.shadow,
   });
@@ -170,6 +180,7 @@ class AppColors {
     accent: Color(0xFFFF9F43),
     accentCoral: Color(0xFFFF6B6B),
     accentGreen: Color(0xFF2E9E5B),
+    onPrimary: Color(0xFFFFFFFF),
 
     // External
     kakao: Color(0xFFFEE500),
@@ -208,6 +219,8 @@ class AppColors {
     accent: Color(0xFFFFB872),
     accentCoral: Color(0xFFFF8585),
     accentGreen: Color(0xFF4FBF7F),
+    // 바탕이 되는 브랜드 그라디언트가 다크모드에서도 파란색이라 흰색 고정.
+    onPrimary: Color(0xFFFFFFFF),
 
     // External — 카카오 노란색 고정
     kakao: Color(0xFFFEE500),

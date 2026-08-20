@@ -9,7 +9,6 @@ import 'package:unimal/screens/profile/mypage/my_story_map_card.dart';
 import 'package:unimal/screens/profile/mypage/story_list.dart';
 import 'package:unimal/screens/profile/setting/setting.dart';
 // AdMob 인증 완료 후 광고 노출 시 주석 해제.
-// import 'package:unimal/service/ads/ad_banner.dart';
 import 'package:unimal/service/board/board_api_service.dart';
 import 'package:unimal/service/board/model/board_post.dart';
 import 'package:unimal/service/login/account_service.dart';
@@ -91,13 +90,14 @@ class _ProfileScreensState extends State<ProfileScreens> {
           ? Center(
               child: CircularProgressIndicator(
                   color: colors.primaryStrong, strokeWidth: 2))
+          // 이 화면에는 광고를 두지 않는다. 예전엔 하단에 배너 자리가 주석으로
+          // 잡혀 있었는데, 마이페이지의 광고 배치는 화면 개편과 함께 따로
+          // 설계할 예정이라 코드를 지웠다. 되살릴 땐 `AdService.enabled` 게이트를
+          // 태울 것 — 주석 토글 방식은 되돌리는 걸 잊으면 수익이 조용히 0이 된다.
           : SafeArea(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
-                      child: Column(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeroCard(colors),
@@ -115,11 +115,6 @@ class _ProfileScreensState extends State<ProfileScreens> {
                     _buildMoreCard(colors),
                   ],
                 ),
-                    ),
-                  ),
-                  // AdMob 인증 완료 전까지 광고 미노출. 인증 완료 후 주석 해제.
-                  // const AdBanner(),
-                ],
               ),
             ),
     );
@@ -158,31 +153,51 @@ class _ProfileScreensState extends State<ProfileScreens> {
             onTap: _isUploadingImage ? null : _pickAndUploadProfileImage,
             child: Stack(
               children: [
+                // 흰 링은 `border` 가 아니라 **padding + ClipOval** 로 만든다.
+                //
+                // Container 에 border 를 주면 자식이 사각형인 채로 2px 안쪽으로만
+                // 밀린다. 그 52x52 사각형을 56 지름 원으로 클리핑하면 상하좌우는
+                // 2px 흰 여백이 남고 대각선 방향은 0 이 되어, 두께가 들쭉날쭉한
+                // 링이 생긴다 ("프로필에 여백이 남는다"의 정체).
+                // padding 으로 안쪽 공간을 만들고 자식을 ClipOval 로 원형 꽉 채우면
+                // 어느 각도에서나 두께가 같은 2px 링이 된다.
                 Container(
                   width: 56,
                   height: 56,
+                  padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white,
-                    border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.9), width: 2),
+                    color: colors.onPrimary.withValues(alpha: 0.9),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: _isUploadingImage
-                      ? Container(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: colors.primary),
-                        )
-                      : (_userInfo?.profileImage != null &&
-                              _userInfo!.profileImage!.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: _userInfo!.profileImage!,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) =>
-                                  _buildAvatarLetter(displayName, colors),
+                  child: ClipOval(
+                    child: SizedBox.expand(
+                      child: _isUploadingImage
+                          ? ColoredBox(
+                              color: colors.onPrimary,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: colors.primary),
+                                ),
+                              ),
                             )
-                          : _buildAvatarLetter(displayName, colors)),
+                          : (_userInfo?.profileImage != null &&
+                                  _userInfo!.profileImage!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: _userInfo!.profileImage!,
+                                  fit: BoxFit.cover,
+                                  // placeholder 가 없으면 로딩 동안 흰 원만 보여
+                                  // 이것도 "여백"처럼 읽힌다.
+                                  placeholder: (_, __) =>
+                                      _buildAvatarLetter(displayName, colors),
+                                  errorWidget: (_, __, ___) =>
+                                      _buildAvatarLetter(displayName, colors),
+                                )
+                              : _buildAvatarLetter(displayName, colors)),
+                    ),
+                  ),
                 ),
                 if (!_isUploadingImage)
                   Positioned(
@@ -192,7 +207,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
                       width: 20,
                       height: 20,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: colors.onPrimary,
                         shape: BoxShape.circle,
                         border: Border.all(
                             color: colors.primary.withValues(alpha: 0.4),
