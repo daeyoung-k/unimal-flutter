@@ -59,27 +59,70 @@ class _MyPageScreenState extends State<MyPageScreen> {
     }
   }
 
+  /// 저장 결과 안내.
+  ///
+  /// `Get.snackbar` 대신 [ScaffoldMessenger] 를 쓰는 이유 —
+  /// GetX 스낵바는 앱 최상위 오버레이에 화면 맨 아래로 붙어서, **키보드가 올라와
+  /// 있으면 키보드 뒤에 깔려 안 보인다.** 저장 버튼은 입력 직후에 누르는 버튼이라
+  /// 사실상 항상 그 상황이고, 그래서 "저장됐다는 표시가 없다"는 말이 나왔다.
+  /// ScaffoldMessenger 스낵바는 `resizeToAvoidBottomInset` 으로 줄어든 Scaffold
+  /// 안에 그려져 키보드 위에 뜬다.
+  void _showResult(String message, {required bool ok}) {
+    if (!mounted) return;
+    final colors = AppColors.of(context);
+    ScaffoldMessenger.of(context)
+      // 연타로 스낵바가 쌓이면 마지막 것만 늦게 보인다 — 항상 최신 것만 남긴다.
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: ok ? colors.accentGreen : colors.danger,
+          duration: const Duration(seconds: 2),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          content: Row(
+            children: [
+              Icon(ok ? Icons.check_circle_outline : Icons.error_outline,
+                  color: colors.onPrimary, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(
+                    color: colors.onPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'Pretendard',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+  }
+
   Future<void> _save() async {
+    // 키보드를 먼저 내린다. 결과 스낵바가 가려지지 않게 하는 목적도 있지만,
+    // 입력 중이던 필드의 값이 컨트롤러에 확정 반영되게 하는 효과도 있다.
+    FocusScope.of(context).unfocus();
+
     final nickname = _nicknameController.text.trim();
     final name = _nameController.text.trim();
 
     if (nickname.isEmpty) {
-      Get.snackbar('오류', '닉네임을 입력해주세요',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red[50],
-          colorText: Colors.red);
+      _showResult('닉네임을 입력해주세요', ok: false);
       return;
     }
 
     if (nickname != _userInfo?.nickname) {
       setState(() => _isSaving = true);
       final check = await _userInfoService.checkNickname(nickname);
+      if (!mounted) return;
       if (check != 'ok') {
         setState(() => _isSaving = false);
-        Get.snackbar('닉네임 오류', check,
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red[50],
-            colorText: Colors.red);
+        _showResult(check, ok: false);
         return;
       }
     }
@@ -94,19 +137,14 @@ class _MyPageScreenState extends State<MyPageScreen> {
       birthday: _birthday,
       gender: _gender,
     );
+    if (!mounted) return;
     setState(() => _isSaving = false);
 
     if (success) {
       await _loadUserInfo();
-      Get.snackbar('완료', '개인정보가 저장되었습니다',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green[50],
-          colorText: Colors.green[800]);
+      _showResult('저장이 완료되었습니다', ok: true);
     } else {
-      Get.snackbar('오류', '저장에 실패했습니다. 다시 시도해주세요',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red[50],
-          colorText: Colors.red);
+      _showResult('저장에 실패했습니다. 다시 시도해주세요', ok: false);
     }
   }
 
