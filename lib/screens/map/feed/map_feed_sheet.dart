@@ -480,32 +480,78 @@ class _MapFeedSheetState extends State<MapFeedSheet> {
 /// 모서리가 제대로 안 깎이는 경우도 있다.
 /// 좌우 여백은 [Padding] 이 아니라 [AdBanner.inset] 이 **요청 폭 자체를 줄여서** 준다.
 /// 광고는 네이티브 뷰라 나중에 감싸는 위젯으로 줄일 수 없기 때문이다.
-class _FeedAdSlot extends StatelessWidget {
+///
+/// **껍데기(패딩+배경)는 광고가 실제로 그려질 때만 만든다.** [AdBanner] 는 미로드
+/// 시 0x0 을 돌려주는데, 그걸 모르고 `padding: 4` + 배경색 컨테이너로 감싸면
+/// 8x8 짜리 회색 둥근 사각형만 남아 화면에 점이 찍힌 것처럼 보인다.
+/// (AdMob 심사 전이라 광고가 안 내려오는 동안 실제로 그렇게 보였다 — 2026-08.)
+class _FeedAdSlot extends StatefulWidget {
   const _FeedAdSlot({required this.visible, this.adBuilder});
 
   final bool visible;
   final WidgetBuilder? adBuilder;
 
   @override
+  State<_FeedAdSlot> createState() => _FeedAdSlotState();
+}
+
+class _FeedAdSlotState extends State<_FeedAdSlot> {
+  bool _adLoaded = false;
+
+  @override
+  void didUpdateWidget(covariant _FeedAdSlot oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 시트를 접으면 [AdBanner] 가 트리에서 빠지면서 배너도 dispose 된다.
+    // 이때 _adLoaded 를 안 되돌리면, 다시 펼쳤을 때 "이미 로드됐다"고 믿고
+    // 껍데기부터 그려서 광고 없는 회색 점이 그대로 다시 생긴다.
+    if (oldWidget.visible && !widget.visible) {
+      _adLoaded = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = AppColors.of(context);
+
+    // 주입된 빌더(테스트/프리뷰)는 로드 개념이 없으므로 항상 그려진 것으로 본다.
+    final hasAd = widget.adBuilder != null || _adLoaded;
 
     return AnimatedSize(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeOutCubic,
       alignment: Alignment.topCenter,
-      child: !visible
+      child: !widget.visible
           ? const SizedBox(width: double.infinity, height: 0)
           : Padding(
-              padding: const EdgeInsets.only(bottom: 14),
+              // 광고가 없으면 아래 여백도 없어야 섹션 간격이 안 벌어진다.
+              padding: EdgeInsets.only(bottom: hasAd ? 14 : 0),
               child: Center(
+                // **껍데기 유무로 위젯 트리 모양을 바꾸면 안 된다.**
+                // 로드 성공 시 `AdBanner` → `Container(child: AdBanner)` 로
+                // 부모가 바뀌면 Element 가 재생성되면서 방금 로드한 배너가
+                // dispose 되고 광고를 처음부터 다시 요청한다. 그 사이 이 위젯은
+                // "로드됨"으로 알고 껍데기를 그려서, 고치려던 회색 점이 그대로
+                // 재현되고 광고 요청도 2배가 된다.
+                // 그래서 Container 는 항상 두고 padding/decoration 만 바꾼다.
                 child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: colors.surfaceMuted,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: adBuilder?.call(context) ?? const AdBanner.inset(),
+                  padding:
+                      hasAd ? const EdgeInsets.all(4) : EdgeInsets.zero,
+                  decoration: hasAd
+                      ? BoxDecoration(
+                          color: colors.surfaceMuted,
+                          borderRadius: BorderRadius.circular(12),
+                        )
+                      : null,
+                  // 로드 전에도 위젯 자체는 트리에 있어야 광고를 요청한다.
+                  // (미로드면 0x0 이라 화면에는 아무것도 안 보인다.)
+                  child: widget.adBuilder?.call(context) ??
+                      AdBanner.inset(
+                        onLoadedChanged: (loaded) {
+                          if (mounted && loaded != _adLoaded) {
+                            setState(() => _adLoaded = loaded);
+                          }
+                        },
+                      ),
                 ),
               ),
             ),
