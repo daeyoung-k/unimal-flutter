@@ -17,6 +17,7 @@ import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/state/nav_controller.dart';
 import 'package:unimal/theme/app_colors.dart';
+import 'package:unimal/utils/custom_alert.dart';
 
 class ProfileScreens extends StatefulWidget {
   const ProfileScreens({super.key});
@@ -31,6 +32,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
   final _userInfoService = UserInfoService();
   final _boardApiService = BoardApiService();
   final _picker = ImagePicker();
+  final _customAlert = CustomAlert();
 
   UserInfoModel? _userInfo;
   int _myPostCount = 0;
@@ -570,8 +572,20 @@ class _ProfileScreensState extends State<ProfileScreens> {
       accessToken: _authState.accessToken.value,
       imageFile: File(picked.path),
     );
-    if (success && mounted) await _loadUserInfo();
-    if (mounted) setState(() => _isUploadingImage = false);
+    if (!mounted) return;
+    if (success) await _loadUserInfo();
+    if (!mounted) return;
+    setState(() => _isUploadingImage = false);
+    _showResult(
+      success ? '프로필 사진이 변경되었어요' : '프로필 사진 변경에 실패했어요. 잠시 후 다시 시도해주세요',
+      ok: success,
+    );
+  }
+
+  /// 저장 결과 안내. 스낵바 모양·동작은 [CustomAlert.showSnackBar] 가 갖는다.
+  void _showResult(String message, {required bool ok}) {
+    if (!mounted) return;
+    _customAlert.showSnackBar(context, message, isError: !ok);
   }
 
   // ── 닉네임 수정 ──────────────────────────────────────────────────────
@@ -680,7 +694,14 @@ class _ProfileScreensState extends State<ProfileScreens> {
       nickname: nickname,
       introduction: _userInfo?.introduction ?? '',
     );
-    if (success && mounted) await _loadUserInfo();
+    if (!mounted) return;
+    if (success) await _loadUserInfo();
+    // 실패했을 때 특히 알려야 한다. 아무 말이 없으면 화면엔 예전 값이 그대로라
+    // 사용자는 "저장이 안 먹었나?" 싶어 같은 동작을 반복하게 된다.
+    _showResult(
+      success ? '닉네임이 변경되었어요' : '닉네임 변경에 실패했어요. 잠시 후 다시 시도해주세요',
+      ok: success,
+    );
   }
 
   // ── 소개글 수정 ──────────────────────────────────────────────────────
@@ -755,7 +776,12 @@ class _ProfileScreensState extends State<ProfileScreens> {
       nickname: _userInfo?.nickname ?? '',
       introduction: introduction,
     );
-    if (success && mounted) await _loadUserInfo();
+    if (!mounted) return;
+    if (success) await _loadUserInfo();
+    _showResult(
+      success ? '소개글이 저장되었어요' : '소개글 저장에 실패했어요. 잠시 후 다시 시도해주세요',
+      ok: success,
+    );
   }
 
   // ── 설정 시트 ─────────────────────────────────────────────────────────

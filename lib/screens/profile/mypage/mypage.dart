@@ -8,6 +8,7 @@ import 'package:unimal/service/user/model/user_info_model.dart';
 import 'package:unimal/service/user/user_info_service.dart';
 import 'package:unimal/state/auth_state.dart';
 import 'package:unimal/theme/app_colors.dart';
+import 'package:unimal/utils/custom_alert.dart';
 
 class MyPageScreen extends StatefulWidget {
   const MyPageScreen({super.key});
@@ -20,6 +21,7 @@ class _MyPageScreenState extends State<MyPageScreen> {
   final _authState = Get.find<AuthState>();
   final _userInfoService = UserInfoService();
   final _accountService = AccountService();
+  final _customAlert = CustomAlert();
 
   UserInfoModel? _userInfo;
   bool _isLoading = true;
@@ -59,48 +61,10 @@ class _MyPageScreenState extends State<MyPageScreen> {
     }
   }
 
-  /// 저장 결과 안내.
-  ///
-  /// `Get.snackbar` 대신 [ScaffoldMessenger] 를 쓰는 이유 —
-  /// GetX 스낵바는 앱 최상위 오버레이에 화면 맨 아래로 붙어서, **키보드가 올라와
-  /// 있으면 키보드 뒤에 깔려 안 보인다.** 저장 버튼은 입력 직후에 누르는 버튼이라
-  /// 사실상 항상 그 상황이고, 그래서 "저장됐다는 표시가 없다"는 말이 나왔다.
-  /// ScaffoldMessenger 스낵바는 `resizeToAvoidBottomInset` 으로 줄어든 Scaffold
-  /// 안에 그려져 키보드 위에 뜬다.
+  /// 저장 결과 안내. 스낵바 모양·동작은 [CustomAlert.showSnackBar] 가 갖는다.
   void _showResult(String message, {required bool ok}) {
     if (!mounted) return;
-    final colors = AppColors.of(context);
-    ScaffoldMessenger.of(context)
-      // 연타로 스낵바가 쌓이면 마지막 것만 늦게 보인다 — 항상 최신 것만 남긴다.
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: ok ? colors.accentGreen : colors.danger,
-          duration: const Duration(seconds: 2),
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12)),
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          content: Row(
-            children: [
-              Icon(ok ? Icons.check_circle_outline : Icons.error_outline,
-                  color: colors.onPrimary, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(
-                    color: colors.onPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Pretendard',
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+    _customAlert.showSnackBar(context, message, isError: !ok);
   }
 
   Future<void> _save() async {
