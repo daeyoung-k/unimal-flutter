@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -30,6 +31,12 @@ class ShareCardSheet extends StatefulWidget {
   @override
   State<ShareCardSheet> createState() => _ShareCardSheetState();
 }
+
+/// 내용 입력 칸이 줄어들 수 있는 하한.
+///
+/// 14pt · 행간 1.5 기준 5줄 남짓. 키보드가 올라온 상태에서도 "내가 방금 쓴
+/// 문장"이 보여야 해서 3~4줄로는 부족하다.
+const double _kContentFieldMinHeight = 150;
 
 class _ShareCardSheetState extends State<ShareCardSheet>
     with WidgetsBindingObserver {
@@ -456,10 +463,13 @@ class _ShareCardSheetState extends State<ShareCardSheet>
     final colors = AppColors.of(context);
     final media = MediaQuery.of(context);
     final keyboardInset = media.viewInsets.bottom;
-    final sheetHeight = (media.size.height * 0.88).clamp(
-      0.0,
-      media.size.height - keyboardInset - 24,
-    );
+    // 키보드 위로 쓸 수 있는 최대 높이. max(0, ...) 로 감싸는 이유는 작은 화면 +
+    // 후보창까지 뜬 IME 처럼 키보드가 `화면높이 - 24` 를 넘는 경우가 있어서다.
+    // (clamp 를 쓰면 그때 상한 < 하한이 되어 assert 가 터진다.)
+    final double maxSheetHeight =
+        math.max(0.0, media.size.height - keyboardInset - 24);
+    final double sheetHeight =
+        math.min(media.size.height * 0.88, maxSheetHeight);
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 180),
@@ -485,73 +495,105 @@ class _ShareCardSheetState extends State<ShareCardSheet>
             child: Column(
               children: [
                 _DragHandle(color: colors.divider),
+                // 헤더는 고정. 스크롤로 사라지면 지금 쓰는 중인 게 새 글인지
+                // 수정인지(그리고 삭제 버튼이 어디 있는지)가 흐려진다.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  child: _Header(
+                    color: colors.textPrimary,
+                    title: _isEdit ? '수정하기' : '공유하기',
+                    onDelete: _isEdit ? _onDelete : null,
+                    deleteColor: colors.textMuted,
+                  ),
+                ),
+                // 입력 영역만 스크롤한다.
+                //
+                // 예전엔 여기가 고정 Column + `Expanded(_ContentField)` 였다.
+                // 키보드가 올라오면 시트 높이가 `화면 - 키보드` 로 줄어드는데
+                // 제목·사진·위치·버튼은 높이가 고정이라, 줄어든 몫을 전부
+                // Expanded 인 내용 칸이 뒤집어쓰고 한두 줄로 짜부라졌다.
+                // ("키보드가 콘텐츠를 가려버린다"의 정체)
+                // 이제는 내용 칸이 최소 높이를 지키고 넘치는 만큼 스크롤이 받는다.
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _Header(
-                          color: colors.textPrimary,
-                          title: _isEdit ? '수정하기' : '공유하기',
-                          onDelete: _isEdit ? _onDelete : null,
-                          deleteColor: colors.textMuted,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 여유가 있으면 내용 칸이 스크롤 영역의 절반쯤을 쓰고,
+                      // 키보드로 좁아지면 [_kContentFieldMinHeight] 까지만
+                      // 줄어든다. 화면 크기에 비례하는 값이라 기기를 안 탄다.
+                      final contentHeight = math.max(
+                        _kContentFieldMinHeight,
+                        constraints.maxHeight * 0.42,
+                      );
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _TitleField(
+                              controller: _titleController,
+                              colors: colors,
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: contentHeight,
+                              child: _ContentField(
+                                controller: _contentController,
+                                colors: colors,
+                                onChanged: () => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            _PhotoRow(
+                              images: _images,
+                              existingImages: _existingFiles,
+                              maxImages: _maxImages,
+                              colors: colors,
+                              onTap: _onTapAddPhoto,
+                              onRemove: (index) =>
+                                  setState(() => _images.removeAt(index)),
+                              onRemoveExisting: (fileId) => setState(() {
+                                _existingFiles
+                                    .removeWhere((f) => f.fileId == fileId);
+                                _removedFileIds.add(fileId);
+                              }),
+                            ),
+                            const SizedBox(height: 16),
+                            _LocationCard(
+                              // 수정 모드: 기존 위치 고정 표시(탭/재조회 없음, 힌트 숨김).
+                              streetName: _isEdit
+                                  ? widget.editPost!.streetName
+                                  : _myLocation?.streetName,
+                              isLoading: _isEdit ? false : _isLoadingLocation,
+                              hasFailed: _isEdit ? false : _locationFailed,
+                              showHint: _isEdit ? false : _images.isEmpty,
+                              colors: colors,
+                              onTap: _isEdit
+                                  ? null
+                                  : (_isLoadingLocation
+                                      ? null
+                                      : _getCurrentLocation),
+                              onOpenSettings: _openLocationSettings,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        _TitleField(
-                          controller: _titleController,
-                          colors: colors,
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: _ContentField(
-                            controller: _contentController,
-                            colors: colors,
-                            onChanged: () => setState(() {}),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _PhotoRow(
-                          images: _images,
-                          existingImages: _existingFiles,
-                          maxImages: _maxImages,
-                          colors: colors,
-                          onTap: _onTapAddPhoto,
-                          onRemove: (index) =>
-                              setState(() => _images.removeAt(index)),
-                          onRemoveExisting: (fileId) => setState(() {
-                            _existingFiles
-                                .removeWhere((f) => f.fileId == fileId);
-                            _removedFileIds.add(fileId);
-                          }),
-                        ),
-                        const SizedBox(height: 16),
-                        _LocationCard(
-                          // 수정 모드: 기존 위치 고정 표시(탭/재조회 없음, 힌트 숨김).
-                          streetName: _isEdit
-                              ? widget.editPost!.streetName
-                              : _myLocation?.streetName,
-                          isLoading: _isEdit ? false : _isLoadingLocation,
-                          hasFailed: _isEdit ? false : _locationFailed,
-                          showHint: _isEdit ? false : _images.isEmpty,
-                          colors: colors,
-                          onTap: _isEdit
-                              ? null
-                              : (_isLoadingLocation ? null : _getCurrentLocation),
-                          onOpenSettings: _openLocationSettings,
-                        ),
-                        const SizedBox(height: 16),
-                        _UploadCta(
-                          enabled: _canUpload() && !_isUploading,
-                          isUploading: _isUploading,
-                          colors: colors,
-                          label: _isEdit ? '수정 완료' : '소식 업로드',
-                          loadingLabel: _isEdit ? '저장 중...' : '업로드 중...',
-                          icon: _isEdit ? Icons.check_rounded : Icons.send_rounded,
-                          onPressed: _onUpload,
-                        ),
-                      ],
-                    ),
+                      );
+                    },
+                  ),
+                ),
+                // 업로드 버튼은 바닥 고정. 주 액션이 스크롤 밖으로 밀리면
+                // "다 썼는데 올리는 버튼이 없다"가 된다.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  child: _UploadCta(
+                    enabled: _canUpload() && !_isUploading,
+                    isUploading: _isUploading,
+                    colors: colors,
+                    label: _isEdit ? '수정 완료' : '소식 업로드',
+                    loadingLabel: _isEdit ? '저장 중...' : '업로드 중...',
+                    icon: _isEdit ? Icons.check_rounded : Icons.send_rounded,
+                    onPressed: _onUpload,
                   ),
                 ),
               ],
