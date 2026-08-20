@@ -38,6 +38,12 @@ class ShareCardSheet extends StatefulWidget {
 /// 문장"이 보여야 해서 3~4줄로는 부족하다.
 const double _kContentFieldMinHeight = 150;
 
+/// 내용 칸 위에 놓인 제목 필드 한 덩어리(필드 높이 + 아래 간격)의 대략값.
+///
+/// 사진·위치를 접었을 때 "내용 칸이 나머지를 다 쓴다"를 계산하려고 쓴다.
+/// 몇 px 어긋나도 스크롤이 흡수하므로 정밀할 필요는 없다.
+const double _kTitleBlockHeight = 62;
+
 class _ShareCardSheetState extends State<ShareCardSheet>
     with WidgetsBindingObserver {
   final BoardApiService _boardApiService = BoardApiService();
@@ -463,13 +469,42 @@ class _ShareCardSheetState extends State<ShareCardSheet>
     final colors = AppColors.of(context);
     final media = MediaQuery.of(context);
     final keyboardInset = media.viewInsets.bottom;
-    // 키보드 위로 쓸 수 있는 최대 높이. max(0, ...) 로 감싸는 이유는 작은 화면 +
-    // 후보창까지 뜬 IME 처럼 키보드가 `화면높이 - 24` 를 넘는 경우가 있어서다.
-    // (clamp 를 쓰면 그때 상한 < 하한이 되어 assert 가 터진다.)
+    final keyboardUp = keyboardInset > 0;
+
+    // 시트 위로 남겨둘 여백 = 상태바 높이 + 8.
+    //
+    // 시트 전체 높이가 `sheetHeight + keyboardInset` = `화면높이 - topGap` 이
+    // 되므로, topGap 이 곧 시트 상단과 화면 꼭대기 사이의 거리다. 예전엔 이게
+    // 24 고정이라 상태바가 그보다 높은 기기(펀치홀·노치 계열, S23 울트라는
+    // 36dp 안팎)에서 시트가 상태바 안으로 파고들었다.
+    //
+    // **상태바 높이를 MediaQuery 가 아니라 View 에서 읽는 이유** —
+    // showModalBottomSheet 는 기본값(useSafeArea: false)에서
+    // `MediaQuery.removePadding(removeTop: true)` 로 감싸서 넘긴다. 그래서 이
+    // 안에서 `media.padding.top` 은 물론 `media.viewPadding.top` 까지 0이 된다
+    // (removePadding 이 viewPadding 에서도 padding 만큼 빼기 때문).
+    // 그걸 모르고 viewPadding 을 썼다가 topGap 이 8이 되어 24 였을 때보다
+    // 시트가 더 올라가는 역효과가 났었다. View 는 그 래핑의 영향을 받지 않는다.
+    final double topGap =
+        MediaQueryData.fromView(View.of(context)).viewPadding.top + 8;
+    // max(0, ...) 로 감싸는 이유는 작은 화면 + 후보창까지 뜬 IME 처럼 키보드가
+    // `화면높이 - topGap` 을 넘는 경우가 있어서다. (그때 상한 < 하한이 된다.)
     final double maxSheetHeight =
-        math.max(0.0, media.size.height - keyboardInset - 24);
+        math.max(0.0, media.size.height - keyboardInset - topGap);
     final double sheetHeight =
         math.min(media.size.height * 0.88, maxSheetHeight);
+
+    // 키보드가 올라오면 사진·위치를 접어 쓰는 공간을 넓힌다. 둘 다 지금 당장
+    // 손댈 대상이 아니고(사진은 어차피 키보드를 내려야 고른다), 좁은 화면에서
+    // 본문이 눌리는 게 더 큰 손해다.
+    //
+    // 단 **위치가 아직 안 잡혔거나 실패했으면 접지 않는다.** 위치는 업로드
+    // 필수라 없으면 CTA 가 비활성인데, 카드까지 숨기면 버튼이 왜 안 눌리는지
+    // 알 방법이 사라진다. 정상적으로 주소가 잡혔을 때만 접는 이유다.
+    final bool locationNeedsAttention =
+        !_isEdit && (_isLoadingLocation || _locationFailed || _myLocation == null);
+    final bool showPhotoRow = !keyboardUp;
+    final bool showLocation = !keyboardUp || locationNeedsAttention;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 180),
@@ -517,13 +552,19 @@ class _ShareCardSheetState extends State<ShareCardSheet>
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      // 여유가 있으면 내용 칸이 스크롤 영역의 절반쯤을 쓰고,
-                      // 키보드로 좁아지면 [_kContentFieldMinHeight] 까지만
-                      // 줄어든다. 화면 크기에 비례하는 값이라 기기를 안 탄다.
-                      final contentHeight = math.max(
-                        _kContentFieldMinHeight,
-                        constraints.maxHeight * 0.42,
-                      );
+                      // 사진·위치를 접었으면 남는 건 제목과 내용뿐이니 내용이
+                      // 나머지를 다 쓴다. 펼쳐진 평소에는 스크롤 영역의 절반쯤만
+                      // 차지하고 아래 요소들에 자리를 내준다.
+                      // 화면 크기에 비례하는 값이라 기기를 안 탄다.
+                      final contentHeight = showPhotoRow || showLocation
+                          ? math.max(
+                              _kContentFieldMinHeight,
+                              constraints.maxHeight * 0.42,
+                            )
+                          : math.max(
+                              _kContentFieldMinHeight,
+                              constraints.maxHeight - _kTitleBlockHeight,
+                            );
                       return SingleChildScrollView(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         keyboardDismissBehavior:
@@ -544,37 +585,68 @@ class _ShareCardSheetState extends State<ShareCardSheet>
                                 onChanged: () => setState(() {}),
                               ),
                             ),
-                            const SizedBox(height: 16),
-                            _PhotoRow(
-                              images: _images,
-                              existingImages: _existingFiles,
-                              maxImages: _maxImages,
-                              colors: colors,
-                              onTap: _onTapAddPhoto,
-                              onRemove: (index) =>
-                                  setState(() => _images.removeAt(index)),
-                              onRemoveExisting: (fileId) => setState(() {
-                                _existingFiles
-                                    .removeWhere((f) => f.fileId == fileId);
-                                _removedFileIds.add(fileId);
-                              }),
+                            // 접기/펼치기는 AnimatedSize 로 — 키보드가 올라오는
+                            // 180ms 동안 내용 칸만 툭 늘어나면 눈이 따라가지
+                            // 못한다. 같은 리듬으로 흘러야 자연스럽다.
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              alignment: Alignment.topCenter,
+                              child: !showPhotoRow
+                                  ? const SizedBox(
+                                      width: double.infinity, height: 0)
+                                  : Padding(
+                                      padding:
+                                          const EdgeInsets.only(top: 16),
+                                      child: _PhotoRow(
+                                        images: _images,
+                                        existingImages: _existingFiles,
+                                        maxImages: _maxImages,
+                                        colors: colors,
+                                        onTap: _onTapAddPhoto,
+                                        onRemove: (index) => setState(
+                                            () => _images.removeAt(index)),
+                                        onRemoveExisting: (fileId) =>
+                                            setState(() {
+                                          _existingFiles.removeWhere(
+                                              (f) => f.fileId == fileId);
+                                          _removedFileIds.add(fileId);
+                                        }),
+                                      ),
+                                    ),
                             ),
-                            const SizedBox(height: 16),
-                            _LocationCard(
-                              // 수정 모드: 기존 위치 고정 표시(탭/재조회 없음, 힌트 숨김).
-                              streetName: _isEdit
-                                  ? widget.editPost!.streetName
-                                  : _myLocation?.streetName,
-                              isLoading: _isEdit ? false : _isLoadingLocation,
-                              hasFailed: _isEdit ? false : _locationFailed,
-                              showHint: _isEdit ? false : _images.isEmpty,
-                              colors: colors,
-                              onTap: _isEdit
-                                  ? null
-                                  : (_isLoadingLocation
-                                      ? null
-                                      : _getCurrentLocation),
-                              onOpenSettings: _openLocationSettings,
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOut,
+                              alignment: Alignment.topCenter,
+                              child: !showLocation
+                                  ? const SizedBox(
+                                      width: double.infinity, height: 0)
+                                  : Padding(
+                                      padding:
+                                          const EdgeInsets.only(top: 16),
+                                      child: _LocationCard(
+                                        // 수정 모드: 기존 위치 고정 표시(탭/재조회 없음, 힌트 숨김).
+                                        streetName: _isEdit
+                                            ? widget.editPost!.streetName
+                                            : _myLocation?.streetName,
+                                        isLoading: _isEdit
+                                            ? false
+                                            : _isLoadingLocation,
+                                        hasFailed:
+                                            _isEdit ? false : _locationFailed,
+                                        showHint: _isEdit
+                                            ? false
+                                            : _images.isEmpty,
+                                        colors: colors,
+                                        onTap: _isEdit
+                                            ? null
+                                            : (_isLoadingLocation
+                                                ? null
+                                                : _getCurrentLocation),
+                                        onOpenSettings: _openLocationSettings,
+                                      ),
+                                    ),
                             ),
                           ],
                         ),
