@@ -1,4 +1,7 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:unimal/screens/add/share_card_sheet.dart';
@@ -27,6 +30,10 @@ class _RootScreen extends State<RootScreen> {
   late final NavController _nav;
   late final Worker _shareSheetWorker;
   bool _isShareSheetOpen = false;
+
+  /// "한 번 더 누르면 종료" 판정용. null 이면 아직 안 눌렀거나 시간이 지났다.
+  DateTime? _lastBackPressedAt;
+  static const _exitConfirmWindow = Duration(seconds: 2);
 
   @override
   void initState() {
@@ -72,6 +79,66 @@ class _RootScreen extends State<RootScreen> {
         const SnackBar(content: Text('소식이 업로드되었어요.')),
       );
     }
+  }
+
+  /// 안드로이드 시스템 뒤로가기.
+  ///
+  /// 이 화면은 앱의 첫 라우트라 [PopScope] 를 안 걸면 뒤로가기가 곧바로 앱 종료다.
+  /// 실제로 "안드로이드 뒤로가기 = 어플 종료"라는 피드백이 그거였다. 안드로이드
+  /// 관행에 맞춰 **가장 안쪽부터 하나씩 되돌린다.**
+  ///
+  /// 1. My 탭에 있으면 → 지도 탭으로 (탭도 이동 이력이다)
+  /// 2. 지도 위에 카드·검색이 열려 있으면 → 그것부터 닫기
+  /// 3. 그래도 없으면 → 두 번 눌러야 종료
+  ///
+  /// 공유하기 시트/상세 화면은 별도 라우트라 그쪽이 먼저 pop 되고 여기까진 안 온다.
+  void _handleSystemBack() {
+    if (_nav.selectedIndex.value != 0) {
+      _nav.selectedIndex.value = 0;
+      _lastBackPressedAt = null;
+      return;
+    }
+
+    final mapState = appRoutes.mapScreenKey.currentState;
+    if (mapState != null) {
+      try {
+        if ((mapState as dynamic).handleBackPress() == true) {
+          _lastBackPressedAt = null;
+          return;
+        }
+      } catch (e, st) {
+        // 여기서 삼키지 않으면 뒤로가기 한 번에 앱이 죽는다. 대신 **반드시
+        // 남긴다** — 조용히 넘기면 "카드가 열려 있는데 뒤로가기 두 번에 앱이
+        // 꺼진다"로 보이고 원인을 찾을 단서가 없다.
+        debugPrint('[root] 지도 뒤로가기 처리 실패: $e\n$st');
+      }
+    }
+
+    // iOS 는 시스템 뒤로가기가 없고 HIG 상 앱이 스스로 종료하면 안 된다.
+    if (!Platform.isAndroid) return;
+
+    final now = DateTime.now();
+    final last = _lastBackPressedAt;
+    if (last != null && now.difference(last) < _exitConfirmWindow) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackPressedAt = now;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text(
+            '한 번 더 누르면 종료돼요',
+            style: TextStyle(fontFamily: 'Pretendard'),
+          ),
+          duration: _exitConfirmWindow,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
   }
 
   void _onItemTapped(int index) {
@@ -166,12 +233,19 @@ class _RootScreen extends State<RootScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() => Scaffold(
-      body: IndexedStack(
-        index: _stackIndexFor(_nav.selectedIndex.value),
-        children: appRoutes.bottomNavigationPages(),
-      ),
-      bottomNavigationBar: _buildBottomNav(context),
-    ));
+    return PopScope(
+      // canPop: false 로 시스템 pop 을 가로채고, 종료 여부는 우리가 결정한다.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _handleSystemBack();
+      },
+      child: Obx(() => Scaffold(
+        body: IndexedStack(
+          index: _stackIndexFor(_nav.selectedIndex.value),
+          children: appRoutes.bottomNavigationPages(),
+        ),
+        bottomNavigationBar: _buildBottomNav(context),
+      )),
+    );
   }
 }

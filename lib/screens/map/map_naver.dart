@@ -584,6 +584,27 @@ class _MapNaverScreensState extends State<MapNaverScreens>
     super.dispose();
   }
 
+  /// 안드로이드 시스템 뒤로가기가 지도 탭에서 눌렸을 때 호출된다.
+  ///
+  /// 지도 위에 열려 있는 것(카드·장소 상세·펼친 마커·검색 결과)이 있으면 그걸
+  /// 하나 닫고 `true` 를 돌려준다. 닫을 게 없으면 `false` — 그때만 [RootScreen]
+  /// 이 앱 종료를 검토한다. 카드를 열어둔 채 뒤로가기를 눌렀는데 앱이 꺼지는 게
+  /// 원래 증상이었다.
+  ///
+  /// 순서가 "카드 먼저, 검색 나중"인 이유: 검색 결과에서 글을 열면 둘 다 열린
+  /// 상태가 되는데, 사용자가 마지막으로 연 건 카드다.
+  bool handleBackPress() {
+    if (_isMapInteractionOpen) {
+      _closeAllCards();
+      return true;
+    }
+    if (_hasSearchResults || _searchController.text.isNotEmpty) {
+      _clearSearch();
+      return true;
+    }
+    return false;
+  }
+
   void refreshMap() {
     _cameraDebounce?.cancel();
     if (_isLoadingMarkers) {
