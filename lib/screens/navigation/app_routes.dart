@@ -5,7 +5,6 @@ import 'package:unimal/screens/auth/id_find.dart';
 import 'package:unimal/screens/auth/password_find.dart';
 import 'package:unimal/screens/auth/signup.dart';
 import 'package:unimal/screens/board/detail_board/detail_board.dart';
-import 'package:unimal/screens/board/board.dart';
 import 'package:unimal/screens/auth/login/login.dart';
 import 'package:unimal/screens/map/map_naver.dart';
 import 'package:unimal/screens/navigation/root_screen.dart';
@@ -42,7 +41,10 @@ class AppRoutes {
       GetPage(name: '/id-find', page: () => IdFindScreen()),
       GetPage(name: '/password-find', page: () => PasswordFindScreen()),
       GetPage(name: '/signup', page: () => SignupScreens()),
-      GetPage(name: '/board', page: () => BoardScreens()),
+      // '/board'(게시판 피드) 라우트는 제거했다. 게시판을 지도 위로 옮기는
+      // 리뉴얼이 끝나면서 하단 네비에서 탭이 빠졌고, 이후 아무도 이 라우트로
+      // 이동하지 않아 화면과 카드 위젯이 통째로 도달 불가 코드가 됐다.
+      // (되살릴 일이 생기면 git 이력에서 꺼낼 것)
       GetPage(name: '/detail-board', page: () => DetailBoardScreen()),
       GetPage(name: '/story-list', page: () => const StoryListScreen()),
       GetPage(name: '/my-story-map', page: () => const MyStoryMapScreen()),
