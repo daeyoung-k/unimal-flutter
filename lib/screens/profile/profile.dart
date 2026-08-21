@@ -45,7 +45,7 @@ class _ProfileScreensState extends State<ProfileScreens> {
   // - '좋아요한 스토리'는 내 지도 화면에서 보는 버튼으로 이전 예정
   // - 팔로우 등 기능이 추가되면 이 영역을 다시 노출
   // 코드/데이터(_myLikedCount, _buildMenuCard 등)는 그대로 유지한다.
-  static bool _showMenuSection = false;
+  static const bool _showMenuSection = false;
 
   @override
   void initState() {

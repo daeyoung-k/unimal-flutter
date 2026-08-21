@@ -80,18 +80,18 @@ class TimeUtils {
       // 주 단위
       if (difference.inDays < 30) {
         final weeks = (difference.inDays / 7).floor();
-        return '${weeks}주 전';
+        return '$weeks주 전';
       }
       
       // 월 단위
       if (difference.inDays < 365) {
         final months = (difference.inDays / 30).floor();
-        return '${months}개월 전';
+        return '$months개월 전';
       }
       
       // 년 단위
       final years = (difference.inDays / 365).floor();
-      return '${years}년 전';
+      return '$years년 전';
     } catch (e) {
       // 파싱 실패 시 기본값 반환
       return '방금 전';

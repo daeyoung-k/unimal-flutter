@@ -31,3 +31,7 @@ analyzer:
   exclude:
     # 삭제 예정 파일 보관함 — 분석 대상에서 제외
     - _to_delete/**
+    # FlutterIcon.com 자동 생성 파일. 상수명이 snake_case 라 lint 8건이 뜨는데,
+    # 파일을 고쳐도 아이콘을 추가해 재생성하는 순간 그대로 되돌아온다.
+    # ignore_for_file 주석도 마찬가지라 파일 밖에서 제외하는 게 유일하게 유지된다.
+    - lib/icon/custom_icon_icons.dart

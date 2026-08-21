@@ -29,7 +29,7 @@ class DeviceInfoService {
   /// FCM 토큰, 디바이스 모델, 시스템 정보, 앱 정보를 포함한 전체 정보를 반환합니다.
   /// 
   /// Returns:
-  /// - Map<String, dynamic>: 디바이스 정보 맵
+  /// - `Map<String, dynamic>`: 디바이스 정보 맵
   Future<Map<String, dynamic>> getAllDeviceInfo() async {
     try {
       final Map<String, dynamic> deviceInfo = {};
@@ -98,7 +98,7 @@ class DeviceInfoService {
   /// Android 디바이스의 모델, 시스템 이름, 버전 정보를 반환합니다.
   /// 
   /// Returns:
-  /// - Map<String, dynamic>: Android 디바이스 정보
+  /// - `Map<String, dynamic>`: Android 디바이스 정보
   Future<Map<String, dynamic>> getAndroidDeviceInfo() async {
     try {
       final AndroidDeviceInfo androidInfo = await _deviceInfo.androidInfo;
@@ -124,7 +124,7 @@ class DeviceInfoService {
   /// iOS 디바이스의 모델, 시스템 이름, 버전 정보를 반환합니다.
   /// 
   /// Returns:
-  /// - Map<String, dynamic>: iOS 디바이스 정보
+  /// - `Map<String, dynamic>`: iOS 디바이스 정보
   Future<Map<String, dynamic>> getIOSDeviceInfo() async {
     try {
       final IosDeviceInfo iosInfo = await _deviceInfo.iosInfo;
@@ -148,7 +148,7 @@ class DeviceInfoService {
   /// 앱의 버전, 빌드 번호, 패키지명 등의 정보를 반환합니다.
   /// 
   /// Returns:
-  /// - Map<String, dynamic>: 앱 정보
+  /// - `Map<String, dynamic>`: 앱 정보
   Future<Map<String, dynamic>> getAppInfo() async {
     try {
       final PackageInfo packageInfo = await PackageInfo.fromPlatform();
@@ -170,7 +170,7 @@ class DeviceInfoService {
   /// FCM 토큰, 모델, 시스템 이름, 버전만 포함한 간단한 정보를 반환합니다.
   /// 
   /// Returns:
-  /// - Map<String, dynamic>: 간단한 디바이스 정보
+  /// - `Map<String, dynamic>`: 간단한 디바이스 정보
   Future<Map<String, dynamic>> getSimpleDeviceInfo() async {
     try {
       final token = await getFCMToken();

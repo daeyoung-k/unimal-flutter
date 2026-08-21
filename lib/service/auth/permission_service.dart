@@ -284,7 +284,7 @@ class PermissionService {
   /// 알림, 카메라, 위치, 사진, 사진첩 권한을 한 번에 요청합니다.
   /// 
   /// Returns:
-  /// - Map<String, bool>: 각 권한별 허용 여부
+  /// - `Map<String, bool>`: 각 권한별 허용 여부
   Future<Map<String, bool>> requestAllPermissions() async {
     final results = <String, bool>{};
     
@@ -301,7 +301,7 @@ class PermissionService {
   /// 알림, 위치 권한 요청
   /// 
   /// Returns:
-  /// - Map<String, bool>: 각 권한별 허용 여부
+  /// - `Map<String, bool>`: 각 권한별 허용 여부
   Future<Map<String, bool>> requestNotificationAndLocationPermissions() async {
     final results = <String, bool>{};
     
@@ -317,7 +317,7 @@ class PermissionService {
   /// 알림, 카메라, 위치, 사진, 사진첩 권한의 현재 상태를 확인합니다.
   /// 
   /// Returns:
-  /// - Map<String, bool>: 각 권한별 허용 여부
+  /// - `Map<String, bool>`: 각 권한별 허용 여부
   Future<Map<String, bool>> checkAllPermissions() async {
     final results = <String, bool>{};
     
